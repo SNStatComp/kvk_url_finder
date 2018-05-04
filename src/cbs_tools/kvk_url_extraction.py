@@ -1,8 +1,8 @@
 import argparse
 import logging
 import os
-import re
 import sys
+import tables
 
 import numpy as np
 import pandas as pd
@@ -43,12 +43,12 @@ class KvKUrlParser(object):
     def __init__(self, input_file_name, reset_database=False, compress_format=None):
 
         self.input_file_name = input_file_name
-        self.msg_pack_file_name = os.path.splitext(input_file_name)[0] + ".msg_pack"
+        self.output_file_name = os.path.splitext(input_file_name)[0] + ".h5"
         self.reset_database = reset_database
 
         self.compress_format = compress_format
 
-        if self.msg_pack_file_name == self.input_file_name:
+        if self.output_file_name == self.input_file_name:
             raise AssertionError("Data base file name equal to input file name. Please at a proper"
                                  "extension to your input file ")
 
@@ -61,24 +61,31 @@ class KvKUrlParser(object):
         Read the URL data base
         """
 
-        if self.reset_database or not os.path.exists(self.msg_pack_file_name):
+        if self.reset_database or not os.path.exists(self.output_file_name):
             _logger.info("Reading data from original data base {name}"
                          "".format(name=self.input_file_name))
             self.data = pd.read_csv(self.input_file_name, header=None, usecols=[1, 2, 4],
                                     names=["KvK", "Name", "URL"])
 
-            _logger.debug("Read\n{}".format(self.data.head()))
-            _logger.debug("Read\n{}".format(self.data.info))
+            self.data.fillna("", inplace=True)
+            self.data.set_index(["KvK"], drop=True, inplace=True)
 
-            _logger.info("Dumping data to cache file {} ".format(self.msg_pack_file_name))
-            pd.to_msgpack(self.msg_pack_file_name, self.data)
+            # explicitly convert the data to strings
+            for column_name in self.data.columns:
+                _logger.debug("Converting {}".format(column_name))
+                self.data[column_name] = self.data[column_name].astype(str)
+
+            _logger.info("Dumping data to cache file {} ".format(self.output_file_name))
+            self.data.to_hdf(self.output_file_name, key="kvk_data", mode="w", dropna=True,
+                             format="fixed")
         else:
             _logger.info("Reading data from cached file {name}"
-                         "".format(name=self.msg_pack_file_name))
-            self.data = pd.read_msgpack(self.msg_pack_file_name)
+                         "".format(name=self.output_file_name))
+            self.data = pd.read_hdf(self.output_file_name)
 
         _logger.info("Done reading file")
         _logger.debug("Data info \n{}".format(self.data.info))
+        _logger.debug("Data head \n{}".format(self.data.head()))
 
 
 def _parse_the_command_line_arguments(args):
