@@ -18,7 +18,8 @@ __author__ = "Eelco van Vliet"
 __copyright__ = "Eelco van Vliet"
 __license__ = "mit"
 
-CACHE_TYPES = ["msg_pack", "hdf"]
+CACHE_TYPES = ["msg_pack", "hdf", "sql"]
+COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
 logging.basicConfig()
 _logger = logging.getLogger(__name__)
@@ -118,8 +119,7 @@ class KvKUrlParser(object):
         Reset the data base file in case this flag is True
     """
 
-    def __init__(self, input_file_name, reset_database=False, compress_format=None,
-                 cache_type=None):
+    def __init__(self, input_file_name, reset_database=False, cache_type=None, compression=None):
 
         self.input_file_name = input_file_name
         self.cache_type = cache_type
@@ -127,12 +127,14 @@ class KvKUrlParser(object):
             self.output_file_name = os.path.splitext(input_file_name)[0] + ".msg_pack"
         elif cache_type == "hdf":
             self.output_file_name = os.path.splitext(input_file_name)[0] + ".h5"
+        elif cache_type == "sql":
+            self.output_file_name = os.path.splitext(input_file_name)[0] + ".sql"
         else:
             raise AssertionError("Cache type can only one of the following: {}. Found {}"
                                  "".format(CACHE_TYPES, cache_type))
         self.reset_database = reset_database
 
-        self.compress_format = compress_format
+        self.compression = compression
 
         if self.output_file_name == self.input_file_name:
             raise AssertionError("Data base file name equal to input file name. Please at a proper"
@@ -140,6 +142,7 @@ class KvKUrlParser(object):
 
         self.data = None  # contains the pandas data frame
 
+        # read from either original csv or cache. After this the data attribute is filled with a data frame
         self.read_database()
 
     def read_database(self):
@@ -185,10 +188,12 @@ class KvKUrlParser(object):
         _logger.info("Dumping data to cache file {} ".format(self.output_file_name))
         if self.cache_type == "msg_pack":
             # dump to message pack
-            self.data.to_msgpack(self.output_file_name, compress=self.compress_format)
+            self.data.to_msgpack(self.output_file_name, compress=self.compression)
         elif self.cache_type == "hdf":
             self.data.to_hdf(self.output_file_name, key="kvk_data", mode="w", dropna=True,
                              format="fixed")
+        elif self.cache_type == "sql":
+            self.data.to_sql(self.output_file_name, )
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
 
@@ -202,6 +207,8 @@ class KvKUrlParser(object):
             self.data = pd.read_msgpack(self.output_file_name)
         elif self.cache_type == "hdf":
             self.data = pd.read_hdf(self.output_file_name)
+        elif self.cache_type == "sql":
+            self.data = pd.read_sql(self.output_file_name)
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
 
@@ -236,6 +243,8 @@ def _parse_the_command_line_arguments(args):
                                                  "a cache file already", action="store_true")
     parser.add_argument('--cache_type', help="Type of the cache file ",
                         choices=CACHE_TYPES, default="msg_pack")
+    parser.add_argument('--compression', help="Type of the compression ",
+                        choices=COMPRESSION_TYPES, default=None)
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -261,6 +270,7 @@ def main(args_in):
         input_file_name=args.input_file_name,
         reset_database=args.reset_database,
         cache_type=args.cache_type,
+        compression=args.compression,
     )
 
 
