@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import tables
+import time
 
 import numpy as np
 import pandas as pd
@@ -24,6 +25,81 @@ _logger = logging.getLogger(__name__)
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
+
+
+class Timer(object):
+    """Class to measure the time it takes execute a section of code
+
+    Parameters
+    ----------
+    message : str
+        a string to use to the output line
+    name : str, optional
+        The name of the routine timed.
+    verbose : bool, optional
+        if True, produce output
+    units : str, optional
+        time units to use. Default  'ms'
+    n_digits : int, optional
+        number of decimals to add to the timer units
+
+    Example
+    -------
+
+    Use a `with` / `as` construction to enclose the section of code which need to be timed
+
+    >>> from numpy import allclose
+    >>> number_of_seconds = 1.0
+    >>> with Timer(units="s", n_digits=0) as timer:
+    ...    time.sleep(number_of_seconds)
+    Elapsed time         routine              :          1 s
+    >>> allclose(number_of_seconds, timer.secs, rtol=0.1)
+    True
+    """
+
+    def __init__(self, message="Elapsed time", name="routine", verbose=True, units='ms', n_digits=0,
+                 field_width=20):
+        self.logger = _logger
+        self.verbose = verbose
+        self.message = message
+        self.name = name
+        self.units = units
+        self.secs = None
+
+        # build the format string. E.g. for field_with=20 and n_digits=1 and units=ms, this produces
+        # the following
+        # "{:<20s} : {:<20s} {:>10.1f} ms"
+        self.format_string = "{:<" + \
+                             "{}".format(field_width) + \
+                             "s}" + \
+                             " {:<" + \
+                             "{}".format(field_width) + \
+                             "s} : {:>" + "{}.{}".format(10, n_digits) + \
+                             "f}" + \
+                             " {}".format(self.units)
+
+    def __enter__(self):
+        self.start = time.time()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.time()
+
+        # start and end are in seconds. Convert time delta to nano seconds
+        self.delta_time = np.timedelta64(int(1e9 * (self.end - self.start)), 'ns')
+
+        self.secs = float(self.delta_time / np.timedelta64(1, "s"))
+
+        # debug output
+        self.logger.debug("Found delta time in ns: {}".format(self.delta_time))
+
+        if self.verbose:
+            # convert the delta time to the desired units
+            duration = self.delta_time / np.timedelta64(1, self.units)
+
+            # produce output
+            self.logger.info(self.format_string.format(self.message, self.name, duration,
+                                                       self.units))
 
 
 def progress_bar_message(cnt, total):
@@ -76,8 +152,9 @@ class KvKUrlParser(object):
             # read the original csv data and store it to cache
             _logger.info("Reading data from original data base {name}"
                          "".format(name=self.input_file_name))
-            self.data = pd.read_csv(self.input_file_name, header=None, usecols=[1, 2, 4],
-                                    names=["KvK", "Name", "URL"])
+            with Timer(name="read_csv") as _:
+                self.data = pd.read_csv(self.input_file_name, header=None, usecols=[1, 2, 4],
+                                        names=["KvK", "Name", "URL"])
 
             # clean the data base a bit and set the kvk number as the index of the database
             self.data.fillna("", inplace=True)
@@ -92,7 +169,8 @@ class KvKUrlParser(object):
             self.store_database_to_cache()
         else:
             # we have read the csv file before so now we can read from the cache
-            self.read_database_from_cache()
+            with Timer(name="read cache") as _:
+                self.read_database_from_cache()
 
         _logger.info("Done reading file")
         _logger.debug("Data info \n{}".format(self.data.info))
