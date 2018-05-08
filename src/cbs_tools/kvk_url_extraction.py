@@ -145,6 +145,9 @@ class KvKUrlParser(object):
         # read from either original csv or cache. After this the data attribute is filled with a data frame
         self.read_database()
 
+        _logger.info("Read Data Frame info\n{}".format(self.data.info))
+        _logger.info("Read Data Frame head\n{}".format(self.data.head()))
+
     def read_database(self):
         """
         Read the URL data base
