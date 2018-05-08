@@ -18,7 +18,7 @@ __author__ = "Eelco van Vliet"
 __copyright__ = "Eelco van Vliet"
 __license__ = "mit"
 
-CACHE_TYPES = ["msg_pack", "hdf", "sql"]
+CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
 logging.basicConfig()
@@ -117,9 +117,12 @@ class KvKUrlParser(object):
         Name of the input file
     reset_database: bool
         Reset the data base file in case this flag is True
+    maximum_entries: int
+        Give the maximum number of entries to process. Default = None, which means all entries are used
     """
 
-    def __init__(self, input_file_name, reset_database=False, cache_type=None, compression=None):
+    def __init__(self, input_file_name, reset_database=False, cache_type=None, compression=None,
+                 maximum_entries=None):
 
         self.input_file_name = input_file_name
         self.cache_type = cache_type
@@ -129,10 +132,14 @@ class KvKUrlParser(object):
             self.output_file_name = os.path.splitext(input_file_name)[0] + ".h5"
         elif cache_type == "sql":
             self.output_file_name = os.path.splitext(input_file_name)[0] + ".sql"
+        elif cache_type == "csv":
+            self.output_file_name = os.path.splitext(input_file_name)[0] + "_new.csv"
         else:
             raise AssertionError("Cache type can only one of the following: {}. Found {}"
                                  "".format(CACHE_TYPES, cache_type))
         self.reset_database = reset_database
+
+        self.maximum_entries = maximum_entries
 
         self.compression = compression
 
@@ -160,7 +167,7 @@ class KvKUrlParser(object):
                          "".format(name=self.input_file_name))
             with Timer(name="read_csv") as _:
                 self.data = pd.read_csv(self.input_file_name, header=None, usecols=[1, 2, 4],
-                                        names=["KvK", "Name", "URL"])
+                                        names=["KvK", "Name", "URL"], nrows=self.maximum_entries)
 
             # clean the data base a bit and set the kvk number as the index of the database
             self.data.fillna("", inplace=True)
@@ -191,12 +198,14 @@ class KvKUrlParser(object):
         _logger.info("Dumping data to cache file {} ".format(self.output_file_name))
         if self.cache_type == "msg_pack":
             # dump to message pack
-            self.data.to_msgpack(self.output_file_name, compress=self.compression)
+            self.data.to_msgpack(self.output_file_name)
         elif self.cache_type == "hdf":
             self.data.to_hdf(self.output_file_name, key="kvk_data", mode="w", dropna=True,
                              format="fixed")
         elif self.cache_type == "sql":
-            self.data.to_sql(self.output_file_name, )
+            self.data.to_sql(self.output_file_name)
+        elif self.cache_type == "csv":
+            self.data.to_csv(self.output_file_name)
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
 
@@ -212,12 +221,10 @@ class KvKUrlParser(object):
             self.data = pd.read_hdf(self.output_file_name)
         elif self.cache_type == "sql":
             self.data = pd.read_sql(self.output_file_name)
+        elif self.cache_type == "csv":
+            self.data = pd.read_sql(self.output_file_name)
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
-
-
-
-
 
 
 def _parse_the_command_line_arguments(args):
@@ -247,7 +254,9 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument('--cache_type', help="Type of the cache file ",
                         choices=CACHE_TYPES, default="msg_pack")
     parser.add_argument('--compression', help="Type of the compression ",
-                        choices=COMPRESSION_TYPES, default=None)
+                        choices=COMPRESSION_TYPES, default="zlib")
+    parser.add_argument('--maximum_entries', help="Maximum number of entries to store", type=int,
+                        default=None)
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -266,14 +275,16 @@ def main(args_in):
 
     script_name = os.path.basename(sys.argv[0])
     start_time = pd.to_datetime("now")
-    _logger.info("Start {script} (v: {version}) at {start_time}".format(script=script_name,
-                                                                        version=__version__,
-                                                                        start_time=start_time))
+    _logger.info("Start {script} (v: {version}) at {start_time}:{cmd}".format(script=script_name,
+                                                                              version=__version__,
+                                                                              start_time=start_time,
+                                                                              cmd=sys.argv[:]))
     KvKUrlParser(
         input_file_name=args.input_file_name,
         reset_database=args.reset_database,
         cache_type=args.cache_type,
         compression=args.compression,
+        maximum_entries=args.maximum_entries,
     )
 
 
