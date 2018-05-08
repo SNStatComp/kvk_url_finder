@@ -6,11 +6,11 @@ import tables
 
 import numpy as np
 import pandas as pd
-import progressbar as pb
+import pan
 
 try:
     from cbs_tools import __version__
-except ModuleNotFoundError:
+except ImportError:
     __version__ = "unknown"
 
 __author__ = "Eelco van Vliet"
@@ -22,15 +22,12 @@ CACHE_TYPES = ["msg_pack", "hdf"]
 logging.basicConfig()
 _logger = logging.getLogger(__name__)
 
-# set up progress bar properties
-PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
-
 
 def progress_bar_message(cnt, total):
     return "Processed time {:d} of {:d}".format(cnt + 1, total)
 
 
-class KvKUrlParser(object):
+class KvKUrlParser:
     """
     Class to parse a csv file and couple the unique kwk numbers to a list of urls
 
@@ -126,10 +123,6 @@ class KvKUrlParser(object):
             self.data = pd.read_hdf(self.output_file_name)
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
-
-
-
-
 
 
 def _parse_the_command_line_arguments(args):
