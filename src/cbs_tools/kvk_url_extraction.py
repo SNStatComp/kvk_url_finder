@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 
+import peewee as pw
 import pandas as pd
 import progressbar as pb
 
@@ -26,6 +27,31 @@ _logger = logging.getLogger(__name__)
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
 
+_database = pw.MySQLDatabase('kvk_db',
+                             **{'charset': 'utf8', 'use_unicode': True, 'user': 'root', 'password': 'vliet123'})
+
+
+class UnknownField(object):
+    def __init__(self, *_, **__): pass
+
+
+class BaseModel(pw.Model):
+    class Meta:
+        _database = _database
+
+
+class FinalKvkregister(BaseModel):
+    id = pw.AutoField(column_name='ID')
+    crawldate = pw.DateTimeField(null=True)
+    handelsnaam = pw.CharField(null=True)
+    kvknr = pw.CharField()
+    plaats = pw.CharField(null=True)
+    postcode = pw.CharField(null=True)
+    straat = pw.CharField(null=True)
+
+    class Meta:
+        table_name = 'final_kvkregister'
+
 
 def progress_bar_message(cnt, total):
     return "Processed time {:d} of {:d}".format(cnt + 1, total)
@@ -48,7 +74,17 @@ class KvKUrlParser(object):
     """
 
     def __init__(self, url_input_file_name, reset_database=False, cache_type=None, compression=None,
-                 maximum_entries=None):
+                 maximum_entries=None,
+                 database_name="kvk_db", database_user="root", database_password="vliet123"):
+
+        _logger.info("Connecting to database {}".format(database_name))
+        _database.init(database_name, **{'charset': 'utf8',
+                                        'use_unicode': True,
+                                        'user': database_user,
+                                        'password': database_password
+                                         }
+                       )
+        _database.connect()
 
         self.url_input_file_name = url_input_file_name
         url_file_base_name = os.path.splitext(url_input_file_name)[0]
