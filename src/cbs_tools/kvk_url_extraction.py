@@ -27,8 +27,8 @@ _logger = logging.getLogger(__name__)
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
 
-_database = pw.MySQLDatabase('kvk_db',
-                             **{'charset': 'utf8', 'use_unicode': True, 'user': 'root', 'password': 'vliet123'})
+# postpone the parsing of the database after we have created the parser class
+database = pw.MySQLDatabase(None)
 
 
 class UnknownField(object):
@@ -37,9 +37,10 @@ class UnknownField(object):
 
 class BaseModel(pw.Model):
     class Meta:
-        _database = _database
+        database = database
 
 
+# this class describes the format of the sql data base
 class FinalKvkregister(BaseModel):
     id = pw.AutoField(column_name='ID')
     crawldate = pw.DateTimeField(null=True)
@@ -78,13 +79,14 @@ class KvKUrlParser(object):
                  database_name="kvk_db", database_user="root", database_password="vliet123"):
 
         _logger.info("Connecting to database {}".format(database_name))
-        _database.init(database_name, **{'charset': 'utf8',
+        database.init(database_name, **{'charset': 'utf8',
                                         'use_unicode': True,
                                         'user': database_user,
                                         'password': database_password
-                                         }
-                       )
-        _database.connect()
+                                        }
+                      )
+        database.connect()
+        database.create_tables([FinalKvkregister])
 
         self.url_input_file_name = url_input_file_name
         url_file_base_name = os.path.splitext(url_input_file_name)[0]
