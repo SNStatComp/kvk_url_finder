@@ -7,7 +7,7 @@ import peewee as pw
 import pandas as pd
 import progressbar as pb
 
-from cbs_utils.misc import Timer
+from cbs_utils.misc import (Timer, create_logger)
 
 try:
     from cbs_tools import __version__
@@ -21,8 +21,7 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
-logging.basicConfig()
-_logger = logging.getLogger(__name__)
+_logger = create_logger(console_log_format_clean=True)
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
@@ -42,10 +41,10 @@ class BaseModel(pw.Model):
 
 # this class describes the format of the sql data base
 class FinalKvkregister(BaseModel):
-    id = pw.AutoField(column_name='ID')
+    id = pw.IntegerField(null=True)
     crawldate = pw.DateTimeField(null=True)
     handelsnaam = pw.CharField(null=True)
-    kvknr = pw.CharField()
+    kvknr = pw.CharField(primary_key=True)
     plaats = pw.CharField(null=True)
     postcode = pw.CharField(null=True)
     straat = pw.CharField(null=True)
@@ -86,7 +85,9 @@ class KvKUrlParser(object):
                                         }
                       )
         database.connect()
-        database.create_tables([FinalKvkregister])
+
+        # make table connections
+        self.kvk_register = FinalKvkregister()
 
         self.url_input_file_name = url_input_file_name
         url_file_base_name = os.path.splitext(url_input_file_name)[0]
@@ -127,6 +128,18 @@ class KvKUrlParser(object):
 
         _logger.debug("Read Data Frame info\n{}".format(self.data.info))
         _logger.debug("Read Data Frame head\n{}".format(self.data.head()))
+
+        self.make_report()
+
+    def make_report(self):
+        """
+        Report all the tables and data we have loaded so far
+        """
+
+        number_of_kvk_companies = self.kvk_register.select().count()
+        _logger.info("Head of all {} kvk entries".format(number_of_kvk_companies))
+        for cnt, record in enumerate(self.kvk_register.select().paginate(0)):
+            _logger.info("{:03d}: {} - {}".format(cnt, record.kvknr, record.handelsnaam))
 
     def read_database(self):
         """
@@ -202,6 +215,12 @@ class KvKUrlParser(object):
             self.data = pd.read_pickle(self.cache_url_file_name)
         else:
             raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
+
+    def __exit__(self, *args):
+        """
+        Make sure to close the database after we are done
+        """
+        database.close()
 
 
 def _parse_the_command_line_arguments(args):
