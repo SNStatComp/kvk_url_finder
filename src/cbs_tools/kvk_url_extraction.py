@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 import pandas as pd
-import pan
+
 
 try:
     from cbs_tools import __version__
