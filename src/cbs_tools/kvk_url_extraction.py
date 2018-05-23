@@ -21,10 +21,14 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
-_logger = create_logger(console_log_format_clean=True)
+# set up global logger
+LOGGER_NAME = os.path.basename(__file__)
+
+_logger = create_logger(name=LOGGER_NAME, console_log_format_clean=True)
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
+PB_MESSAGE_FORMAT = " Processing {} of {}"
 
 # postpone the parsing of the database after we have created the parser class
 database = pw.MySQLDatabase(None)
@@ -53,6 +57,13 @@ class FinalKvkregister(BaseModel):
         table_name = 'final_kvkregister'
 
 
+class KvkUrl(BaseModel):
+    id = pw.AutoField(primary_key=True)
+    kvknr = pw.CharField(null=False)
+    handelsnaam = pw.CharField(null=True)
+    url = pw.CharField(null=False)
+
+
 def progress_bar_message(cnt, total):
     return "Processed time {:d} of {:d}".format(cnt + 1, total)
 
@@ -73,9 +84,11 @@ class KvKUrlParser(object):
         limited to 'maximum_entries'
     """
 
-    def __init__(self, url_input_file_name, reset_database=False, cache_type=None, compression=None,
+    def __init__(self, url_input_file_name, reset_database=False,
+                 compression=None,
                  maximum_entries=None,
-                 database_name="kvk_db", database_user="root", database_password="vliet123"):
+                 database_name="kvk_db", database_user="root", database_password="vliet123",
+                 progressbar=False):
 
         _logger.info("Connecting to database {}".format(database_name))
         database.init(database_name, **{'charset': 'utf8',
@@ -88,37 +101,15 @@ class KvKUrlParser(object):
 
         # make table connections
         self.kvk_register = FinalKvkregister()
+        self.kvk_url_scrape_result = KvkUrl()
 
         self.url_input_file_name = url_input_file_name
-        url_file_base_name = os.path.splitext(url_input_file_name)[0]
-        self.cache_type = cache_type
-        if cache_type == "msg_pack":
-            self.cache_url_file_name = url_file_base_name + ".msg_pack"
-        elif cache_type == "hdf":
-            self.cache_url_file_name = url_file_base_name + ".h5"
-        elif cache_type == "sql":
-            self.cache_url_file_name = url_file_base_name + ".sql"
-        elif cache_type == "csv":
-            self.cache_url_file_name = url_file_base_name + "_new.csv"
-        elif cache_type == "pkl":
-            self.cache_url_file_name = url_file_base_name + ".pkl"
-        else:
-            raise AssertionError("Cache type can only one of the following: {}. Found {}"
-                                 "".format(CACHE_TYPES, cache_type))
         self.reset_database = reset_database
 
         self.maximum_entries = maximum_entries
 
         self.compression = compression
-
-        if self.cache_type == "pkl" and self.compression == "zlib":
-            _logger.warning("compression set to zlib but pkl cache is selected. Changing "
-                            "compression to zip")
-            self.compression = "zip"
-
-        if self.cache_url_file_name == self.url_input_file_name:
-            raise AssertionError("Data base file name equal to input file name. Please at a proper"
-                                 "extension to your input file ")
+        self.progressbar = progressbar
 
         self.data = None  # contains the pandas data frame
 
@@ -135,7 +126,7 @@ class KvKUrlParser(object):
         """
         Report all the tables and data we have loaded so far
         """
-
+        _logger = logging.getLogger(LOGGER_NAME)
         number_of_kvk_companies = self.kvk_register.select().count()
         _logger.info("Head of all {} kvk entries".format(number_of_kvk_companies))
         for cnt, record in enumerate(self.kvk_register.select().paginate(0)):
@@ -145,27 +136,22 @@ class KvKUrlParser(object):
         """
         Read the URL data base
         """
+        _logger = logging.getLogger(LOGGER_NAME)
 
-        if self.reset_database or not os.path.exists(self.cache_url_file_name):
+        if self.reset_database or not self.kvk_url_scrape_result.table_exists():
             # we are running the script for the first time or we want to reset the cache, so
             # read the original csv data and store it to cache
             _logger.info("Reading data from original data base {name}"
                          "".format(name=self.url_input_file_name))
             with Timer(name="read_csv") as _:
-                self.data = pd.read_csv(self.url_input_file_name, header=None, usecols=[1, 2, 4],
-                                        names=["KvK", "Name", "URL"], nrows=self.maximum_entries)
+                self.data = pd.read_csv(self.url_input_file_name,
+                                        header=None,
+                                        usecols=[1, 2, 4],
+                                        names=["kvknr", "handelsnaam", "url"],
+                                        nrows=self.maximum_entries)
 
-            # clean the data base a bit and set the kvk number as the index of the database
-            self.data.fillna("", inplace=True)
-
-            # for hdf 5 we need to explicitly convert the data to strings
-            for column_name in self.data.columns:
-                _logger.debug("Converting {}".format(column_name))
-                self.data[column_name] = self.data[column_name].astype(str)
-
-            # store the data to cache which we can read the next run
-            with Timer("store data") as _:
-                self.store_database_to_cache()
+            with Timer(name="dump_kvk_url_to_mysql") as _:
+                self.dump_kvk_url_to_myqsl()
         else:
             # we have read the csv file before so now we can read from the cache
             with Timer(name="read cache") as _:
@@ -174,6 +160,39 @@ class KvKUrlParser(object):
         _logger.info("Done reading file")
         _logger.debug("Data info")
         _logger.debug("Data head")
+
+    def dump_kvk_url_to_myqsl(self):
+        """
+        Dump the original list to mysql
+        """
+        _logger = logging.getLogger(LOGGER_NAME)
+        _logger.info("Start writing to mysql data base")
+
+        database.drop_tables([KvkUrl])
+        database.create_tables([KvkUrl])
+
+        number_of_rows = self.data.index.size
+        progress = None
+
+        for index, row in self.data.iterrows():
+            kvknr = row["kvknr"]
+            handels_naam = row["handelsnaam"]
+            url = row["url"]
+            if self.progressbar:
+                PB_WIDGETS[-1] = PB_MESSAGE_FORMAT.format(index + 1, number_of_rows)
+                if progress is None:
+                    progress = pb.ProgressBar(widgets=PB_WIDGETS, maxval=number_of_rows,
+                                              fd=sys.stdout).start()
+                progress.update(index + 1)
+                sys.stdout.flush()
+            _logger.debug("Storing query {:06d}: {:7d} - {:20s} - {}".format(
+                index, kvknr, handels_naam, url))
+
+            # create the query in the table
+            KvkUrl.create(kvknr=kvknr, handelsnaam=handels_naam, url=url)
+
+        if progress:
+            progress.finish()
 
     def store_database_to_cache(self):
         """
@@ -202,6 +221,7 @@ class KvKUrlParser(object):
         Read the data base from the cache file
         """
 
+        _logger = logging.getLogger(LOGGER_NAME)
         _logger.info("Reading data from cached file {name}".format(name=self.cache_url_file_name))
         if self.cache_type == "msg_pack":
             self.data = pd.read_msgpack(self.cache_url_file_name)
@@ -263,11 +283,8 @@ def _parse_the_command_line_arguments(args):
 def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
 
-    # change the log level to our requested level
-    if not args.progressbar:
-        _logger.setLevel(args.log_level)
-    else:
-        _logger.setLevel(logging.CRITICAL)
+    _logger = create_logger(name=LOGGER_NAME, console_log_format_clean=True,
+                            console_log_level=args.log_level)
 
     script_name = os.path.basename(sys.argv[0])
     start_time = pd.to_datetime("now")
@@ -275,10 +292,14 @@ def main(args_in):
                                                                               version=__version__,
                                                                               start_time=start_time,
                                                                               cmd=sys.argv[:]))
+    # change the log level to our requested level
+    if args.progressbar:
+        _logger.setLevel(logging.INFO)
+
     KvKUrlParser(
         url_input_file_name=args.url_input_file_name,
         reset_database=args.reset_database,
-        cache_type=args.cache_type,
+        progressbar=args.progressbar,
         compression=args.compression,
         maximum_entries=args.maximum_entries,
     )
