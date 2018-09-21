@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import re
 
 import peewee as pw
 import pandas as pd
@@ -141,6 +142,7 @@ class KvKUrlParser(object):
         _logger = logging.getLogger(LOGGER_NAME)
 
         file_base, file_ext = os.path.splitext(self.url_input_file_name)
+        file_base2, file_ext2 = os.path.splitext(file_base)
 
         if self.reset_database or not self.kvk_url_scrape_result.table_exists():
             # we are running the script for the first time or we want to reset the cache, so
@@ -148,12 +150,11 @@ class KvKUrlParser(object):
             _logger.info("Reading data from original data base {name}"
                          "".format(name=self.url_input_file_name))
             with Timer(name="read url") as _:
-
-                if file_ext == ".csv":
+                if ".csv" in (file_ext, file_ext2):
                     self.data = pd.read_csv(self.url_input_file_name,
                                             header=None,
                                             usecols=[1, 2, 4],
-                                            names=["kvknr", "handelsnaam", "url"],
+                                            names=[self.kvk_key, self.name_key, self.url_key],
                                             nrows=self.maximum_entries)
                 else:
                     self.data = pd.read_hdf(self.url_input_file_name, stop=self.maximum_entries)
