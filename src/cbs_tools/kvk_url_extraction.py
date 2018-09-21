@@ -22,6 +22,10 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
+KVK_KEY = "kvk"
+HANDELS_KEY = "handlesnaam"
+URL_KEY = "url"
+
 # set up global logger
 LOGGER_NAME = os.path.basename(__file__)
 
@@ -123,7 +127,7 @@ class KvKUrlParser(object):
         logger.debug("Read Data Frame info\n{}".format(self.data.info))
         logger.debug("Read Data Frame head\n{}".format(self.data.head()))
 
-        self.make_report()
+        # self.make_report()
 
     def make_report(self):
         """
@@ -160,6 +164,13 @@ class KvKUrlParser(object):
                     self.data = pd.read_hdf(self.url_input_file_name, stop=self.maximum_entries)
                     self.data.reset_index(inplace=True)
 
+            # rename the columns to match our tables
+            self.data.rename(columns={
+                self.kvk_key: KVK_KEY,
+                self.url_key: URL_KEY,
+                self.name_key: HANDELS_KEY},
+                inplace=True)
+
             with Timer(name="dump_kvk_url_to_mysql") as _:
                 self.dump_kvk_url_to_myqsl()
         else:
@@ -167,15 +178,16 @@ class KvKUrlParser(object):
             with Timer(name="read cache") as _:
                 self.read_database_from_cache()
 
+
         _logger.info("Done reading file")
         _logger.debug("Data info")
         _logger.debug("Data head")
 
     def dump_kvk_url_to_myqsl(self):
-        """
+        """data
         Dump the original list to mysql
         """
-        _logger = logging.getLogger(LOGGER_NAME)
+        _logger = logging.getLoggdataer(LOGGER_NAME)
         _logger.info("Start writing to mysql data base")
 
         database.drop_tables([KvkUrl])
@@ -184,23 +196,28 @@ class KvKUrlParser(object):
         number_of_rows = self.data.index.size
         progress = None
 
-        for cnt, (index, row) in enumerate(self.data.iterrows()):
-            kvknr = row[self.kvk_key]
-            handels_naam = row[self.name_key]
-            url = row[self.url_key]
-            if self.progressbar:
-                PB_WIDGETS[-1] = PB_MESSAGE_FORMAT.format(cnt + 1, number_of_rows)
-                if progress is None:
-                    progress = pb.ProgressBar(widgets=PB_WIDGETS, maxval=number_of_rows,
-                                              fd=sys.stdout).start()
-                progress.update(cnt + 1)
-                sys.stdout.flush()
-            _logger.debug("Storing query {:06d}: {:7d} - {:20s} - {}".format(
-                index, kvknr, handels_naam, url))
+        record_list = list(self.data.to_dict(orient="index").values())
+        with Timer(units="s") as _:
+            KvkUrl.insert_many(record_list).execute()
 
-            # create the query in the table
-            KvkUrl.create(kvknr=kvknr, handelsnaam=handels_naam, url=url)
-
+        #with Timer(units="s") as _:
+        #    for cnt, (index, row) in enumerate(self.data.iterrows()):
+        #        kvknr = row[self.kvk_key]
+        #        handels_naam = row[self.name_key]
+        #        url = row[self.url_key]
+        #        if self.progressbar:
+        #            PB_WIDGETS[-1] = PB_MESSAGE_FORMAT.format(cnt + 1, number_of_rows)
+        #            if progress is None:
+        #                progress = pb.ProgressBar(widgets=PB_WIDGETS, maxval=number_of_rows,
+        #                                          fd=sys.stdout).start()
+        #            progress.update(cnt + 1)
+        #            sys.stdout.flush()
+        #        _logger.debug("Storing query {:06d}: {:7d} - {:20s} - {}".format(
+        #            index, kvknr, handels_naam, url))
+#
+#                # create the query in the table
+#                KvkUrl.create(kvknr=kvknr, handelsnaam=handels_naam, url=url)
+#
         if progress:
             progress.finish()
 
