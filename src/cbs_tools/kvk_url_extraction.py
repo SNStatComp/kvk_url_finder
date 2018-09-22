@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import sys
@@ -7,6 +6,7 @@ import re
 import peewee as pw
 import pandas as pd
 import progressbar as pb
+import argparse
 
 from cbs_utils.misc import (Timer, create_logger)
 
@@ -22,14 +22,13 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
-KVK_KEY = "kvk"
-HANDELS_KEY = "handlesnaam"
+KVK_KEY = "kvk_nummer"
+NAME_KEY = "naam"
 URL_KEY = "url"
+COMPANY_KEY = "company"
 
 # set up global logger
-LOGGER_NAME = os.path.basename(__file__)
-
-logger = create_logger(name=LOGGER_NAME, console_log_format_clean=True)
+logger = create_logger(name=__name__, console_log_format_clean=True)
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
@@ -49,24 +48,22 @@ class BaseModel(pw.Model):
 
 
 # this class describes the format of the sql data base
-class FinalKvkregister(BaseModel):
+class Company(BaseModel):
     id = pw.IntegerField(null=True)
-    crawldate = pw.DateTimeField(null=True)
-    handelsnaam = pw.CharField(null=True)
-    kvknr = pw.CharField(primary_key=True)
+    naam = pw.CharField(null=True)
+    kvk_nummer = pw.CharField(primary_key=True)
+
     plaats = pw.CharField(null=True)
     postcode = pw.CharField(null=True)
     straat = pw.CharField(null=True)
 
-    class Meta:
-        table_name = 'final_kvkregister'
 
-
-class KvkUrl(BaseModel):
-    id = pw.AutoField(primary_key=True)
-    kvknr = pw.CharField(null=False)
-    handelsnaam = pw.CharField(null=True)
+class WebSite(BaseModel):
+    company = pw.ForeignKeyField(Company)
     url = pw.CharField(null=False)
+    kvk_nummer = pw.CharField(null=True)
+    naam = pw.CharField(null=True)
+    validated = pw.BooleanField(default=False)
 
 
 def progress_bar_message(cnt, total):
@@ -107,8 +104,7 @@ class KvKUrlParser(object):
         self.kvk_key = kvk_key
         self.name_key = name_key
         self.url_key = url_key
-        self.kvk_register = FinalKvkregister()
-        self.kvk_url_scrape_result = KvkUrl()
+        self.kvk_register = Company()
 
         self.url_input_file_name = url_input_file_name
         self.reset_database = reset_database
@@ -133,26 +129,23 @@ class KvKUrlParser(object):
         """
         Report all the tables and data we have loaded so far
         """
-        _logger = logging.getLogger(LOGGER_NAME)
         number_of_kvk_companies = self.kvk_register.select().count()
-        _logger.info("Head of all {} kvk entries".format(number_of_kvk_companies))
+        logger.info("Head of all {} kvk entries".format(number_of_kvk_companies))
         for cnt, record in enumerate(self.kvk_register.select().paginate(0)):
-            _logger.info("{:03d}: {} - {}".format(cnt, record.kvknr, record.handelsnaam))
+            logger.info("{:03d}: {} - {}".format(cnt, record.kvknr, record.handelsnaam))
 
     def read_database(self):
         """
         Read the URL data base
         """
-        _logger = logging.getLogger(LOGGER_NAME)
-
         file_base, file_ext = os.path.splitext(self.url_input_file_name)
         file_base2, file_ext2 = os.path.splitext(file_base)
 
-        if self.reset_database or not self.kvk_url_scrape_result.table_exists():
+        if self.reset_database or not self.kvk_register.table_exists():
             # we are running the script for the first time or we want to reset the cache, so
             # read the original csv data and store it to cache
-            _logger.info("Reading data from original data base {name}"
-                         "".format(name=self.url_input_file_name))
+            logger.info("Reading data from original data base {name}"
+                        "".format(name=self.url_input_file_name))
             with Timer(name="read url") as _:
                 if ".csv" in (file_ext, file_ext2):
                     self.data = pd.read_csv(self.url_input_file_name,
@@ -168,7 +161,7 @@ class KvKUrlParser(object):
             self.data.rename(columns={
                 self.kvk_key: KVK_KEY,
                 self.url_key: URL_KEY,
-                self.name_key: HANDELS_KEY},
+                self.name_key: NAME_KEY},
                 inplace=True)
 
             with Timer(name="dump_kvk_url_to_mysql") as _:
@@ -178,48 +171,45 @@ class KvKUrlParser(object):
             with Timer(name="read cache") as _:
                 self.read_database_from_cache()
 
-
-        _logger.info("Done reading file")
-        _logger.debug("Data info")
-        _logger.debug("Data head")
+        logger.info("Done reading file")
+        logger.debug("Data info")
+        logger.debug("Data head")
 
     def dump_kvk_url_to_myqsl(self):
         """data
         Dump the original list to mysql
         """
-        _logger = logging.getLoggdataer(LOGGER_NAME)
-        _logger.info("Start writing to mysql data base")
+        logger.info("Start writing to mysql data base")
 
-        database.drop_tables([KvkUrl])
-        database.create_tables([KvkUrl])
+        database.drop_tables([Company])
+        database.drop_tables([WebSite])
+        database.create_tables([Company, WebSite])
 
-        number_of_rows = self.data.index.size
-        progress = None
-
-        record_list = list(self.data.to_dict(orient="index").values())
+        kvk = self.data[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
+        record_list = list(kvk.to_dict(orient="index").values())
+        logger.info("Start writing table urls")
         with Timer(units="s") as _:
-            KvkUrl.insert_many(record_list).execute()
+            Company.insert_many(record_list).execute()
 
-        #with Timer(units="s") as _:
-        #    for cnt, (index, row) in enumerate(self.data.iterrows()):
-        #        kvknr = row[self.kvk_key]
-        #        handels_naam = row[self.name_key]
-        #        url = row[self.url_key]
-        #        if self.progressbar:
-        #            PB_WIDGETS[-1] = PB_MESSAGE_FORMAT.format(cnt + 1, number_of_rows)
-        #            if progress is None:
-        #                progress = pb.ProgressBar(widgets=PB_WIDGETS, maxval=number_of_rows,
-        #                                          fd=sys.stdout).start()
-        #            progress.update(cnt + 1)
-        #            sys.stdout.flush()
-        #        _logger.debug("Storing query {:06d}: {:7d} - {:20s} - {}".format(
-        #            index, kvknr, handels_naam, url))
-#
-#                # create the query in the table
-#                KvkUrl.create(kvknr=kvknr, handelsnaam=handels_naam, url=url)
-#
-        if progress:
-            progress.finish()
+        # turn the kvknumber/url combination into the index and remove the duplicates. This
+        # means that per company each url only occurs one time
+        urls = self.data.set_index([KVK_KEY, URL_KEY]).sort_index()
+        # this removes all the duplicated indices
+        urls = urls[~urls.index.duplicated()]
+
+        urls.reset_index(inplace=True)
+        url_list = list(urls.to_dict(orient="index").values())
+        # add to all urls the object referencing to the Company table
+        for web_info in url_list:
+            kvk_nr = web_info[KVK_KEY]
+            company = Company.get(Company.kvk_nummer == kvk_nr)
+            web_info[COMPANY_KEY] = company
+
+        logger.info("Start writing table urls")
+        with Timer(units="s") as _:
+            WebSite.insert_many(url_list).execute()
+
+        logger.debug("Done")
 
     def store_database_to_cache(self):
         """
@@ -248,8 +238,7 @@ class KvKUrlParser(object):
         Read the data base from the cache file
         """
 
-        _logger = logging.getLogger(LOGGER_NAME)
-        _logger.info("Reading data from cached file {name}".format(name=self.cache_url_file_name))
+        logger.info("Reading data from cached file {name}".format(name=self.cache_url_file_name))
         if self.cache_type == "msg_pack":
             self.data = pd.read_msgpack(self.cache_url_file_name)
         elif self.cache_type == "hdf":
@@ -310,18 +299,16 @@ def _parse_the_command_line_arguments(args):
 def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
 
-    _logger = create_logger(name=LOGGER_NAME, console_log_format_clean=True,
-                            console_log_level=args.log_level)
-
+    logger.setLevel(args.log_level)
     script_name = os.path.basename(sys.argv[0])
     start_time = pd.to_datetime("now")
-    _logger.info("Start {script} (v: {version}) at {start_time}:{cmd}".format(script=script_name,
-                                                                              version=__version__,
-                                                                              start_time=start_time,
-                                                                              cmd=sys.argv[:]))
+    logger.info("Start {script} (v: {version}) at {start_time}:{cmd}".format(script=script_name,
+                                                                             version=__version__,
+                                                                             start_time=start_time,
+                                                                             cmd=sys.argv[:]))
     # change the log level to our requested level
     if args.progressbar:
-        _logger.setLevel(logging.INFO)
+        logger.setLevel(logging.INFO)
 
     KvKUrlParser(
         url_input_file_name=args.url_input_file_name,
