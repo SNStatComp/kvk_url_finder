@@ -1,14 +1,14 @@
 import logging
 import os
 import sys
-import re
 
 import peewee as pw
 import pandas as pd
 import progressbar as pb
 import argparse
 
-from cbs_utils.misc import (Timer, create_logger)
+from cbs_utils.misc import (create_logger, merge_loggers, Timer)
+
 
 try:
     from cbs_tools import __version__
@@ -29,6 +29,7 @@ COMPANY_KEY = "company"
 
 # set up global logger
 logger = create_logger(name=__name__, console_log_format_clean=True)
+merge_loggers(logger, "cbs_utils")
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
@@ -49,7 +50,6 @@ class BaseModel(pw.Model):
 
 # this class describes the format of the sql data base
 class Company(BaseModel):
-    id = pw.IntegerField(null=True)
     naam = pw.CharField(null=True)
     kvk_nummer = pw.CharField(primary_key=True)
 
@@ -94,6 +94,7 @@ class KvKUrlParser(object):
                  kvk_key="KvK",
                  name_key="Name",
                  url_key="URL",
+                 n_count_threshold=10,
                  ):
 
         logger.info("Connecting to database {}".format(database_name))
@@ -106,6 +107,8 @@ class KvKUrlParser(object):
         self.url_key = url_key
         self.kvk_register = Company()
 
+        self.n_count_threshold = n_count_threshold
+
         self.url_input_file_name = url_input_file_name
         self.reset_database = reset_database
 
@@ -114,7 +117,7 @@ class KvKUrlParser(object):
         self.compression = compression
         self.progressbar = progressbar
 
-        self.data = pd.DataFrame()  # contains the pandas data frame
+        self.data: pd.DataFrame = None
 
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
@@ -154,7 +157,9 @@ class KvKUrlParser(object):
                                             names=[self.kvk_key, self.name_key, self.url_key],
                                             nrows=self.maximum_entries)
                 else:
-                    self.data = pd.read_hdf(self.url_input_file_name, stop=self.maximum_entries)
+                    # add the type so we can recognise it is a data frame
+                    self.data: pd.DataFrame = pd.read_hdf(self.url_input_file_name,
+                                                          stop=self.maximum_entries)
                     self.data.reset_index(inplace=True)
 
             # rename the columns to match our tables
@@ -191,20 +196,37 @@ class KvKUrlParser(object):
         with Timer(units="s") as _:
             Company.insert_many(record_list).execute()
 
+        # first remove all the urls that occur more the 'n_count_threshold' times.
+        urls = self.data
+        # this line add the number of occurrences to each url
+        #
+        n_count = urls.groupby(URL_KEY)[URL_KEY].transform("count")
+        url_before = set(urls[URL_KEY].values)
+        urls = urls[n_count < self.n_count_threshold]
+        url_after = set(urls[URL_KEY].values)
+        url_removed = url_before.difference(url_after)
+        logger.info("Removed URLS:\n{}".format(url_removed))
+
         # turn the kvknumber/url combination into the index and remove the duplicates. This
         # means that per company each url only occurs one time
-        urls = self.data.set_index([KVK_KEY, URL_KEY]).sort_index()
-        # this removes all the duplicated indices
+        urls = urls.set_index([KVK_KEY, URL_KEY]).sort_index()
+        # this removes all the duplicated indices, i.e. combination kvk_number/url. So if one
+        # kvk company has multiple times www.facebook.com at the web site, only is kept.
         urls = urls[~urls.index.duplicated()]
 
         urls.reset_index(inplace=True)
+        urls = urls[[KVK_KEY, URL_KEY, NAME_KEY]]
         url_list = list(urls.to_dict(orient="index").values())
         # add to all urls the object referencing to the Company table
         for web_info in url_list:
+            # loop over al the urls and get the company for each url
             kvk_nr = web_info[KVK_KEY]
+            # get the link to the company table for this kvk number
             company = Company.get(Company.kvk_nummer == kvk_nr)
+            # add the company refernce to the dictionary
             web_info[COMPANY_KEY] = company
 
+        # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
         with Timer(units="s") as _:
             WebSite.insert_many(url_list).execute()
@@ -300,6 +322,9 @@ def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
 
     logger.setLevel(args.log_level)
+    with Timer(message="blabl") as t:
+        a = 10
+    print(t.delta_time)
     script_name = os.path.basename(sys.argv[0])
     start_time = pd.to_datetime("now")
     logger.info("Start {script} (v: {version}) at {start_time}:{cmd}".format(script=script_name,
