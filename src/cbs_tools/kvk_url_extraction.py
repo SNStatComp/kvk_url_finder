@@ -23,7 +23,7 @@ CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
 MAX_SQL_VARIABLES = 99999
-MAX_SQL_CHUNK = 10
+MAX_SQL_CHUNK = 999
 
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
@@ -90,7 +90,7 @@ class KvKUrlParser(object):
 
     def __init__(self, url_input_file_name,
                  reset_database=False,
-                 extend_database=True,
+                 extend_database=False,
                  compression=None,
                  maximum_entries=None,
                  database_name="kvk_db.sqlite",
@@ -131,7 +131,7 @@ class KvKUrlParser(object):
         else:
             logger.debug("No need to read. We are already connected")
 
-        self.process_the_urls()
+        # self.process_the_urls()
 
     def process_the_urls(self):
         """
@@ -193,11 +193,36 @@ class KvKUrlParser(object):
             inplace=True)
 
         logger.info("Removing duplicated table entries")
-        self.remove_duplicated_entries()
-        logger.debug("Done")
+        with Timer("remove duplicates") as _:
+            self.remove_duplicated_entries()
+
+        logger.info("Removing spurious urls")
+        with Timer("remove urls") as _:
+            self.remove_spurious_urls()
 
         with Timer(name="dump_kvk_url_to_mysql", units="s") as _:
             self.dump_kvk_url_to_myqsl()
+
+    def remove_spurious_urls(self):
+        # first remove all the urls that occur more the 'n_count_threshold' times.
+        urls = self.data
+        # this line add the number of occurrences to each url
+        #
+        n_count = urls.groupby(URL_KEY)[URL_KEY].transform("count")
+        url_before = set(urls[URL_KEY].values)
+        urls = urls[n_count < self.n_count_threshold]
+        url_after = set(urls[URL_KEY].values)
+        url_removed = url_before.difference(url_after)
+        logger.debug("Removed URLS:\n{}".format(url_removed))
+
+        # turn the kvknumber/url combination into the index and remove the duplicates. This
+        # means that per company each url only occurs one time
+        urls = urls.set_index([KVK_KEY, URL_KEY]).sort_index()
+        # this removes all the duplicated indices, i.e. combination kvk_number/url. So if one
+        # kvk company has multiple times www.facebook.com at the web site, only is kept.
+        urls = urls[~urls.index.duplicated()]
+
+        self.data = urls.reset_index()
 
     def remove_duplicated_entries(self):
         """
@@ -249,42 +274,18 @@ class KvKUrlParser(object):
         kvk = self.data[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
         record_list = list(kvk.to_dict(orient="index").values())
         logger.info("Start writing table urls")
-        remove = list()
-        for company in Company.select():
-            kvk = int(company.kvk_nummer)
-            if kvk in self.data[KVK_KEY].values:
-                logger.debug("Removing double {}".format(kvk))
-                remove.append(kvk)
 
-        logger.info(remove)
-        n_batch = len(record_list) / MAX_SQL_CHUNK
+        n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
-                msg = "Company chunk nr {}/{}".format(cnt, n_batch)
+                msg = "Company chunk nr {}/{}".format(cnt + 1, n_batch)
                 with Timer(message=msg) as _:
                     Company.insert_many(batch).execute()
+        logger.info("Done with company")
 
-        # first remove all the urls that occur more the 'n_count_threshold' times.
-        urls = self.data
-        # this line add the number of occurrences to each url
-        #
-        n_count = urls.groupby(URL_KEY)[URL_KEY].transform("count")
-        url_before = set(urls[URL_KEY].values)
-        urls = urls[n_count < self.n_count_threshold]
-        url_after = set(urls[URL_KEY].values)
-        url_removed = url_before.difference(url_after)
-        logger.debug("Removed URLS:\n{}".format(url_removed))
-
-        # turn the kvknumber/url combination into the index and remove the duplicates. This
-        # means that per company each url only occurs one time
-        urls = urls.set_index([KVK_KEY, URL_KEY]).sort_index()
-        # this removes all the duplicated indices, i.e. combination kvk_number/url. So if one
-        # kvk company has multiple times www.facebook.com at the web site, only is kept.
-        urls = urls[~urls.index.duplicated()]
-
-        urls.reset_index(inplace=True)
-        urls = urls[[KVK_KEY, URL_KEY, NAME_KEY]]
-        logger.debug("Converting urls to dict")
+        # create selection of data columns
+        urls = self.data[[KVK_KEY, URL_KEY, NAME_KEY]]
+        logger.info("Converting urls to dict")
         url_list = list(urls.to_dict(orient="index").values())
         # add to all urls the object referencing to the Company table
         for web_info in url_list:
@@ -298,10 +299,10 @@ class KvKUrlParser(object):
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
 
-        n_batch = len(url_list) / MAX_SQL_CHUNK
+        n_batch = int(len(url_list) / MAX_SQL_CHUNK) + 1
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
-                msg = "Company chunk nr {}/{}".format(cnt, n_batch)
+                msg = "URL chunk nr {}/{}".format(cnt + 1, n_batch)
                 with Timer(message=msg) as _:
                     WebSite.insert_many(batch).execute()
 
@@ -378,7 +379,9 @@ def _parse_the_command_line_arguments(args):
                         dest="log_level", const=logging.WARNING)
     parser.add_argument('--progressbar', help="Show a progress bar", action="store_true")
     parser.add_argument('--reset_database', help="Reset the data base in case we have generated"
-                                                 "a cache file already", action="store_true")
+                                                 "a sql file already", action="store_true")
+    parser.add_argument('--extend_database', help="Extend the data base in case we have generated"
+                                                  "a sql file already", action="store_true")
     parser.add_argument('--cache_type', help="Type of the cache file ",
                         choices=CACHE_TYPES, default="hdf")
     parser.add_argument('--compression', help="Type of the compression ",
@@ -512,6 +515,7 @@ def main(args_in):
     KvKUrlParser(
         url_input_file_name=args.url_input_file_name,
         reset_database=args.reset_database,
+        extend_database=args.extend_database,
         progressbar=args.progressbar,
         compression=args.compression,
         maximum_entries=args.maximum_entries,
