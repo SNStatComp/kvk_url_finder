@@ -9,7 +9,6 @@ import argparse
 
 from cbs_utils.misc import (create_logger, merge_loggers, Timer)
 
-
 try:
     from cbs_tools import __version__
 except ModuleNotFoundError:
@@ -23,7 +22,7 @@ CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
 MAX_SQL_VARIABLES = 99999
-MAX_SQL_CHUNK = 999
+MAX_SQL_CHUNK = 1000
 
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
@@ -233,16 +232,22 @@ class KvKUrlParser(object):
 
         # based on the data in the WebSite table create a data frame with all the kvk which
         # we have already included. These can be removed from the data we have just read
-        n_entries = len(WebSite.select())
-        kvk_in_db = pd.DataFrame(index=range(n_entries), columns=[KVK_KEY, URL_KEY, NAME_KEY])
-        for ii, ws in enumerate(WebSite.select()):
-            kvk_in_db.loc[ii, KVK_KEY] = int(ws.kvk_nummer)
-            kvk_in_db.loc[ii, URL_KEY] = ws.url
-            kvk_in_db.loc[ii, NAME_KEY] = ws.naam
+        logger.debug("Getting all sql websides from database")
+        kvk_list = list()
+        url_list = list()
+        name_list = list()
+        for ws in WebSite.select():
+            kvk_list.append(int(ws.kvk_nummer))
+            url_list.append(ws.url)
+            name_list.append(ws.naam)
 
+        kvk_in_db = pd.DataFrame(
+            data=list(zip(kvk_list, url_list, name_list)),
+            columns=[KVK_KEY, URL_KEY, NAME_KEY])
         kvk_in_db.set_index([KVK_KEY, URL_KEY], drop=True, inplace=True)
 
         # drop all the kvk number which we already have loaded
+        logger.debug("Dropping all duplicated web sides")
         kvk_df = self.data.set_index([KVK_KEY, URL_KEY])
         kvk_df = kvk_df.reindex(kvk_in_db.index)
         kvk_df = kvk_df[~kvk_df[NAME_KEY].isnull()]
@@ -253,14 +258,17 @@ class KvKUrlParser(object):
         else:
             self.data.reset_index(inplace=True)
 
-
-        n_companies = len(Company.select())
-        companies_in_db = pd.DataFrame(index=range(n_companies), columns=[KVK_KEY])
-        for ii, company in enumerate(Company.select()):
-            companies_in_db.loc[ii, KVK_KEY] = int(company.kvk_nummer)
-            companies_in_db.loc[ii, NAME_KEY] = company.naam
+        logger.debug("Getting all  companies in Company table")
+        kvk_list = list()
+        name_list = list()
+        for company in Company.select():
+            kvk_list.append(int(company.kvk_nummer))
+            name_list.append(company.naam)
+        companies_in_db = pd.DataFrame(data=list(zip(kvk_list, name_list)),
+                                       columns=[KVK_KEY, NAME_KEY])
         companies_in_db.set_index([KVK_KEY], drop=True, inplace=True)
 
+        logger.debug("Dropping all  duplicated companies")
         comp_df = self.data.set_index([KVK_KEY, URL_KEY])
         comp_df.drop(index=companies_in_db.index, level=0, inplace=True)
         self.data = comp_df.reset_index()
@@ -287,14 +295,17 @@ class KvKUrlParser(object):
         urls = self.data[[KVK_KEY, URL_KEY, NAME_KEY]]
         logger.info("Converting urls to dict")
         url_list = list(urls.to_dict(orient="index").values())
+        comp_dict = dict()
+        company_vs_kvk = Company.select().where(Company.kvk_nummer << urls[KVK_KEY].tolist())
+        for comp in company_vs_kvk:
+            comp_dict[int(comp.kvk_nummer)] = comp
         # add to all urls the object referencing to the Company table
         for web_info in url_list:
             # loop over al the urls and get the company for each url
             kvk_nr = web_info[KVK_KEY]
             # get the link to the company table for this kvk number
-            company = Company.get(Company.kvk_nummer == kvk_nr)
             # add the company reference to the dictionary
-            web_info[COMPANY_KEY] = company
+            web_info[COMPANY_KEY] = comp_dict[kvk_nr]
 
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
@@ -307,47 +318,6 @@ class KvKUrlParser(object):
                     WebSite.insert_many(batch).execute()
 
         logger.debug("Done")
-
-    def store_database_to_cache(self):
-        """
-        Store the data base to the cache file. Depending on the *cache_type* atttribute this can be
-        either message pack or hdf 5 format
-        """
-
-        logger.info("Dumping data to cache file {} ".format(self.cache_url_file_name))
-        if self.cache_type == "msg_pack":
-            # dump to message pack
-            self.data.to_msgpack(self.cache_url_file_name)
-        elif self.cache_type == "hdf":
-            self.data.to_hdf(self.cache_url_file_name, key="kvk_data", mode="w", dropna=True,
-                             format="fixed")
-        elif self.cache_type == "sql":
-            self.data.to_sql(self.cache_url_file_name)
-        elif self.cache_type == "csv":
-            self.data.to_csv(self.cache_url_file_name)
-        elif self.cache_type == "pkl":
-            self.data.to_pickle(self.cache_url_file_name, compression=self.compression)
-        else:
-            raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
-
-    def read_database_from_cache(self):
-        """
-        Read the data base from the cache file
-        """
-
-        logger.info("Reading data from cached file {name}".format(name=self.cache_url_file_name))
-        if self.cache_type == "msg_pack":
-            self.data = pd.read_msgpack(self.cache_url_file_name)
-        elif self.cache_type == "hdf":
-            self.data = pd.read_hdf(self.cache_url_file_name)
-        elif self.cache_type == "sql":
-            self.data = pd.read_sql(self.cache_url_file_name)
-        elif self.cache_type == "csv":
-            self.data = pd.read_sql(self.cache_url_file_name)
-        elif self.cache_type == "pkl":
-            self.data = pd.read_pickle(self.cache_url_file_name)
-        else:
-            raise AssertionError("Invalid cache type found: {} ".format(self.cache_type))
 
     def __exit__(self, *args):
         """
