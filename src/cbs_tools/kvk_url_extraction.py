@@ -14,7 +14,16 @@ kernprof -l kvk_url_extraction.py URL_kvk.csv.bz2  --max 10000
 
 This generates a file kvk_url_extraction.py.prof
 
+Altenatively you can use the profiling tool:
 
+
+profiling --dump=kvk.prof kvk_url_extraction.py -- URL_kvk.csv.bs2 --max 100 --extend
+
+Note that the first '--' indicates that the rest of the arguments belong to the python script and
+not to profiling
+
+
+have
 """
 
 import logging
@@ -91,7 +100,7 @@ class Company(BaseModel):
 
 
 class WebSite(BaseModel):
-    company = pw.ForeignKeyField(Company)
+    company = pw.ForeignKeyField(Company, backref="websites")
     kvk_nummer = pw.CharField(null=True)
     url = pw.CharField(null=False)
     naam = pw.CharField(null=True)
@@ -161,7 +170,7 @@ class KvKUrlParser(object):
         else:
             logger.debug("No need to read. We are already connected")
 
-        # self.process_the_urls()
+        self.process_the_urls()
 
     @profile
     def process_the_urls(self):
@@ -169,8 +178,22 @@ class KvKUrlParser(object):
         Per company, check all the urls
         """
 
-        for company in Company.select():
-            logger.info("Checking {}".format(company.naam))
+        query = (Company
+                 .select()
+                 .prefetch(WebSite)
+                 )
+        for cnt, company in enumerate(query):
+
+            kvk_nr = company.kvk_nummer
+            naam = company.naam
+            logger.info("Checking {} : {} {}".format(cnt, kvk_nr, naam))
+
+            for websites in company.websites:
+                logger.info("   * {}".format(websites.url))
+
+            if self.maximum_entries is not None and cnt == self.maximum_entries:
+                logger.info("Maximum entries reached")
+                break
 
     def make_report(self):
         """
@@ -239,14 +262,19 @@ class KvKUrlParser(object):
     @profile
     def look_up_last_entry(self, n_entries):
         """
+        Get the last entry in the data base
+
         In case we have N entries in the data base we want to continue reading in the csv file
         after 'at' least N entries. However, N could be larger, because we have removed url's before
         we wrote to the data base. This means that we can increase n. This is taken care of here
         """
+        # get the last kvk number of the website list
         last_website = WebSite.select().order_by(WebSite.company_id.desc()).get()
         kvk_last = int(last_website.company.kvk_nummer)
 
-        # df_all_all = pd.read_csv(self.url_input_file_name)
+        # based on the size of the total websites in the data base set the start of reading
+        # at n_entries. Perhaps we have to read from the csv file furhter in case we have dropped
+        # kvk before. This is what we are going to find out now
         tmp_data = pd.read_csv(self.url_input_file_name,
                                header=None,
                                usecols=[1, 2, 4],
@@ -255,10 +283,15 @@ class KvKUrlParser(object):
                                skiprows=n_entries)
 
         try:
+            # based on the last kvk in the database, get the index in the csv file
+            # note that with the loc selection we get all URL's belongin to this kvk. Therfore
+            # take the last of this list with -1
             row_index = tmp_data.loc[tmp_data[self.kvk_key] == kvk_last].index[-1]
         except IndexError:
             logger.debug("No last index found.  n_entries to skip to {}".format(n_entries))
         else:
+            # we have the last row index. This means that we can add this index to the n_entries
+            # we have used now. Return this n_entries
             last_row = tmp_data.loc[row_index]
             logger.debug("found: {}".format(last_row))
             n_entries += row_index + 1
