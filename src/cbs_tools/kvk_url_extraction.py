@@ -1,3 +1,22 @@
+"""
+Utility to import kvk/url combinations and turn it into a mysql data base
+
+Usage:
+    python kvk_url_extraction.py URL_kvk.csv.bz2  --max 10000
+
+With --max you can limit the number of lines read from the csv file. In case the script is called
+multiple times, you continue on last kvk you have stored in the sql database
+
+The script can be runned with kernprof in order to time all the lines
+
+kernprof -l kvk_url_extraction.py URL_kvk.csv.bz2  --max 10000
+
+
+This generates a file kvk_url_extraction.py.prof
+
+
+"""
+
 import logging
 import os
 import sys
@@ -7,12 +26,25 @@ import pandas as pd
 import progressbar as pb
 import argparse
 
-from cbs_utils.misc import (create_logger, merge_loggers, Timer)
+
+from cbs_utils.misc import (create_logger, merge_loggers)
 
 try:
     from cbs_tools import __version__
 except ModuleNotFoundError:
     __version__ = "unknown"
+
+try:
+    # if profile exist, it means we are running kernprof to time all the lines of the functions
+    # decorated with @profile
+    isinstance(profile, object)
+except NameError:
+    # in case this fails, we add the profile decorator to the builtins such that it does
+    # not raise an error.
+    import line_profiler
+    import builtins
+    profile = line_profiler.LineProfiler()
+    builtins.__dict__["profile"] = profile
 
 __author__ = "Eelco van Vliet"
 __copyright__ = "Eelco van Vliet"
@@ -51,9 +83,8 @@ class BaseModel(pw.Model):
 
 # this class describes the format of the sql data base
 class Company(BaseModel):
-    naam = pw.CharField(null=True)
     kvk_nummer = pw.CharField(primary_key=True)
-
+    naam = pw.CharField(null=True)
     plaats = pw.CharField(null=True)
     postcode = pw.CharField(null=True)
     straat = pw.CharField(null=True)
@@ -61,8 +92,8 @@ class Company(BaseModel):
 
 class WebSite(BaseModel):
     company = pw.ForeignKeyField(Company)
-    url = pw.CharField(null=False)
     kvk_nummer = pw.CharField(null=True)
+    url = pw.CharField(null=False)
     naam = pw.CharField(null=True)
     validated = pw.BooleanField(default=False)
 
@@ -132,6 +163,7 @@ class KvKUrlParser(object):
 
         # self.process_the_urls()
 
+    @profile
     def process_the_urls(self):
         """
         Per company, check all the urls
@@ -149,6 +181,7 @@ class KvKUrlParser(object):
         for cnt, record in enumerate(self.kvk_register.select().paginate(0)):
             logger.info("{:03d}: {} - {}".format(cnt, record.kvknr, record.handelsnaam))
 
+    @profile
     def read_database(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -166,23 +199,27 @@ class KvKUrlParser(object):
         else:
             n_entries = 0
 
+        if n_entries > 0:
+            # in case we have already stored entries in the database, find the first n entrie for
+            # which we can start reading
+            n_entries = self.look_up_last_entry(n_entries)
+
         # we are running the script for the first time or we want to reset the cache, so
         # read the original csv data and store it to cache
         logger.info("Reading data from original data base {name}"
                     "".format(name=self.url_input_file_name))
-        with Timer(name="read url", units="s") as _:
-            if ".csv" in (file_ext, file_ext2):
-                self.data = pd.read_csv(self.url_input_file_name,
-                                        header=None,
-                                        usecols=[1, 2, 4],
-                                        names=[self.kvk_key, self.name_key, self.url_key],
-                                        nrows=self.maximum_entries,
-                                        skiprows=n_entries)
-            else:
-                # add the type so we can recognise it is a data frame
-                self.data: pd.DataFrame = pd.read_hdf(self.url_input_file_name,
-                                                      stop=self.maximum_entries)
-                self.data.reset_index(inplace=True)
+        if ".csv" in (file_ext, file_ext2):
+            self.data = pd.read_csv(self.url_input_file_name,
+                                    header=None,
+                                    usecols=[1, 2, 4],
+                                    names=[self.kvk_key, self.name_key, self.url_key],
+                                    nrows=self.maximum_entries,
+                                    skiprows=n_entries)
+        else:
+            # add the type so we can recognise it is a data frame
+            self.data: pd.DataFrame = pd.read_hdf(self.url_input_file_name,
+                                                  stop=self.maximum_entries)
+            self.data.reset_index(inplace=True)
 
         # rename the columns to match our tables
         self.data.rename(columns={
@@ -192,16 +229,44 @@ class KvKUrlParser(object):
             inplace=True)
 
         logger.info("Removing duplicated table entries")
-        with Timer("remove duplicates") as _:
-            self.remove_duplicated_entries()
+        self.remove_duplicated_entries()
 
         logger.info("Removing spurious urls")
-        with Timer("remove urls") as _:
-            self.remove_spurious_urls()
+        self.remove_spurious_urls()
 
-        with Timer(name="dump_kvk_url_to_mysql", units="s") as _:
-            self.dump_kvk_url_to_myqsl()
+        self.dump_kvk_url_to_myqsl()
 
+    @profile
+    def look_up_last_entry(self, n_entries):
+        """
+        In case we have N entries in the data base we want to continue reading in the csv file
+        after 'at' least N entries. However, N could be larger, because we have removed url's before
+        we wrote to the data base. This means that we can increase n. This is taken care of here
+        """
+        last_website = WebSite.select().order_by(WebSite.company_id.desc()).get()
+        kvk_last = int(last_website.company.kvk_nummer)
+
+        # df_all_all = pd.read_csv(self.url_input_file_name)
+        tmp_data = pd.read_csv(self.url_input_file_name,
+                               header=None,
+                               usecols=[1, 2, 4],
+                               names=[self.kvk_key, self.name_key, self.url_key],
+                               nrows=self.maximum_entries,
+                               skiprows=n_entries)
+
+        try:
+            row_index = tmp_data.loc[tmp_data[self.kvk_key] == kvk_last].index[-1]
+        except IndexError:
+            logger.debug("No last index found.  n_entries to skip to {}".format(n_entries))
+        else:
+            last_row = tmp_data.loc[row_index]
+            logger.debug("found: {}".format(last_row))
+            n_entries += row_index + 1
+            logger.debug("Upated n_entries to skip to {}".format(n_entries))
+
+        return n_entries
+
+    @profile
     def remove_spurious_urls(self):
         # first remove all the urls that occur more the 'n_count_threshold' times.
         urls = self.data
@@ -223,6 +288,7 @@ class KvKUrlParser(object):
 
         self.data = urls.reset_index()
 
+    @profile
     def remove_duplicated_entries(self):
         """
         Remove all the companies/url combination which already have been stored in
@@ -232,6 +298,8 @@ class KvKUrlParser(object):
 
         # based on the data in the WebSite table create a data frame with all the kvk which
         # we have already included. These can be removed from the data we have just read
+        nr = self.data.index.size
+        logger.info("Removing duplicated kvk/url combinies. Data read at start: {}".format(nr))
         logger.debug("Getting all sql websides from database")
         kvk_list = list()
         url_list = list()
@@ -246,13 +314,13 @@ class KvKUrlParser(object):
             columns=[KVK_KEY, URL_KEY, NAME_KEY])
         kvk_in_db.set_index([KVK_KEY, URL_KEY], drop=True, inplace=True)
 
-        # drop all the kvk number which we already have loaded
+        # drop all the kvk number which we already have loaded in the database
         logger.debug("Dropping all duplicated web sides")
-        kvk_df = self.data.set_index([KVK_KEY, URL_KEY])
-        kvk_df = kvk_df.reindex(kvk_in_db.index)
-        kvk_df = kvk_df[~kvk_df[NAME_KEY].isnull()]
+        kvk_to_remove = self.data.set_index([KVK_KEY, URL_KEY])
+        kvk_to_remove = kvk_to_remove.reindex(kvk_in_db.index)
+        kvk_to_remove = kvk_to_remove[~kvk_to_remove[NAME_KEY].isnull()]
         try:
-            self.data = self.data.set_index([KVK_KEY, URL_KEY]).drop(index=kvk_df.index)
+            self.data = self.data.set_index([KVK_KEY, URL_KEY]).drop(index=kvk_to_remove.index)
         except KeyError:
             logger.debug("Nothing to drop")
         else:
@@ -273,6 +341,11 @@ class KvKUrlParser(object):
         comp_df.drop(index=companies_in_db.index, level=0, inplace=True)
         self.data = comp_df.reset_index()
 
+        nr = self.data.index.size
+        logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
+
+
+    @profile
     def dump_kvk_url_to_myqsl(self):
         """data
         Dump the original list to mysql
@@ -286,36 +359,38 @@ class KvKUrlParser(object):
         n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
-                msg = "Company chunk nr {}/{}".format(cnt + 1, n_batch)
-                with Timer(message=msg) as _:
-                    Company.insert_many(batch).execute()
-        logger.info("Done with company")
+                logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
+                Company.insert_many(batch).execute()
+        logger.debug("Done with company table")
 
         # create selection of data columns
         urls = self.data[[KVK_KEY, URL_KEY, NAME_KEY]]
-        logger.info("Converting urls to dict")
+        urls[COMPANY_KEY] = None
+        urls.set_index([KVK_KEY, URL_KEY], inplace=True)
+
+        # add a company key to all url and then make a reference to all companies from the Company
+        # table
+        logger.info("Adding companies to url table")
+        company_vs_kvk = Company.select().where(Company.kvk_nummer << self.data[KVK_KEY].tolist())
+        n_comp = len(company_vs_kvk)
+        for counter, company in enumerate(company_vs_kvk):
+            kvk_nr = int(company.kvk_nummer)
+            urls.loc[[kvk_nr, ], COMPANY_KEY] = company
+            if counter % MAX_SQL_CHUNK == 0:
+                logger.info(" Added {} / {}".format(counter, n_comp))
+
+        urls.reset_index(inplace=True)
+
+        logger.info("Converting urls to dict. This make take some time...")
         url_list = list(urls.to_dict(orient="index").values())
-        comp_dict = dict()
-        company_vs_kvk = Company.select().where(Company.kvk_nummer << urls[KVK_KEY].tolist())
-        for comp in company_vs_kvk:
-            comp_dict[int(comp.kvk_nummer)] = comp
-        # add to all urls the object referencing to the Company table
-        for web_info in url_list:
-            # loop over al the urls and get the company for each url
-            kvk_nr = web_info[KVK_KEY]
-            # get the link to the company table for this kvk number
-            # add the company reference to the dictionary
-            web_info[COMPANY_KEY] = comp_dict[kvk_nr]
 
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
-
         n_batch = int(len(url_list) / MAX_SQL_CHUNK) + 1
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
-                msg = "URL chunk nr {}/{}".format(cnt + 1, n_batch)
-                with Timer(message=msg) as _:
-                    WebSite.insert_many(batch).execute()
+                logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
+                WebSite.insert_many(batch).execute()
 
         logger.debug("Done")
 
@@ -421,6 +496,7 @@ def setup_logging(write_log_to_file=False,
     return _logger
 
 
+@profile
 def max_sql_variables():
     """Get the maximum number of arguments allowed in a query by the current
     sqlite3 implementation. Based on `this question
