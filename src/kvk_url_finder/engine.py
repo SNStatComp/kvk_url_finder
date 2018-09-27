@@ -180,6 +180,7 @@ class KvKUrlParser(object):
                 logger.info("Maximum entries reached")
                 break
 
+    @profile
     def read_csv_input_file(self,
                             file_name: str,
                             usecols: list = None,
@@ -260,6 +261,7 @@ class KvKUrlParser(object):
         logger.info("Removing duplicated table entries")
         self.remove_duplicated_entries()
 
+    @profile
     def clip_kvk_range(self, dataframe, unique_key):
         """
         Make a selection of kvk numbers
@@ -284,6 +286,7 @@ class KvKUrlParser(object):
 
         return df
 
+    @profile
     def read_database_addresses(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -304,6 +307,7 @@ class KvKUrlParser(object):
 
         logger.debug("Done")
 
+    @profile
     def look_up_last_entry(self, n_skip_entries):
         """
         Get the last entry in the data base
