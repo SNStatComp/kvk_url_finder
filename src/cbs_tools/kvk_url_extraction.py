@@ -29,6 +29,8 @@ have
 import logging
 import os
 import sys
+import tldextract
+import Levenshtein
 
 import peewee as pw
 import pandas as pd
@@ -69,6 +71,8 @@ KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
 URL_KEY = "url"
 COMPANY_KEY = "company"
+BEST_MATCH_KEY = "best_match"
+LEVENSHTEIN = "levenshtein"
 
 # set up global logger
 logger: logging.Logger = None
@@ -92,8 +96,14 @@ class BaseModel(pw.Model):
 
 # this class describes the format of the sql data base
 class Company(BaseModel):
-    kvk_nummer = pw.CharField(primary_key=True)
+    kvk_nummer = pw.IntegerField(primary_key=True)
     naam = pw.CharField(null=True)
+    url = pw.CharField(null=True)
+    processed = pw.BooleanField(default=False)
+
+
+class Address(BaseModel):
+    company = pw.ForeignKeyField(Company, backref="address")
     plaats = pw.CharField(null=True)
     postcode = pw.CharField(null=True)
     straat = pw.CharField(null=True)
@@ -101,10 +111,12 @@ class Company(BaseModel):
 
 class WebSite(BaseModel):
     company = pw.ForeignKeyField(Company, backref="websites")
-    kvk_nummer = pw.CharField(null=True)
     url = pw.CharField(null=False)
-    naam = pw.CharField(null=True)
-    validated = pw.BooleanField(default=False)
+    naam = pw.CharField(null=False)
+    getest = pw.BooleanField(default=False)
+    levenshtein = pw.IntegerField(default=-1)
+    best_match = pw.BooleanField(default=True)
+    bestaat = pw.BooleanField(default=False)
 
 
 def progress_bar_message(cnt, total):
@@ -127,7 +139,9 @@ class KvKUrlParser(object):
         limited to 'maximum_entries'
     """
 
-    def __init__(self, url_input_file_name,
+    def __init__(self,
+                 address_input_file_name=None,
+                 url_input_file_name=None,
                  reset_database=False,
                  extend_database=False,
                  compression=None,
@@ -138,21 +152,19 @@ class KvKUrlParser(object):
                  name_key="Name",
                  url_key="URL",
                  n_count_threshold=10,
+                 force_process=False,
                  ):
-
-        logger.info("Connecting to database {}".format(database_name))
-        database.init(database_name)
-        database.connect()
 
         # make table connections
         self.kvk_key = kvk_key
         self.name_key = name_key
         self.url_key = url_key
-        self.kvk_register = Company()
+        self.force_process = force_process
 
         self.n_count_threshold = n_count_threshold
 
         self.url_input_file_name = url_input_file_name
+        self.address_input_file_name = address_input_file_name
         self.reset_database = reset_database
         self.extend_database = extend_database
 
@@ -163,19 +175,27 @@ class KvKUrlParser(object):
 
         self.data: pd.DataFrame = None
 
+        logger.info("Connecting to database {}".format(database_name))
+        database.init(database_name)
+        database.connect()
+        database.create_tables([Company, Address, WebSite])
+        if self.reset_database:
+            database.drop_tables([Company, Address, WebSite])
+
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
-        if self.reset_database or self.extend_database:
-            self.read_database()
+        if self.url_input_file_name is not None:
+            self.read_database_urls()
+            self.dump_kvk_url_to_myqsl()
         else:
             logger.debug("No need to read. We are already connected")
 
-        self.process_the_urls()
+        self.find_best_matching_url()
 
     @profile
-    def process_the_urls(self):
+    def find_best_matching_url(self):
         """
-        Per company, check all the urls
+        Per company, see which url matches the best the company name
         """
 
         query = (Company
@@ -186,46 +206,58 @@ class KvKUrlParser(object):
 
             kvk_nr = company.kvk_nummer
             naam = company.naam
+            if company.processed and not self.force_process:
+                logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
+                continue
+
             logger.info("Checking {} : {} {}".format(cnt, kvk_nr, naam))
 
-            for websites in company.websites:
-                logger.info("   * {}".format(websites.url))
+            min_distance = None
+            web_match = None
+            for web in company.websites:
+                ext = tldextract.extract(web.url)
+
+                domain = ext.domain
+
+                distance = Levenshtein.distance(domain, naam)
+
+                web.levenshtein = distance
+
+                if min_distance is None or distance < min_distance:
+                    min_distance = distance
+                    web_match = web
+
+                logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
+
+            logger.debug("Best matching url: {}".format(web_match.url))
+            web_match.best_match = True
+
+            # update all the properties
+            for web in company.websites:
+                logger.debug("Updating web site properties")
+                web.save()
+            company.url = web_match.url
+            company.processed = True
+            company.save()
 
             if self.maximum_entries is not None and cnt == self.maximum_entries:
                 logger.info("Maximum entries reached")
                 break
 
-    def make_report(self):
-        """
-        Report all the tables and data we have loaded so far
-        """
-        number_of_kvk_companies = self.kvk_register.select().count()
-        logger.info("Head of all {} kvk entries".format(number_of_kvk_companies))
-        for cnt, record in enumerate(self.kvk_register.select().paginate(0)):
-            logger.info("{:03d}: {} - {}".format(cnt, record.kvknr, record.handelsnaam))
-
     @profile
-    def read_database(self):
+    def read_database_urls(self):
         """
         Read the URL data from the csv file or hd5 file
         """
         file_base, file_ext = os.path.splitext(self.url_input_file_name)
         file_base2, file_ext2 = os.path.splitext(file_base)
 
-        database.create_tables([Company, WebSite])
-        if self.reset_database:
-            database.drop_tables([Company])
-            database.drop_tables([WebSite])
+        n_skip_entries = len(WebSite.select())
 
-        if self.extend_database:
-            n_entries = len(WebSite.select())
-        else:
-            n_entries = 0
-
-        if n_entries > 0:
-            # in case we have already stored entries in the database, find the first n entrie for
+        if n_skip_entries > 0:
+            # in case we have already stored entries in the database, find the first entry for
             # which we can start reading
-            n_entries = self.look_up_last_entry(n_entries)
+            n_skip_entries = self.look_up_last_entry(n_skip_entries)
 
         # we are running the script for the first time or we want to reset the cache, so
         # read the original csv data and store it to cache
@@ -237,12 +269,14 @@ class KvKUrlParser(object):
                                     usecols=[1, 2, 4],
                                     names=[self.kvk_key, self.name_key, self.url_key],
                                     nrows=self.maximum_entries,
-                                    skiprows=n_entries)
-        else:
+                                    skiprows=n_skip_entries)
+        elif ".h5" in (file_ext, file_ext2):
             # add the type so we can recognise it is a data frame
             self.data: pd.DataFrame = pd.read_hdf(self.url_input_file_name,
                                                   stop=self.maximum_entries)
             self.data.reset_index(inplace=True)
+        else:
+            raise AssertionError("Can only read h5 or csv files")
 
         # rename the columns to match our tables
         self.data.rename(columns={
@@ -257,13 +291,58 @@ class KvKUrlParser(object):
         logger.info("Removing spurious urls")
         self.remove_spurious_urls()
 
-        self.dump_kvk_url_to_myqsl()
+    def read_database_addresses(self):
+        """
+        Read the URL data from the csv file or hd5 file
+        """
+        file_base, file_ext = os.path.splitext(self.address_input_file_name)
+        file_base2, file_ext2 = os.path.splitext(file_base)
 
-    @profile
-    def look_up_last_entry(self, n_entries):
+        if ".csv" in (file_ext, file_ext2):
+            self.data = pd.read_csv(self.url_input_file_name,
+                                    header=None,
+                                    usecols=[1, 2, 4],
+                                    names=[self.kvk_key, self.name_key, self.url_key],
+                                    nrows=self.maximum_entries,
+                                    )
+        elif ".h5" in (file_ext, file_ext2):
+            # add the type so we can recognise it is a data frame
+            self.data: pd.DataFrame = pd.read_hdf(self.url_input_file_name,
+                                                  stop=self.maximum_entries)
+            self.data.reset_index(inplace=True)
+        else:
+            raise AssertionError("Can only read h5 or csv files")
+
+        # rename the columns to match our tables
+        self.data.rename(columns={
+            self.kvk_key: KVK_KEY,
+            self.url_key: URL_KEY,
+            self.name_key: NAME_KEY},
+            inplace=True)
+
+        logger.info("Removing duplicated table entries")
+        self.remove_duplicated_entries()
+
+        logger.info("Removing spurious urls")
+        self.remove_spurious_urls()
+
+    def read_database_addresses(self):
+        """
+        Read the URL data from the csv file or hd5 file
+        """
+
+    def look_up_last_entry(self, n_skip_entries):
         """
         Get the last entry in the data base
 
+        Parameters
+        ----------
+        n_skip_entries: int
+            Number of entries in csv file to skip based on the total amount of entries in the
+            current database sql file
+
+        Notes
+        -----
         In case we have N entries in the data base we want to continue reading in the csv file
         after 'at' least N entries. However, N could be larger, because we have removed url's before
         we wrote to the data base. This means that we can increase n. This is taken care of here
@@ -280,7 +359,7 @@ class KvKUrlParser(object):
                                usecols=[1, 2, 4],
                                names=[self.kvk_key, self.name_key, self.url_key],
                                nrows=self.maximum_entries,
-                               skiprows=n_entries)
+                               skiprows=n_skip_entries)
 
         try:
             # based on the last kvk in the database, get the index in the csv file
@@ -288,16 +367,16 @@ class KvKUrlParser(object):
             # take the last of this list with -1
             row_index = tmp_data.loc[tmp_data[self.kvk_key] == kvk_last].index[-1]
         except IndexError:
-            logger.debug("No last index found.  n_entries to skip to {}".format(n_entries))
+            logger.debug("No last index found.  n_entries to skip to {}".format(n_skip_entries))
         else:
             # we have the last row index. This means that we can add this index to the n_entries
             # we have used now. Return this n_entries
             last_row = tmp_data.loc[row_index]
             logger.debug("found: {}".format(last_row))
-            n_entries += row_index + 1
-            logger.debug("Upated n_entries to skip to {}".format(n_entries))
+            n_skip_entries += row_index + 1
+            logger.debug("Updated n_entries to skip to {}".format(n_skip_entries))
 
-        return n_entries
+        return n_skip_entries
 
     @profile
     def remove_spurious_urls(self):
@@ -337,10 +416,17 @@ class KvKUrlParser(object):
         kvk_list = list()
         url_list = list()
         name_list = list()
-        for ws in WebSite.select():
-            kvk_list.append(int(ws.kvk_nummer))
-            url_list.append(ws.url)
-            name_list.append(ws.naam)
+        query = (Company
+                 .select()
+                 .prefetch(WebSite)
+                 )
+        for cnt, company in enumerate(query):
+            kvk_nr = company.kvk_nummer
+            naam = company.naam
+            for web in company.websites:
+                kvk_list.append(kvk_nr)
+                url_list.append(web.url)
+                name_list.append(naam)
 
         kvk_in_db = pd.DataFrame(
             data=list(zip(kvk_list, url_list, name_list)),
@@ -377,7 +463,6 @@ class KvKUrlParser(object):
         nr = self.data.index.size
         logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
 
-
     @profile
     def dump_kvk_url_to_myqsl(self):
         """data
@@ -399,6 +484,8 @@ class KvKUrlParser(object):
         # create selection of data columns
         urls = self.data[[KVK_KEY, URL_KEY, NAME_KEY]]
         urls[COMPANY_KEY] = None
+        urls[BEST_MATCH_KEY] = False
+        urls[LEVENSHTEIN] = -1
         urls.set_index([KVK_KEY, URL_KEY], inplace=True)
 
         # add a company key to all url and then make a reference to all companies from the Company
@@ -413,6 +500,9 @@ class KvKUrlParser(object):
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
         urls.reset_index(inplace=True)
+
+        # the kvk key is already visible via the company_id
+        urls.drop([KVK_KEY], inplace=True, axis=1)
 
         logger.info("Converting urls to dict. This make take some time...")
         url_list = list(urls.to_dict(orient="index").values())
@@ -443,8 +533,10 @@ def _parse_the_command_line_arguments(args):
 
     # set the verbosity level command line arguments
     # mandatory arguments
-    parser.add_argument("url_input_file_name", action="store",
+    parser.add_argument("--url_input_file_name", action="store",
                         help="The CSV file containing all the URL data")
+    parser.add_argument("--address_input_file_name", action="store",
+                        help="The CSV file containing all the addresses per kvk")
     parser.add_argument("--version", help="Show the current version", action="version",
                         version="{}\nPart of cbs_tools version {}".format(
                             os.path.basename(__file__), __version__))
@@ -592,6 +684,7 @@ def main(args_in):
         logger.setLevel(logging.INFO)
 
     KvKUrlParser(
+        address_input_file_name=args.address_input_file_name,
         url_input_file_name=args.url_input_file_name,
         reset_database=args.reset_database,
         extend_database=args.extend_database,
