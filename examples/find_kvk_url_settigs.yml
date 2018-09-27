@@ -1,0 +1,23 @@
+general:
+  working_directory:
+    Linux: /home/eelco/Projecs/url_research
+    Windows: /P/Projects/something_els
+databases:
+  addresses:
+    file_name: final_kvkregister.csv
+    keys:
+      id: 0
+      kvk_nummer: 1
+      naam: 2
+      straat: 3
+      postcode: 4
+      stad: 5
+  kvk_urls:
+    file_name: URL_kvk.csv
+    keys:
+      id: 0
+      kvk_nummer: 1
+      naam: 2
+      url: 4
+process_settings:
+  n_url_count_threshold: 10
