@@ -26,18 +26,17 @@ not to profiling
 have
 """
 
-import logging
 import argparse
-import sys
+import logging
 import os
-import yaml
-import pandas as pd
 import platform
+import sys
 
-import kvk_url_finder
+import pandas as pd
+import yaml
+
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir)
 from kvk_url_finder.engine import KvKUrlParser
-from kvk_url_finder.engine import (CACHE_TYPES, COMPRESSION_TYPES)
 
 try:
     from kvk_url_finder import __version__
@@ -74,12 +73,6 @@ def _parse_the_command_line_arguments(args):
                                                  "a sql file already", action="store_true")
     parser.add_argument('--extend_database', help="Extend the data base in case we have generated"
                                                   "a sql file already", action="store_true")
-    parser.add_argument('--cache_type', help="Type of the cache file ",
-                        choices=CACHE_TYPES, default="hdf")
-    parser.add_argument('--compression', help="Type of the compression ",
-                        choices=COMPRESSION_TYPES, default=None)
-    parser.add_argument('--maximum_entries', help="Maximum number of entries to store", type=int,
-                        default=None)
     parser.add_argument("--write_log_to_file", action="store_true",
                         help="Write the logging information to file")
     parser.add_argument("--log_file_base", default="log", help="Default name of the logging output")
@@ -182,12 +175,15 @@ def main(args_in):
     address_db = databases['addresses']
     kvk_urls_db = databases['kvk_urls']
     address_input_file_name = address_db["file_name"]
-    address_keys=address_db["keys"]
+    address_keys = address_db["keys"]
     kvk_url_file_name = kvk_urls_db["file_name"]
     kvk_url_keys = kvk_urls_db["keys"]
 
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
+    kvk_start = process_settings["kvk_range"]["start"]
+    kvk_end = process_settings["kvk_range"]["end"]
+    maximum_entries = process_settings["maximum_entries"]
 
     with Chdir(working_directory) as _:
         KvKUrlParser(
@@ -198,10 +194,11 @@ def main(args_in):
             reset_database=args.reset_database,
             extend_database=args.extend_database,
             progressbar=args.progressbar,
-            compression=args.compression,
             n_url_count_threshold=n_url_count_threshold,
-            maximum_entries=args.maximum_entries,
             update_sql_tables=args.update_sql_tables,
+            kvk_start=kvk_start,
+            kvk_end=kvk_end,
+            maximum_entries=maximum_entries
         )
 
 

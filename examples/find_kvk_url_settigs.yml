@@ -20,4 +20,8 @@ databases:
       naam: 2
       url: 4
 process_settings:
-  n_url_count_threshold: 10
+  n_url_count_threshold: 10000
+  kvk_range:
+    start: 1000040
+    end: 1043909
+  maximum_entries: 10

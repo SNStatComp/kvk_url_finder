@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-    Setup file for cbs_tools.
+    Setup file for kvk_url_finder.
 
     This file was generated with PyScaffold 3.0.3.
     PyScaffold helps you to put up the scaffold of your new Python project.
@@ -14,9 +14,9 @@ from setuptools import setup
 # Add here console scripts and other entry points in ini-style format
 entry_points = """
 [console_scripts]
-# script_name = cbs_tools.module:function
+# script_name = kvk_url_finder.module:function
 # For example:
-# fibonacci = cbs_tools.skeleton:run
+# fibonacci = kvk_url_finder.skeleton:run
 """
 
 

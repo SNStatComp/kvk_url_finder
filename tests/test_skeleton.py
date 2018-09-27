@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import pytest
-from cbs_tools.skeleton import fib
+from kvk_url_finder.skeleton import fib
 
 __author__ = "Eelco van Vliet"
 __copyright__ = "Eelco van Vliet"

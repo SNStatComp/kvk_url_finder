@@ -77,9 +77,11 @@ class KvKUrlParser(object):
                  maximum_entries=None,
                  database_name="kvk_db.sqlite",
                  progressbar=False,
-                 n_url_count_threshold=10,
+                 n_url_count_threshold=100,
                  force_process=False,
                  update_sql_tables=False,
+                 kvk_start=None,
+                 kvk_end=None
                  ):
 
         self.address_keys = address_keys
@@ -100,9 +102,11 @@ class KvKUrlParser(object):
         self.compression = compression
         self.progressbar = progressbar
 
+        self.kvk_start = kvk_start
+        self.kvk_end = kvk_end
+
         self.url_df: pd.DataFrame = None
         self.addresses_df: pd.DataFrame = None
-
 
         logger.info("Connecting to database {}".format(database_name))
         database.init(database_name)
@@ -167,7 +171,6 @@ class KvKUrlParser(object):
 
             # update all the properties
             for web in company.websites:
-                logger.debug("Updating web site properties")
                 web.save()
             company.url = web_match.url
             company.processed = True
@@ -181,7 +184,8 @@ class KvKUrlParser(object):
                             file_name: str,
                             usecols: list = None,
                             names: list = None,
-                            remove_spurious_urls=False
+                            remove_spurious_urls=False,
+                            unique_key=None
                             ):
         """
         Store the csv file in a data frame
@@ -196,7 +200,8 @@ class KvKUrlParser(object):
             Names to give to the columns
         remove_spurious_urls: bool
             If true we are reading the urls, so we can remove all the urls that occur many times
-
+        unique_key: str
+            We can select a range of kvk number if we know the unique key to make groups or kvks
 
         Returns
         -------
@@ -208,16 +213,16 @@ class KvKUrlParser(object):
         file_base, file_ext = os.path.splitext(file_name)
         file_base2, file_ext2 = os.path.splitext(file_base)
 
-        cache_file = file_base2 + ".h5"
+        cache_file = file_base2 + ".pkl"
 
         if os.path.exists(cache_file):
             # add the type so we can recognise it is a data frame
-            logger.info("Reading urls from cache {}".format(cache_file))
-            df: pd.DataFrame = pd.read_hdf(cache_file)
+            logger.info("Reading from cache {}".format(cache_file))
+            df: pd.DataFrame = pd.read_pickle(cache_file)
             df.reset_index(inplace=True)
         elif ".csv" in (file_ext, file_ext2):
-            logger.info("Reading urls from file {}".format(self.url_input_file_name))
-            df = pd.read_csv(self.url_input_file_name,
+            logger.info("Reading from file {}".format(file_name))
+            df = pd.read_csv(file_name,
                              header=None,
                              usecols=usecols,
                              names=names
@@ -227,8 +232,10 @@ class KvKUrlParser(object):
                 logger.info("Removing spurious urls")
                 df = self.remove_spurious_urls(df)
 
-            logger.info("Writing urls to cache {}".format(cache_file))
-            df.to_hdf(cache_file, "w")
+            df = self.clip_kvk_range(df, unique_key=unique_key)
+
+            logger.info("Writing data to cache {}".format(cache_file))
+            df.to_pickle(cache_file)
         else:
             raise AssertionError("Can only read h5 or csv files")
 
@@ -247,10 +254,35 @@ class KvKUrlParser(object):
         self.url_df = self.read_csv_input_file(self.url_input_file_name,
                                                usecols=[col_kvk, col_name, col_url],
                                                names=[KVK_KEY, NAME_KEY, URL_KEY],
-                                               remove_spurious_urls=True)
+                                               remove_spurious_urls=True,
+                                               unique_key=URL_KEY)
 
         logger.info("Removing duplicated table entries")
         self.remove_duplicated_entries()
+
+    def clip_kvk_range(self, dataframe, unique_key):
+        """
+        Make a selection of kvk numbers
+        Returns
+        -------
+
+        """
+
+        if self.kvk_start is not None or self.kvk_end is not None:
+            logger.info("Selecting kvk number from {} to {}".format(self.kvk_start, self.kvk_end))
+            idx = pd.IndexSlice
+            df = dataframe.set_index([KVK_KEY, unique_key])
+            if self.kvk_start is None:
+                df = df.loc[idx[:self.kvk_end, :], :]
+            elif self.kvk_end is None:
+                df = df.loc[idx[self.kvk_start:, :], :]
+            else:
+                df = df.loc[idx[self.kvk_start:self.kvk_end, :], :]
+            df.reset_index(inplace=True)
+        else:
+            df = dataframe
+
+        return df
 
     def read_database_addresses(self):
         """
@@ -267,7 +299,9 @@ class KvKUrlParser(object):
                                                      usecols=[col_kvk, col_name, col_adr,
                                                               col_post, col_city],
                                                      names=[KVK_KEY, NAME_KEY, ADDRESS_KEY,
-                                                            POSTAL_CODE_KEY, CITY_KEY])
+                                                            POSTAL_CODE_KEY, CITY_KEY],
+                                                     unique_key=POSTAL_CODE_KEY)
+
         logger.debug("Done")
 
     def look_up_last_entry(self, n_skip_entries):
@@ -290,32 +324,17 @@ class KvKUrlParser(object):
         last_website = WebSite.select().order_by(WebSite.company_id.desc()).get()
         kvk_last = int(last_website.company.kvk_nummer)
 
-        col_kvk = self.kvk_url_keys[KVK_KEY]
-        col_name = self.kvk_url_keys[NAME_KEY]
-        col_url = self.kvk_url_keys[URL_KEY]
-
-        # based on the size of the total websites in the data base set the start of reading
-        # at n_entries. Perhaps we have to read from the csv file furhter in case we have dropped
-        # kvk before. This is what we are going to find out now
-        logger.debug("Start reading full url input file {}".format(self.url_input_file_name))
-        tmp_data = pd.read_csv(self.url_input_file_name,
-                               header=None,
-                               usecols=[col_kvk, col_name, col_url],
-                               names=[KVK_KEY, NAME_KEY, URL_KEY],
-                               nrows=self.maximum_entries,
-                               skiprows=n_skip_entries)
-
         try:
             # based on the last kvk in the database, get the index in the csv file
             # note that with the loc selection we get all URL's belongin to this kvk. Therfore
             # take the last of this list with -1
-            row_index = tmp_data.loc[tmp_data[KVK_KEY] == kvk_last].index[-1]
+            row_index = self.url_df.loc[self.url_df[KVK_KEY] == kvk_last].index[-1]
         except IndexError:
             logger.debug("No last index found.  n_entries to skip to {}".format(n_skip_entries))
         else:
             # we have the last row index. This means that we can add this index to the n_entries
             # we have used now. Return this n_entries
-            last_row = tmp_data.loc[row_index]
+            last_row = self.url_df.loc[row_index]
             logger.debug("found: {}".format(last_row))
             n_skip_entries += row_index + 1
             logger.debug("Updated n_entries to skip to {}".format(n_skip_entries))

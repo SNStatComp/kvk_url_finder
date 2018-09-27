@@ -35,7 +35,7 @@ except ImportError:
     from sphinx import apidoc
 
 output_dir = os.path.join(__location__, "api")
-module_dir = os.path.join(__location__, "../src/cbs_tools")
+module_dir = os.path.join(__location__, "../src/kvk_url_finder")
 try:
     shutil.rmtree(output_dir)
 except FileNotFoundError:
@@ -81,7 +81,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = u'cbs_tools'
+project = u'kvk_url_finder'
 copyright = u'2018, CBS'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -148,7 +148,7 @@ html_theme = 'alabaster'
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
 try:
-    from cbs_tools import __version__ as version
+    from kvk_url_finder import __version__ as version
 except ImportError:
     pass
 else:
@@ -213,7 +213,7 @@ html_static_path = ['_static']
 # html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'cbs_tools-doc'
+htmlhelp_basename = 'kvk_url_finder-doc'
 
 
 # -- Options for LaTeX output --------------------------------------------------
@@ -232,7 +232,7 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-  ('index', 'user_guide.tex', u'cbs_tools Documentation',
+  ('index', 'user_guide.tex', u'kvk_url_finder Documentation',
    u'Eelco van Vliet', 'manual'),
 ]
 
