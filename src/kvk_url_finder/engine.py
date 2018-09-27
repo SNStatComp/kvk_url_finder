@@ -100,11 +100,9 @@ class KvKUrlParser(object):
         self.compression = compression
         self.progressbar = progressbar
 
-        self.url_df: pd.DataFrame = \
-            self.read_url_input_file(self.url_input_file_name, usecols=[col_kvk, col_name, col_url])
-        self.addresses_df: pd.DataFrame = \
-            self.read_url_input_file(self.address_input_file_name,
-                                     usecols=[col_kvk, col_name, col_url])
+        self.url_df: pd.DataFrame = None
+        self.addresses_df: pd.DataFrame = None
+
 
         logger.info("Connecting to database {}".format(database_name))
         database.init(database_name)
@@ -118,6 +116,7 @@ class KvKUrlParser(object):
         if update_sql_tables:
             self.read_database_urls()
             self.read_database_addresses()
+
             self.company_kvks_to_sql()
             self.urls_per_kvk_to_sql()
             self.addresses_per_kvk_to_sql()
@@ -182,6 +181,7 @@ class KvKUrlParser(object):
                             file_name: str,
                             usecols: list = None,
                             names: list = None,
+                            remove_spurious_urls=False
                             ):
         """
         Store the csv file in a data frame
@@ -194,6 +194,9 @@ class KvKUrlParser(object):
             Selection of columns to read
         names: list
             Names to give to the columns
+        remove_spurious_urls: bool
+            If true we are reading the urls, so we can remove all the urls that occur many times
+
 
         Returns
         -------
@@ -220,8 +223,12 @@ class KvKUrlParser(object):
                              names=names
                              )
 
+            if remove_spurious_urls:
+                logger.info("Removing spurious urls")
+                df = self.remove_spurious_urls(df)
+
             logger.info("Writing urls to cache {}".format(cache_file))
-            df.to_hdf(cache_file)
+            df.to_hdf(cache_file, "w")
         else:
             raise AssertionError("Can only read h5 or csv files")
 
@@ -239,25 +246,11 @@ class KvKUrlParser(object):
 
         self.url_df = self.read_csv_input_file(self.url_input_file_name,
                                                usecols=[col_kvk, col_name, col_url],
-                                               names=[KVK_KEY, NAME_KEY, URL_KEY])
-
-        n_skip_entries = len(WebSite.select())
-
-        if n_skip_entries > 0:
-            # in case we have already stored entries in the database, find the first entry for
-            # which we can start reading
-            n_skip_entries = self.look_up_last_entry(n_skip_entries)
-
-        # we are running the script for the first time or we want to reset the cache, so
-        # read the original csv data and store it to cache
-        logger.info("Reading data from original data base {name}"
-                    "".format(name=self.url_input_file_name))
+                                               names=[KVK_KEY, NAME_KEY, URL_KEY],
+                                               remove_spurious_urls=True)
 
         logger.info("Removing duplicated table entries")
         self.remove_duplicated_entries()
-
-        logger.info("Removing spurious urls")
-        self.remove_spurious_urls()
 
     def read_database_addresses(self):
         """
@@ -330,9 +323,9 @@ class KvKUrlParser(object):
         return n_skip_entries
 
     @profile
-    def remove_spurious_urls(self):
+    def remove_spurious_urls(self, dataframe):
         # first remove all the urls that occur more the 'n_count_threshold' times.
-        urls = self.url_df
+        urls = dataframe
         # this line add the number of occurrences to each url
         #
         n_count = urls.groupby(URL_KEY)[URL_KEY].transform("count")
@@ -349,7 +342,9 @@ class KvKUrlParser(object):
         # kvk company has multiple times www.facebook.com at the web site, only is kept.
         urls = urls[~urls.index.duplicated()]
 
-        self.url_df = urls.reset_index()
+        urls.reset_index(inplace=True)
+
+        return urls
 
     @profile
     def remove_duplicated_entries(self):
