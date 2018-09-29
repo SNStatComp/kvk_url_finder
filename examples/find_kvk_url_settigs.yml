@@ -11,7 +11,7 @@ databases:
       naam: 2
       straat: 3
       postcode: 4
-      stad: 5
+      plaats: 5
   kvk_urls:
     file_name: URL_kvk.csv
     keys:
@@ -21,7 +21,10 @@ databases:
       url: 4
 process_settings:
   n_url_count_threshold: 10000
-  kvk_range:
+  kvk_range_read:
     start: 1000040
-    end: 1043909
-  maximum_entries: 10
+    stop: 1003909
+  kvk_range_process:
+    start:  1000040
+    stop:  1000040
+  maximum_entries:

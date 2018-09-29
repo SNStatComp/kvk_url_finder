@@ -80,12 +80,11 @@ def _parse_the_command_line_arguments(args):
                         dest="log_level_file", const=logging.INFO)
     parser.add_argument('--log_file_quiet', help="Be quiet: no output to file",
                         action="store_const", dest="log_level_file", const=logging.WARNING)
-    parser.add_argument("--progress_bar", action="store_true", default=False,
-                        help="Just show a progress bar instaad of the logging message.")
-    parser.add_argument("--no_progress_bar", action="store_false", dest="progress_bar",
-                        help="Do not show the progress bar but generate logging information.")
     parser.add_argument("--update_sql_tables", action="store_true",
                         help="Reread the csv file with urls/addresses and update the tables ")
+    parser.add_argument("--force_process", action="store_true",
+                        help="Force to process company table, even if they have been marked "
+                             "as processes")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -150,15 +149,20 @@ def main(args_in):
         log_file_base=args.log_file_base,
         log_level_file=args.log_level_file,
         log_level=args.log_level,
-        progress_bar=args.progress_bar
+        progress_bar=args.progressbar
     )
 
     script_name = os.path.basename(sys.argv[0])
     start_time = pd.to_datetime("now")
-    logger.info("Start {script} (v: {version}) at {start_time}:{cmd}".format(script=script_name,
+    message = "Start {script} (v: {version}) at {start_time}:\n{cmd}".format(script=script_name,
                                                                              version=__version__,
                                                                              start_time=start_time,
-                                                                             cmd=sys.argv[:]))
+                                                                             cmd=sys.argv[:])
+    if not args.progressbar:
+        logger.info(message)
+    else:
+        print(message)
+
     # change the log level to our requested level
     if args.progressbar:
         logger.setLevel(logging.INFO)
@@ -181,8 +185,8 @@ def main(args_in):
 
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
-    kvk_start = process_settings["kvk_range"]["start"]
-    kvk_end = process_settings["kvk_range"]["end"]
+    kvk_range_read = process_settings["kvk_range_read"]
+    kvk_range_process = process_settings["kvk_range_process"]
     maximum_entries = process_settings["maximum_entries"]
 
     with Chdir(working_directory) as _:
@@ -196,9 +200,10 @@ def main(args_in):
             progressbar=args.progressbar,
             n_url_count_threshold=n_url_count_threshold,
             update_sql_tables=args.update_sql_tables,
-            kvk_start=kvk_start,
-            kvk_end=kvk_end,
-            maximum_entries=maximum_entries
+            kvk_range_read=kvk_range_read,
+            kvk_range_process=kvk_range_process,
+            maximum_entries=maximum_entries,
+            force_process=args.force_process
         )
 
 

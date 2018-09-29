@@ -1,13 +1,13 @@
-import logging
 import os
-import tldextract
-import Levenshtein
+import re
+import sys
 
+import Levenshtein
 import pandas as pd
 import progressbar as pb
+import tldextract
 
 from cbs_utils.misc import get_logger
-
 from kvk_url_finder.models import *
 
 try:
@@ -36,8 +36,9 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
-MAX_SQL_VARIABLES = 99999
 MAX_SQL_CHUNK = 1000
+
+STOP_FILE = "stop"
 
 logger = get_logger(__name__)
 
@@ -46,8 +47,42 @@ PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
 PB_MESSAGE_FORMAT = " Processing {} of {}"
 
 
-def progress_bar_message(cnt, total):
-    return "Processed time {:d} of {:d}".format(cnt + 1, total)
+def progress_bar_message(cnt, total, kvk_nr=None, naam=None):
+    msg = " {:4d}/{:4d}".format(cnt + 1, total)
+
+    if kvk_nr is not None:
+        message = "{:8d} - ".format(kvk_nr)
+    else:
+        message = "{:8s}   ".format(" "*8)
+
+    if naam is not None:
+        naam_str = "{:20s}".format(naam)
+    else:
+        naam_str = "{:20s}".format(" "*50)
+
+    message += naam_str[:20]
+
+    msg += ": {}".format(message)
+    return msg
+
+
+class KvKRange(object):
+    """
+    A class holding the range of kvk numbers
+
+    Parameters
+    ----------
+    kvk_range: dict
+        dictionary with two fields:
+            * start: int
+                Start kvk number to process
+            * stop: int
+                End kvk number to process
+    """
+
+    def __init__(self, kvk_range):
+        self.start = kvk_range["start"]
+        self.stop = kvk_range["stop"]
 
 
 class KvKUrlParser(object):
@@ -80,8 +115,8 @@ class KvKUrlParser(object):
                  n_url_count_threshold=100,
                  force_process=False,
                  update_sql_tables=False,
-                 kvk_start=None,
-                 kvk_end=None
+                 kvk_range_read=None,
+                 kvk_range_process=None,
                  ):
 
         self.address_keys = address_keys
@@ -102,8 +137,8 @@ class KvKUrlParser(object):
         self.compression = compression
         self.progressbar = progressbar
 
-        self.kvk_start = kvk_start
-        self.kvk_end = kvk_end
+        self.kvk_range_read = KvKRange(kvk_range_read)
+        self.kvk_range_process = KvKRange(kvk_range_process)
 
         self.url_df: pd.DataFrame = None
         self.addresses_df: pd.DataFrame = None
@@ -135,19 +170,53 @@ class KvKUrlParser(object):
         Per company, see which url matches the best the company name
         """
 
-        query = (Company
-                 .select()
-                 .prefetch(WebSite)
-                 )
+        start = self.kvk_range_process.start
+        stop = self.kvk_range_process.stop
+
+        if start is not None or stop is not None:
+            if start is None:
+                query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite))
+            elif stop is None:
+                query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite))
+            else:
+                query = (Company
+                         .select()
+                         .where(Company.kvk_nummer.between(start, stop))
+                         .prefetch(WebSite)
+                         )
+        else:
+            query = (Company.select().prefetch(WebSite))
+
+        if self.maximum_entries is not None:
+            maximum_queries = self.maximum_entries
+        else:
+            maximum_queries = query.count()
+
+        if self.progressbar:
+            wdg = PB_WIDGETS
+            wdg[-1] = progress_bar_message(0, maximum_queries)
+            progress = pb.ProgressBar(widgets=wdg, maxval=maximum_queries, fd=sys.stdout).start()
+        else:
+            progress = None
+
+        logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
+                                                                          start, stop))
         for cnt, company in enumerate(query):
 
+            if self.progressbar:
+                progress.update(cnt)
+                sys.stdout.flush()
+
             kvk_nr = company.kvk_nummer
-            naam = company.naam
+            naam: str = company.naam
+
             if company.processed and not self.force_process:
                 logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
                 continue
 
-            logger.info("Checking {} : {} {}".format(cnt, kvk_nr, naam))
+            # remove space and put to lower for better comparison with the url
+            naam_small = re.sub("\s+", "", naam.lower())
+            logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
 
             min_distance = None
             web_match = None
@@ -156,7 +225,7 @@ class KvKUrlParser(object):
 
                 domain = ext.domain
 
-                distance = Levenshtein.distance(domain, naam)
+                distance = Levenshtein.distance(domain, naam_small)
 
                 web.levenshtein = distance
 
@@ -165,6 +234,9 @@ class KvKUrlParser(object):
                     web_match = web
 
                 logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
+
+            if self.progressbar:
+                wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
 
             logger.debug("Best matching url: {}".format(web_match.url))
             web_match.best_match = True
@@ -179,6 +251,13 @@ class KvKUrlParser(object):
             if self.maximum_entries is not None and cnt == self.maximum_entries:
                 logger.info("Maximum entries reached")
                 break
+            if os.path.exists(STOP_FILE):
+                logger.info("Stop file found. Quit processing")
+                os.remove(STOP_FILE)
+                break
+
+        if self.progressbar:
+            progress.finish()
 
     @profile
     def read_csv_input_file(self,
@@ -233,7 +312,7 @@ class KvKUrlParser(object):
                 logger.info("Removing spurious urls")
                 df = self.remove_spurious_urls(df)
 
-            df = self.clip_kvk_range(df, unique_key=unique_key)
+            df = self.clip_kvk_range(df, unique_key=unique_key, kvk_range=self.kvk_range_read)
 
             logger.info("Writing data to cache {}".format(cache_file))
             df.to_pickle(cache_file)
@@ -262,7 +341,7 @@ class KvKUrlParser(object):
         self.remove_duplicated_entries()
 
     @profile
-    def clip_kvk_range(self, dataframe, unique_key):
+    def clip_kvk_range(self, dataframe, unique_key, kvk_range):
         """
         Make a selection of kvk numbers
         Returns
@@ -270,16 +349,19 @@ class KvKUrlParser(object):
 
         """
 
-        if self.kvk_start is not None or self.kvk_end is not None:
-            logger.info("Selecting kvk number from {} to {}".format(self.kvk_start, self.kvk_end))
+        start = kvk_range.start
+        stop = kvk_range.stop
+
+        if start is not None or stop is not None:
+            logger.info("Selecting kvk number from {} to {}".format(start, stop))
             idx = pd.IndexSlice
             df = dataframe.set_index([KVK_KEY, unique_key])
-            if self.kvk_start is None:
-                df = df.loc[idx[:self.kvk_end, :], :]
-            elif self.kvk_end is None:
-                df = df.loc[idx[self.kvk_start:, :], :]
+            if start is None:
+                df = df.loc[idx[:stop, :], :]
+            elif stop is None:
+                df = df.loc[idx[start:, :], :]
             else:
-                df = df.loc[idx[self.kvk_start:self.kvk_end, :], :]
+                df = df.loc[idx[start:stop, :], :]
             df.reset_index(inplace=True)
         else:
             df = dataframe
@@ -458,9 +540,9 @@ class KvKUrlParser(object):
 
         # create selection of data columns
         urls = self.url_df[[KVK_KEY, URL_KEY, NAME_KEY]]
-        urls[COMPANY_KEY] = None
-        urls[BEST_MATCH_KEY] = False
-        urls[LEVENSHTEIN_KEY] = -1
+        urls.loc[:, COMPANY_KEY] = None
+        urls.loc[:, BEST_MATCH_KEY] = False
+        urls.loc[:, LEVENSHTEIN_KEY] = -1
         urls.set_index([KVK_KEY, URL_KEY], inplace=True)
 
         # add a company key to all url and then make a reference to all companies from the Company
@@ -499,38 +581,54 @@ class KvKUrlParser(object):
         """
 
         # create selection of data columns
-        urls = self.url_df[[KVK_KEY, URL_KEY, NAME_KEY]]
-        urls[COMPANY_KEY] = None
-        urls[BEST_MATCH_KEY] = False
-        urls[LEVENSHTEIN_KEY] = -1
-        urls.set_index([KVK_KEY, URL_KEY], inplace=True)
+        df = self.addresses_df[[KVK_KEY, ADDRESS_KEY, POSTAL_CODE_KEY, CITY_KEY]]
+        df.loc[:, COMPANY_KEY] = None
+        df.set_index([KVK_KEY, POSTAL_CODE_KEY], inplace=True)
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
-        logger.info("Adding companies to url table")
-        company_vs_kvk = Company.select().where(Company.kvk_nummer << self.url_df[KVK_KEY].tolist())
-        n_comp = len(company_vs_kvk)
+        logger.info("Adding companies to addresses table")
+        company_vs_kvk = (Company
+                          .select()
+                          .where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
+                         )
+        n_comp = company_vs_kvk.count()
+
+        if self.progressbar:
+            wdg = PB_WIDGETS
+            wdg[-1] = progress_bar_message(0, n_comp)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_comp, fd=sys.stdout).start()
+        else:
+            progress = None
+
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            urls.loc[[kvk_nr, ], COMPANY_KEY] = company
+            df.loc[[kvk_nr, ], COMPANY_KEY] = company
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
-        urls.reset_index(inplace=True)
+            if progress:
+                wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
+                progress.update()
+
+        df.reset_index(inplace=True)
+
+        if progress:
+            progress.finish()
 
         # the kvk key is already visible via the company_id
-        urls.drop([KVK_KEY], inplace=True, axis=1)
+        df.drop([KVK_KEY], inplace=True, axis=1)
 
         logger.info("Converting urls to dict. This make take some time...")
-        url_list = list(urls.to_dict(orient="index").values())
+        address_list = list(df.to_dict(orient="index").values())
 
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
-        n_batch = int(len(url_list) / MAX_SQL_CHUNK) + 1
+        n_batch = int(len(address_list) / MAX_SQL_CHUNK) + 1
         with database.atomic():
-            for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
+            for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
                 logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
-                WebSite.insert_many(batch).execute()
+                Address.insert_many(batch).execute()
 
     def __exit__(self, *args):
         """
