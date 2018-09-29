@@ -153,8 +153,8 @@ class KvKUrlParser(object):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
         if update_sql_tables:
-            self.read_database_urls()
             self.read_database_addresses()
+            self.read_database_urls()
 
             self.company_kvks_to_sql()
             self.urls_per_kvk_to_sql()
@@ -164,7 +164,7 @@ class KvKUrlParser(object):
 
         self.find_best_matching_url()
 
-    #@profile
+    # @profile
     def find_best_matching_url(self):
         """
         Per company, see which url matches the best the company name
@@ -259,7 +259,7 @@ class KvKUrlParser(object):
         if self.progressbar:
             progress.finish()
 
-    #@profile
+    # @profile
     def read_csv_input_file(self,
                             file_name: str,
                             usecols: list = None,
@@ -321,7 +321,7 @@ class KvKUrlParser(object):
 
         return df
 
-    #@profile
+    # @profile
     def read_database_urls(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -338,9 +338,9 @@ class KvKUrlParser(object):
                                                unique_key=URL_KEY)
 
         logger.info("Removing duplicated table entries")
-        self.remove_duplicated_entries()
+        self.remove_duplicated_url_entries()
 
-    #@profile
+    # @profile
     def clip_kvk_range(self, dataframe, unique_key, kvk_range):
         """
         Make a selection of kvk numbers
@@ -368,7 +368,7 @@ class KvKUrlParser(object):
 
         return df
 
-    #@profile
+    # @profile
     def read_database_addresses(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -386,10 +386,11 @@ class KvKUrlParser(object):
                                                      names=[KVK_KEY, NAME_KEY, ADDRESS_KEY,
                                                             POSTAL_CODE_KEY, CITY_KEY],
                                                      unique_key=POSTAL_CODE_KEY)
+        self.remove_duplicated_kvk_entries()
 
         logger.debug("Done")
 
-    #@profile
+    # @profile
     def look_up_last_entry(self, n_skip_entries):
         """
         Get the last entry in the data base
@@ -427,7 +428,7 @@ class KvKUrlParser(object):
 
         return n_skip_entries
 
-    #@profile
+    # @profile
     def remove_spurious_urls(self, dataframe):
         # first remove all the urls that occur more the 'n_count_threshold' times.
         urls = dataframe
@@ -451,8 +452,33 @@ class KvKUrlParser(object):
 
         return urls
 
-    #@profile
-    def remove_duplicated_entries(self):
+    def remove_duplicated_kvk_entries(self):
+        """
+        Remove all the kvk's that have been read before and are stored in the sql already
+        """
+
+        nr = self.addresses_df.index.size
+        logger.info("Removing duplicated kvk entries")
+        query = Company.select().where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
+
+        kvk_list = list()
+        for company in query:
+            kvk_list.append(company.kvk_nummer)
+
+        kvk_in_db = pd.DataFrame(data=kvk_list, columns=[KVK_KEY])
+        kvk_in_db.set_index(KVK_KEY)
+        kvk_to_remove = self.addresses_df.set_index(KVK_KEY)
+        kvk_to_remove = kvk_to_remove.reindex(kvk_in_db.index)
+        kvk_to_remove = kvk_to_remove[~kvk_to_remove[NAME_KEY].isnull()]
+        try:
+            self.addresses_df = self.addresses_df.set_index(KVK_KEY).drop(index=kvk_to_remove.index)
+        except KeyError:
+            logger.debug("Nothing to drop")
+        else:
+            self.addresses_df.reset_index(inplace=True)
+
+    # @profile
+    def remove_duplicated_url_entries(self):
         """
         Remove all the companies/url combination which already have been stored in
         the sql tables
@@ -514,14 +540,14 @@ class KvKUrlParser(object):
         nr = self.url_df.index.size
         logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
 
-    #@profile
+    # @profile
     def company_kvks_to_sql(self):
         """
         Write all the company kvk with name to the sql
         """
         logger.info("Start writing to mysql data base")
 
-        kvk = self.url_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
+        kvk = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
         record_list = list(kvk.to_dict(orient="index").values())
         logger.info("Start writing table urls")
 
@@ -532,7 +558,7 @@ class KvKUrlParser(object):
                 Company.insert_many(batch).execute()
         logger.debug("Done with company table")
 
-    #@profile
+    # @profile
     def urls_per_kvk_to_sql(self):
         """
         Write all URL per kvk to the WebSite Table in sql
@@ -548,15 +574,22 @@ class KvKUrlParser(object):
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         logger.info("Adding companies to url table")
-        company_vs_kvk = Company.select().where(Company.kvk_nummer << self.url_df[KVK_KEY].tolist())
+        company_vs_kvk = Company.select().where(
+            Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
         n_comp = len(company_vs_kvk)
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            urls.loc[[kvk_nr, ], COMPANY_KEY] = company
+            try:
+                urls.loc[[kvk_nr, ], COMPANY_KEY] = company
+            except KeyError:
+                logger.debug("Could not add kvk {} to url list".format(kvk_nr))
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
         urls.reset_index(inplace=True)
+
+        # in case there is a None at a row, remove it (as there is not company found)
+        urls.dropna(axis=0, inplace=True)
 
         # the kvk key is already visible via the company_id
         urls.drop([KVK_KEY], inplace=True, axis=1)
@@ -574,7 +607,7 @@ class KvKUrlParser(object):
 
         logger.debug("Done")
 
-    #@profile
+    # @profile
     def addresses_per_kvk_to_sql(self):
         """
         Write all address per kvk to the Addresses Table in sql
@@ -603,7 +636,7 @@ class KvKUrlParser(object):
 
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            df.loc[[kvk_nr, ], COMPANY_KEY] = company
+            df.loc[[kvk_nr, ], COMPANY_KEY] =  company.kvk_nummer # company
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
