@@ -17,7 +17,7 @@ except ModuleNotFoundError:
 
 try:
     # if profile exist, it means we are running kernprof to time all the lines of the functions
-    # decorated with @profile
+    # decorated with #@profile
     # noinspection PyUnboundLocalVariable
     isinstance(profile, object)
 except NameError:
@@ -164,7 +164,7 @@ class KvKUrlParser(object):
 
         self.find_best_matching_url()
 
-    @profile
+    #@profile
     def find_best_matching_url(self):
         """
         Per company, see which url matches the best the company name
@@ -259,7 +259,7 @@ class KvKUrlParser(object):
         if self.progressbar:
             progress.finish()
 
-    @profile
+    #@profile
     def read_csv_input_file(self,
                             file_name: str,
                             usecols: list = None,
@@ -321,7 +321,7 @@ class KvKUrlParser(object):
 
         return df
 
-    @profile
+    #@profile
     def read_database_urls(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -340,7 +340,7 @@ class KvKUrlParser(object):
         logger.info("Removing duplicated table entries")
         self.remove_duplicated_entries()
 
-    @profile
+    #@profile
     def clip_kvk_range(self, dataframe, unique_key, kvk_range):
         """
         Make a selection of kvk numbers
@@ -368,7 +368,7 @@ class KvKUrlParser(object):
 
         return df
 
-    @profile
+    #@profile
     def read_database_addresses(self):
         """
         Read the URL data from the csv file or hd5 file
@@ -389,7 +389,7 @@ class KvKUrlParser(object):
 
         logger.debug("Done")
 
-    @profile
+    #@profile
     def look_up_last_entry(self, n_skip_entries):
         """
         Get the last entry in the data base
@@ -427,7 +427,7 @@ class KvKUrlParser(object):
 
         return n_skip_entries
 
-    @profile
+    #@profile
     def remove_spurious_urls(self, dataframe):
         # first remove all the urls that occur more the 'n_count_threshold' times.
         urls = dataframe
@@ -451,7 +451,7 @@ class KvKUrlParser(object):
 
         return urls
 
-    @profile
+    #@profile
     def remove_duplicated_entries(self):
         """
         Remove all the companies/url combination which already have been stored in
@@ -514,7 +514,7 @@ class KvKUrlParser(object):
         nr = self.url_df.index.size
         logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
 
-    @profile
+    #@profile
     def company_kvks_to_sql(self):
         """
         Write all the company kvk with name to the sql
@@ -532,7 +532,7 @@ class KvKUrlParser(object):
                 Company.insert_many(batch).execute()
         logger.debug("Done with company table")
 
-    @profile
+    #@profile
     def urls_per_kvk_to_sql(self):
         """
         Write all URL per kvk to the WebSite Table in sql
@@ -574,7 +574,7 @@ class KvKUrlParser(object):
 
         logger.debug("Done")
 
-    @profile
+    #@profile
     def addresses_per_kvk_to_sql(self):
         """
         Write all address per kvk to the Addresses Table in sql
