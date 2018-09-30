@@ -23,8 +23,8 @@ process_settings:
   n_url_count_threshold: 10000
   kvk_range_read:
     start: 1000040
-    stop: 1003909
+    stop:  1001000
   kvk_range_process:
     start:  1000040
-    stop:  1000040
+    stop:  1003040
   maximum_entries:

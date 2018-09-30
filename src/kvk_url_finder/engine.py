@@ -155,6 +155,7 @@ class KvKUrlParser(object):
         if update_sql_tables:
             self.read_database_addresses()
             self.read_database_urls()
+            self.merge_data_base_kvks()
 
             self.company_kvks_to_sql()
             self.urls_per_kvk_to_sql()
@@ -163,6 +164,47 @@ class KvKUrlParser(object):
             logger.debug("Skip updating the sql tables")
 
         self.find_best_matching_url()
+
+    def merge_data_base_kvks(self):
+        """
+        Merge the data base kvks.
+
+        The kvks in the url data base should be a subset of the url in the address data base
+        """
+
+        # create a data frame with all the unique kvk number/name combi
+        df = self.url_df[[KVK_KEY, NAME_KEY]]
+        df.set_index(KVK_KEY, inplace=True, drop=True)
+        df = df[~df.index.duplicated()]
+
+        # also create a data frame from the unique address kvkś
+        name_key2 = NAME_KEY + "2"
+        df2 = self.addresses_df[[KVK_KEY, NAME_KEY]]
+        df2 = df2.rename(columns={NAME_KEY: name_key2})
+        df2.set_index(KVK_KEY, inplace=True, drop=True)
+        df2 = df2[~df2.index.duplicated()]
+
+        # merge them on the outer, so we can create a combined kvk list
+        df3 = pd.concat([df, df2], axis=1, join="outer")
+
+        # replace al the empty field in NAME_KEY with tih
+        df3[NAME_KEY].where(~df3[NAME_KEY].isnull(), df3[name_key2], inplace=True)
+
+        df3.drop(name_key2, inplace=True, axis=1)
+
+        difference = df3.index.difference(df2.index)
+        new_kvk_name = df3.loc[difference, :]
+
+        n_before = self.addresses_df.index.size
+        self.addresses_df.set_index(KVK_KEY, inplace=True)
+
+        # append the new address to the address data base
+        self.addresses_df = pd.concat([self.addresses_df, new_kvk_name], axis=0, sort=True)
+        self.addresses_df.sort_index(inplace=True)
+        self.addresses_df.reset_index(inplace=True)
+
+        n_after = self.addresses_df.index.size
+        logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
 
     # @profile
     def find_best_matching_url(self):
@@ -319,6 +361,13 @@ class KvKUrlParser(object):
         else:
             raise AssertionError("Can only read h5 or csv files")
 
+        try:
+            df.drop("index", axis=0, inplace=True)
+        except KeyError:
+            logger.debug("No index to drop")
+        else:
+            logger.debug("Dropped index")
+
         return df
 
     # @profile
@@ -351,6 +400,7 @@ class KvKUrlParser(object):
 
         start = kvk_range.start
         stop = kvk_range.stop
+        n_before = dataframe.index.size
 
         if start is not None or stop is not None:
             logger.info("Selecting kvk number from {} to {}".format(start, stop))
@@ -365,6 +415,15 @@ class KvKUrlParser(object):
             df.reset_index(inplace=True)
         else:
             df = dataframe
+
+        n_after = df.index.size
+        logger.debug("Kept {} out of {} records".format(n_after, n_before))
+
+        # check if we have  any valid entires in the range
+        if n_after == 0:
+            logger.info(dataframe.info())
+            raise ValueError("No records found in kvk range {} {} (kvk range: {} -- {})".format(
+                start, stop, dataframe[KVK_KEY].min(), dataframe[KVK_KEY].max()))
 
         return df
 
@@ -459,13 +518,15 @@ class KvKUrlParser(object):
 
         nr = self.addresses_df.index.size
         logger.info("Removing duplicated kvk entries")
-        query = Company.select().where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
-
+        query = Company.select()
         kvk_list = list()
         for company in query:
-            kvk_list.append(company.kvk_nummer)
+            kvk_nummer = int(company.kvk_nummer)
+            if kvk_nummer in self.addresses_df[KVK_KEY]:
+                kvk_list.append(company.kvk_nummer)
 
         kvk_in_db = pd.DataFrame(data=kvk_list, columns=[KVK_KEY])
+
         kvk_in_db.set_index(KVK_KEY)
         kvk_to_remove = self.addresses_df.set_index(KVK_KEY)
         kvk_to_remove = kvk_to_remove.reindex(kvk_in_db.index)
@@ -570,6 +631,7 @@ class KvKUrlParser(object):
         urls.loc[:, BEST_MATCH_KEY] = False
         urls.loc[:, LEVENSHTEIN_KEY] = -1
         urls.set_index([KVK_KEY, URL_KEY], inplace=True)
+        idx = pd.IndexSlice
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
@@ -577,12 +639,22 @@ class KvKUrlParser(object):
         company_vs_kvk = Company.select().where(
             Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
         n_comp = len(company_vs_kvk)
+        wdg = PB_WIDGETS
+        if self.progressbar:
+            wdg[-1] = progress_bar_message(0, n_comp)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_comp, fd=sys.stdout).start()
+        else:
+            progress = None
+
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
             try:
-                urls.loc[[kvk_nr, ], COMPANY_KEY] = company
+                urls.loc[idx[kvk_nr, ], COMPANY_KEY] = company
             except KeyError:
                 logger.debug("Could not add kvk {} to url list".format(kvk_nr))
+            if progress:
+                wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
+                progress.update()
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
@@ -614,8 +686,9 @@ class KvKUrlParser(object):
         """
 
         # create selection of data columns
-        df = self.addresses_df[[KVK_KEY, ADDRESS_KEY, POSTAL_CODE_KEY, CITY_KEY]]
-        df.loc[:, COMPANY_KEY] = None
+        self.addresses_df[COMPANY_KEY] = None
+        columns = [KVK_KEY, ADDRESS_KEY, POSTAL_CODE_KEY, CITY_KEY, COMPANY_KEY]
+        df = self.addresses_df[columns].copy()
         df.set_index([KVK_KEY, POSTAL_CODE_KEY], inplace=True)
 
         # add a company key to all url and then make a reference to all companies from the Company
@@ -625,8 +698,9 @@ class KvKUrlParser(object):
                           .select()
                           .where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
                          )
+        idx = pd.IndexSlice
         n_comp = company_vs_kvk.count()
-
+        wdg = None
         if self.progressbar:
             wdg = PB_WIDGETS
             wdg[-1] = progress_bar_message(0, n_comp)
@@ -636,13 +710,16 @@ class KvKUrlParser(object):
 
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            df.loc[[kvk_nr, ], COMPANY_KEY] =  company.kvk_nummer # company
+            df.loc[idx[kvk_nr, ], COMPANY_KEY] = company.kvk_nummer # company
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
             if progress:
                 wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
                 progress.update()
+
+        if progress:
+            progress.finish()
 
         df.reset_index(inplace=True)
 
