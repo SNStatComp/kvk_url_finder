@@ -280,15 +280,16 @@ class KvKUrlParser(object):
             if self.progressbar:
                 wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
 
-            logger.debug("Best matching url: {}".format(web_match.url))
-            web_match.best_match = True
+            if web_match:
+                logger.debug("Best matching url: {}".format(web_match.url))
+                web_match.best_match = True
 
-            # update all the properties
-            for web in company.websites:
-                web.save()
-            company.url = web_match.url
-            company.processed = True
-            company.save()
+                # update all the properties
+                for web in company.websites:
+                    web.save()
+                company.url = web_match.url
+                company.processed = True
+                company.save()
 
             if self.maximum_entries is not None and cnt == self.maximum_entries:
                 logger.info("Maximum entries reached")
