@@ -1,11 +1,17 @@
 general:
   working_directory:
+    # depending if we are working under linux or windows you can set the base working directory
     Linux: /home/eelco/Projecs/url_research
     Windows: /P/Projects/something_els
+  cache_directory: cache
+  output_directory: .
 databases:
   addresses:
+    # the initial data base with  the postal codes, addresses + kvk numberw
+    # can contain multiple addresses for 1 kvk number
     file_name: final_kvkregister.csv
     keys:
+      # the fields of the dataframe with the names below are refering to the corresponding column
       id: 0
       kvk_nummer: 1
       naam: 2
@@ -13,6 +19,7 @@ databases:
       postcode: 4
       plaats: 5
   kvk_urls:
+    # the csv file with urls per kvk number. One kvk number kan have multiple urls
     file_name: URL_kvk.csv
     keys:
       id: 0
@@ -22,9 +29,14 @@ databases:
 process_settings:
   n_url_count_threshold: 10000
   kvk_range_read:
+    # give the first and last kvk number you want to  read from the input csv file to turn into
+    # the sql file. If not given, all the number as read
     start: 1000040
-    stop:  1100000
+    stop:  1300000
   kvk_range_process:
-    start:  1000040
+    # once a kvk range has been written to sql, process the kvk numbers by checking the url
+    # the range to process can be limitted here. If empty, all the kvk nunber are processed
+    start:  1000065
     stop:  1003040
-  maximum_entries:
+  # max entries can be used to stop processing after a fixed number of kvk's
+  maximum_entries: 1

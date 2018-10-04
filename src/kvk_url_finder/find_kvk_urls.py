@@ -35,7 +35,7 @@ import sys
 import pandas as pd
 import yaml
 
-from cbs_utils.misc import (create_logger, merge_loggers, Chdir)
+from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
 
 try:
@@ -174,6 +174,8 @@ def main(args_in):
 
     general = settings["general"]
     working_directory = general["working_directory"][platform.system()]
+    cache_directory = general["cache_directory"]
+    output_directory = general["output_directory"]
 
     databases = settings["databases"]
     address_db = databases['addresses']
@@ -189,8 +191,17 @@ def main(args_in):
     kvk_range_process = process_settings["kvk_range_process"]
     maximum_entries = process_settings["maximum_entries"]
 
+    # create the KvKUrl object, but first move to the workding directory, so everything we do
+    # is with respect to this directory
     with Chdir(working_directory) as _:
+        # make the directories in case they do not exist yet
+        make_directory(cache_directory)
+        make_directory(output_directory)
+
+        # create the object and do you thing
         KvKUrlParser(
+            cache_directory=cache_directory,
+            output_directory=output_directory,
             address_input_file_name=address_input_file_name,
             url_input_file_name=kvk_url_file_name,
             address_keys=address_keys,

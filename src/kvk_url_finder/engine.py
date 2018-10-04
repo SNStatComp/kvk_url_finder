@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from pathlib import Path
 
 import Levenshtein
 import pandas as pd
@@ -102,6 +103,8 @@ class KvKUrlParser(object):
     """
 
     def __init__(self,
+                 cache_directory=".",
+                 output_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
                  address_keys=None,
@@ -121,6 +124,12 @@ class KvKUrlParser(object):
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
+
+        self.output_directory = Path(output_directory)
+        self.cache_directory = Path(cache_directory)
+
+        # create the file path using the new pathlib library
+        self.data_base = self.output_directory / database_name
 
         self.force_process = force_process
 
@@ -333,10 +342,12 @@ class KvKUrlParser(object):
 
         """
 
+        # split the extension two time so we can also deal with a double extension bla.csv.zip
         file_base, file_ext = os.path.splitext(file_name)
         file_base2, file_ext2 = os.path.splitext(file_base)
 
-        cache_file = file_base2 + ".pkl"
+        # build the cache file including the cache_directory
+        cache_file = self.cache_directory / (file_base2 + ".pkl")
 
         if os.path.exists(cache_file):
             # add the type so we can recognise it is a data frame
@@ -523,13 +534,14 @@ class KvKUrlParser(object):
         kvk_list = list()
         for company in query:
             kvk_nummer = int(company.kvk_nummer)
-            if kvk_nummer in self.addresses_df[KVK_KEY]:
+            if kvk_nummer in self.addresses_df[KVK_KEY].values:
                 kvk_list.append(company.kvk_nummer)
 
         kvk_in_db = pd.DataFrame(data=kvk_list, columns=[KVK_KEY])
 
-        kvk_in_db.set_index(KVK_KEY)
+        kvk_in_db.set_index(KVK_KEY, inplace=True)
         kvk_to_remove = self.addresses_df.set_index(KVK_KEY)
+        kvk_to_remove = kvk_to_remove[~kvk_to_remove.index.duplicated()]
         kvk_to_remove = kvk_to_remove.reindex(kvk_in_db.index)
         kvk_to_remove = kvk_to_remove[~kvk_to_remove[NAME_KEY].isnull()]
         try:
@@ -608,6 +620,9 @@ class KvKUrlParser(object):
         Write all the company kvk with name to the sql
         """
         logger.info("Start writing to mysql data base")
+        if self.addresses_df.index.size == 0:
+            logger.debug("Empty addressses data frame. Nothing to write")
+            return
 
         kvk = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
         record_list = list(kvk.to_dict(orient="index").values())
@@ -625,6 +640,11 @@ class KvKUrlParser(object):
         """
         Write all URL per kvk to the WebSite Table in sql
         """
+        logger.debug("Start writing the url to sql")
+
+        if self.url_df.index.size == 0:
+            logger.debug("Empty url data  from. Nothing to add to the sql database")
+            return
 
         # create selection of data columns
         urls = self.url_df[[KVK_KEY, URL_KEY, NAME_KEY]]
@@ -685,6 +705,11 @@ class KvKUrlParser(object):
         """
         Write all address per kvk to the Addresses Table in sql
         """
+
+        logger.info("Start writing the addressees to the sql Addresses table")
+        if self.addresses_df.index.size:
+            logger.debug("Empty address data frame. Nothing to write")
+            return
 
         # create selection of data columns
         self.addresses_df[COMPANY_KEY] = None
