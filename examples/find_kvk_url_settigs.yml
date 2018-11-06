@@ -1,7 +1,7 @@
 general:
   working_directory:
     # depending if we are working under linux or windows you can set the base working directory
-    Linux: /home/eelco/Projecs/url_research
+    Linux: /home/eelco/Projects/url_research
     Windows: /P/Projects/something_els
   cache_directory: cache
   output_directory: .

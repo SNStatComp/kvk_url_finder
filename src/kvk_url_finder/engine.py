@@ -233,10 +233,10 @@ class KvKUrlParser(object):
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
-                         .prefetch(WebSite)
+                         .prefetch(WebSite, Address)
                          )
         else:
-            query = (Company.select().prefetch(WebSite))
+            query = (Company.select().prefetch(WebSite, Address))
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
@@ -254,6 +254,15 @@ class KvKUrlParser(object):
                                                                           start, stop))
         for cnt, company in enumerate(query):
 
+            # first check if we do not have to stop
+            if self.maximum_entries is not None and cnt == self.maximum_entries:
+                logger.info("Maximum entries reached")
+                break
+            if os.path.exists(STOP_FILE):
+                logger.info("Stop file found. Quit processing")
+                os.remove(STOP_FILE)
+                break
+
             if self.progressbar:
                 progress.update(cnt)
                 sys.stdout.flush()
@@ -265,6 +274,11 @@ class KvKUrlParser(object):
                 logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
                 continue
 
+            postcodes = list()
+            for address in company.address:
+                logger.debug("Found postcode {}".format(address.postcode))
+                postcodes.append(address.postcode)
+
             # remove space and put to lower for better comparison with the url
             naam_small = re.sub("\s+", "", naam.lower())
             logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
@@ -273,16 +287,14 @@ class KvKUrlParser(object):
             web_match = None
             for web in company.websites:
                 ext = tldextract.extract(web.url)
-
                 domain = ext.domain
-
                 distance = Levenshtein.distance(domain, naam_small)
-
                 web.levenshtein = distance
 
                 if min_distance is None or distance < min_distance:
                     min_distance = distance
                     web_match = web
+
 
                 logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
 
@@ -300,13 +312,6 @@ class KvKUrlParser(object):
                 company.processed = True
                 company.save()
 
-            if self.maximum_entries is not None and cnt == self.maximum_entries:
-                logger.info("Maximum entries reached")
-                break
-            if os.path.exists(STOP_FILE):
-                logger.info("Stop file found. Quit processing")
-                os.remove(STOP_FILE)
-                break
 
         if self.progressbar:
             progress.finish()
