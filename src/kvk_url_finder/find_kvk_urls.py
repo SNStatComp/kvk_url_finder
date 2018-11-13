@@ -14,7 +14,7 @@ kernprof -l find_kvk_urls.py URL_kvk.csv.bz2  --max 10000
 
 This generates a file find_kvk_urls.py.prof
 
-Altenatively you can use the profiling tool:
+Alternatively you can use the profiling tool:
 
 
 profiling --dump=kvk.prof find_kvk_urls.py -- URL_kvk.csv.bs2 --max 100 --extend
@@ -185,6 +185,14 @@ def main(args_in):
     kvk_url_file_name = kvk_urls_db["file_name"]
     kvk_url_keys = kvk_urls_db["keys"]
 
+    selection_db = databases.get("kvk_selection_data_base")
+    if selection_db:
+        kvk_selection_file_name = selection_db["file_name"]
+        kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
+    else:
+        kvk_selection_file_name = None
+        kvk_selection_kvk_nummer = None
+
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
     kvk_range_read = process_settings["kvk_range_read"]
@@ -204,6 +212,8 @@ def main(args_in):
             output_directory=output_directory,
             address_input_file_name=address_input_file_name,
             url_input_file_name=kvk_url_file_name,
+            kvk_selection_input_file_name=kvk_selection_file_name,
+            kvk_selection_kvk_key=kvk_selection_kvk_nummer,
             address_keys=address_keys,
             kvk_url_keys=kvk_url_keys,
             reset_database=args.reset_database,

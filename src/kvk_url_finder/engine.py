@@ -54,12 +54,12 @@ def progress_bar_message(cnt, total, kvk_nr=None, naam=None):
     if kvk_nr is not None:
         message = "{:8d} - ".format(kvk_nr)
     else:
-        message = "{:8s}   ".format(" "*8)
+        message = "{:8s}   ".format(" " * 8)
 
     if naam is not None:
         naam_str = "{:20s}".format(naam)
     else:
-        naam_str = "{:20s}".format(" "*50)
+        naam_str = "{:20s}".format(" " * 50)
 
     message += naam_str[:20]
 
@@ -107,6 +107,8 @@ class KvKUrlParser(object):
                  output_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
+                 kvk_selection_input_file_name=None,
+                 kvk_selection_kvk_key=None,
                  address_keys=None,
                  kvk_url_keys=None,
                  reset_database=False,
@@ -124,6 +126,10 @@ class KvKUrlParser(object):
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
+
+        self.kvk_selection_input_file_name = kvk_selection_input_file_name
+        self.kvk_selection_kvk_key = kvk_selection_kvk_key
+        self.kvk_selection = None
 
         self.output_directory = Path(output_directory)
         self.cache_directory = Path(cache_directory)
@@ -162,6 +168,8 @@ class KvKUrlParser(object):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
         if update_sql_tables:
+            if self.kvk_selection_input_file_name:
+                self.read_database_selection()
             self.read_database_addresses()
             self.read_database_urls()
             self.merge_data_base_kvks()
@@ -173,6 +181,17 @@ class KvKUrlParser(object):
             logger.debug("Skip updating the sql tables")
 
         self.find_best_matching_url()
+
+    def read_database_selection(self):
+        """
+        Read the external data base that contains a selection of kvk number we want to process
+        """
+        logger.info("Reading selection data base")
+        df = pd.read_excel(self.kvk_selection_input_file_name)
+
+        df.drop_duplicates([self.kvk_selection_kvk_key], inplace=True)
+
+        self.kvk_selection = df[self.kvk_selection_kvk_key].dropna().astype(int)
 
     def merge_data_base_kvks(self):
         """
@@ -226,22 +245,28 @@ class KvKUrlParser(object):
 
         if start is not None or stop is not None:
             if start is None:
+                logger.debug("Make query from start until stop {}".format(stop))
                 query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite))
             elif stop is None:
+                logger.debug("Make query from start {} until end".format(start))
                 query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite))
             else:
+                logger.debug("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
                          .prefetch(WebSite, Address)
                          )
         else:
+            logger.debug("Make query without selecting in the kvk range")
             query = (Company.select().prefetch(WebSite, Address))
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
+            logger.debug("Maximum queries imposed as {}".format(maximum_queries))
         else:
             maximum_queries = query.count()
+            logger.debug("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         if self.progressbar:
             wdg = PB_WIDGETS
@@ -295,8 +320,9 @@ class KvKUrlParser(object):
                     min_distance = distance
                     web_match = web
 
-
                 logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
+
+                self.scrape_url(web)
 
             if self.progressbar:
                 wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
@@ -312,9 +338,19 @@ class KvKUrlParser(object):
                 company.processed = True
                 company.save()
 
-
         if self.progressbar:
             progress.finish()
+
+    def scrape_url(self, url):
+        """
+        Scrape the contents of the url
+
+        Parameters
+        ----------
+        url: str
+            url of the website to scrape
+        """
+        logger.info("Start scraping")
 
     # @profile
     def read_csv_input_file(self,
@@ -419,10 +455,14 @@ class KvKUrlParser(object):
         stop = kvk_range.stop
         n_before = dataframe.index.size
 
-        if start is not None or stop is not None:
+        if start is not None or stop is not None or self.kvk_selection_kvk_key is not None:
             logger.info("Selecting kvk number from {} to {}".format(start, stop))
             idx = pd.IndexSlice
             df = dataframe.set_index([KVK_KEY, unique_key])
+
+            if self.kvk_selection_kvk_key is not None:
+                df = df.loc[idx[self.kvk_selection, :], :]
+
             if start is None:
                 df = df.loc[idx[:stop, :], :]
             elif stop is None:
@@ -537,10 +577,14 @@ class KvKUrlParser(object):
         logger.info("Removing duplicated kvk entries")
         query = Company.select()
         kvk_list = list()
-        for company in query:
-            kvk_nummer = int(company.kvk_nummer)
-            if kvk_nummer in self.addresses_df[KVK_KEY].values:
-                kvk_list.append(company.kvk_nummer)
+        try:
+            for company in query:
+                kvk_nummer = int(company.kvk_nummer)
+                if kvk_nummer in self.addresses_df[KVK_KEY].values:
+                    kvk_list.append(company.kvk_nummer)
+        except pw.OperationalError:
+            # nothing to remove
+            return
 
         kvk_in_db = pd.DataFrame(data=kvk_list, columns=[KVK_KEY])
 
@@ -675,7 +719,7 @@ class KvKUrlParser(object):
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
             try:
-                urls.loc[idx[kvk_nr, ], COMPANY_KEY] = company
+                urls.loc[idx[kvk_nr,], COMPANY_KEY] = company
             except KeyError:
                 logger.debug("Could not add kvk {} to url list".format(kvk_nr))
             if progress:
@@ -712,7 +756,7 @@ class KvKUrlParser(object):
         """
 
         logger.info("Start writing the addressees to the sql Addresses table")
-        if self.addresses_df.index.size:
+        if self.addresses_df.index.size == 0:
             logger.debug("Empty address data frame. Nothing to write")
             return
 
@@ -728,7 +772,7 @@ class KvKUrlParser(object):
         company_vs_kvk = (Company
                           .select()
                           .where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
-                         )
+                          )
         idx = pd.IndexSlice
         n_comp = company_vs_kvk.count()
         wdg = None
@@ -741,7 +785,7 @@ class KvKUrlParser(object):
 
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            df.loc[idx[kvk_nr, ], COMPANY_KEY] = company.kvk_nummer # company
+            df.loc[idx[kvk_nr,], COMPANY_KEY] = company.kvk_nummer  # company
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
