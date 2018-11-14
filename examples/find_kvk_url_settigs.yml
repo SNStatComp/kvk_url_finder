@@ -44,7 +44,7 @@ process_settings:
   kvk_range_process:
     # once a kvk range has been written to sql, process the kvk numbers by checking the url
     # the range to process can be limitted here. If empty, all the kvk nunber are processed
-    start: 1000065
-    stop: 1003040
+    start: 1066434
+    stop: 1134247
   # max entries can be used to stop processing after a fixed number of kvk's
   maximum_entries: 1
