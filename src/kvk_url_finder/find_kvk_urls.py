@@ -85,6 +85,8 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--force_process", action="store_true",
                         help="Force to process company table, even if they have been marked "
                              "as processes")
+    parser.add_argument("--merge_database", action="store_true",
+                        help="Merge the current sql data base marked to the selection data base")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -189,6 +191,7 @@ def main(args_in):
     if selection_db:
         kvk_selection_file_name = selection_db["file_name"]
         kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
+        kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
     else:
         kvk_selection_file_name = None
         kvk_selection_kvk_nummer = None
@@ -214,6 +217,7 @@ def main(args_in):
             url_input_file_name=kvk_url_file_name,
             kvk_selection_input_file_name=kvk_selection_file_name,
             kvk_selection_kvk_key=kvk_selection_kvk_nummer,
+            kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
             address_keys=address_keys,
             kvk_url_keys=kvk_url_keys,
             reset_database=args.reset_database,
@@ -224,7 +228,8 @@ def main(args_in):
             kvk_range_read=kvk_range_read,
             kvk_range_process=kvk_range_process,
             maximum_entries=maximum_entries,
-            force_process=args.force_process
+            force_process=args.force_process,
+            merge_database=args.merge_database
         )
 
 

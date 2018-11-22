@@ -30,6 +30,7 @@ databases:
     # the abr database which we use to make a selection of kvk numbers to read and process
     file_name: Cbspersoon_Regio47url.xlsx
     kvk_nummer: NhrVestKvkNummer
+    kvk_sub_nummer: CpVestigingsNummer
     naam: CpHandelsnaam
     straat: CpVestStraat
     postcode: CPVestPostcode6
@@ -44,7 +45,7 @@ process_settings:
   kvk_range_process:
     # once a kvk range has been written to sql, process the kvk numbers by checking the url
     # the range to process can be limitted here. If empty, all the kvk nunber are processed
-    start: 1066434
-    stop: 1134247
+    start:  8032856
+    stop: # 34074187
   # max entries can be used to stop processing after a fixed number of kvk's
   maximum_entries: 1

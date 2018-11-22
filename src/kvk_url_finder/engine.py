@@ -3,6 +3,8 @@ import re
 import sys
 from pathlib import Path
 
+import sqlite3
+
 import Levenshtein
 import pandas as pd
 import progressbar as pb
@@ -109,6 +111,7 @@ class KvKUrlParser(object):
                  url_input_file_name=None,
                  kvk_selection_input_file_name=None,
                  kvk_selection_kvk_key=None,
+                 kvk_selection_kvk_sub_key=None,
                  address_keys=None,
                  kvk_url_keys=None,
                  reset_database=False,
@@ -122,6 +125,7 @@ class KvKUrlParser(object):
                  update_sql_tables=False,
                  kvk_range_read=None,
                  kvk_range_process=None,
+                 merge_database=False
                  ):
 
         self.address_keys = address_keys
@@ -129,6 +133,7 @@ class KvKUrlParser(object):
 
         self.kvk_selection_input_file_name = kvk_selection_input_file_name
         self.kvk_selection_kvk_key = kvk_selection_kvk_key
+        self.kvk_selection_kvk_sub_key = kvk_selection_kvk_sub_key
         self.kvk_selection = None
 
         self.output_directory = Path(output_directory)
@@ -159,8 +164,9 @@ class KvKUrlParser(object):
         self.addresses_df: pd.DataFrame = None
 
         logger.info("Connecting to database {}".format(database_name))
+        self.database_name = database_name
         database.init(database_name)
-        database.connect()
+        self.connection = database.connect()
         database.create_tables([Company, Address, WebSite])
         if self.reset_database:
             database.drop_tables([Company, Address, WebSite])
@@ -180,7 +186,50 @@ class KvKUrlParser(object):
         else:
             logger.debug("Skip updating the sql tables")
 
-        self.find_best_matching_url()
+        if not merge_database:
+            logger.info("Matching the best url's")
+            self.find_best_matching_url()
+        else:
+            logger.info("Merge database")
+            self.merge_external_database()
+
+    def merge_external_database(self):
+        """
+        Merge the external database
+
+        Returns
+        -------
+
+        """
+        logger.debug("Start merging..")
+
+        infile = Path(self.kvk_selection_input_file_name)
+        outfile_ext = infile.suffix
+        outfile_base = infile.resolve().stem
+
+        outfile = Path(outfile_base + "_merged" + outfile_ext)
+
+        query = Company.select()
+        df_sql = pd.DataFrame(list(query.dicts()))
+        df_sql.set_index(KVK_KEY, inplace=True)
+
+        df = pd.read_excel(self.kvk_selection_input_file_name)
+
+        df.rename(columns={self.kvk_selection_kvk_key: KVK_KEY}, inplace=True)
+
+        df[KVK_KEY] = df[KVK_KEY].fillna(0).astype(int)
+
+        df.set_index([KVK_KEY, self.kvk_selection_kvk_sub_key], inplace=True)
+
+        result = df.merge(df_sql, left_on=KVK_KEY, right_on=KVK_KEY)
+
+        result.reset_index(inplace=True)
+        result.rename(columns={KVK_KEY: self.kvk_selection_kvk_key}, inplace=True)
+
+        logger.info("Writing merged data base to {}".format(outfile.name))
+        result.to_excel(outfile.name)
+
+        logger.debug("Merge them")
 
     def read_database_selection(self):
         """
@@ -309,27 +358,54 @@ class KvKUrlParser(object):
             logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
 
             min_distance = None
-            web_match = None
-            for web in company.websites:
+            web_df = pd.DataFrame(index=range(len(company.websites)),
+                                  columns=["url", "distance", "subdomain", "domain", "suffix"])
+            for cnt, web in enumerate(company.websites):
                 ext = tldextract.extract(web.url)
                 domain = ext.domain
                 distance = Levenshtein.distance(domain, naam_small)
                 web.levenshtein = distance
 
+                web_df.loc[cnt, :] = [web.url, distance, ext.subdomain, ext.domain, ext.suffix]
+
                 if min_distance is None or distance < min_distance:
                     min_distance = distance
-                    web_match = web
 
                 logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
 
-                self.scrape_url(web)
+                # self.scrape_url(web)
 
-            if self.progressbar:
-                wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
+            # only select the close matches
+            if min_distance:
+                web_df = web_df[web_df["distance"] - min_distance == 0]
 
-            if web_match:
-                logger.debug("Best matching url: {}".format(web_match.url))
+                web_df["ranking"] = 0
+
+                def rate_it(column_name, ranking, value="www", score=1):
+                    return ranking + score if column_name == value else ranking
+
+                # only select the www
+                for subdomain, score in [("www", 2), ("https", 1), ("http", 1)]:
+                    web_df["ranking"] = web_df.apply(
+                        lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
+                        axis=1)
+                for suffix, score in [("nl", 2), ("com", 1), ("org", 1), ("eu", 1)]:
+                    web_df["ranking"] = web_df.apply(
+                        lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
+
+                web_df.sort_values(["ranking", "distance"], ascending=[False, True], inplace=True)
+
+                web_df_best = web_df.head(1)
+
+                if self.progressbar:
+                    wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
+
+                logger.debug("Best matching url: {}".format(web_df.head(1)))
+                web_match_index = web_df_best.index.values[0]
+                web_match = company.websites[web_match_index]
                 web_match.best_match = True
+                web_match.url = web_df_best["url"].values[0]
+                logger.debug("Best matching url: {}".format(web_match.url))
 
                 # update all the properties
                 for web in company.websites:
@@ -350,7 +426,7 @@ class KvKUrlParser(object):
         url: str
             url of the website to scrape
         """
-        logger.info("Start scraping")
+        logger.debug("Start scraping")
 
     # @profile
     def read_csv_input_file(self,
@@ -446,6 +522,7 @@ class KvKUrlParser(object):
     def clip_kvk_range(self, dataframe, unique_key, kvk_range):
         """
         Make a selection of kvk numbers
+
         Returns
         -------
 
