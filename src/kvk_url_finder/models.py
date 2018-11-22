@@ -45,4 +45,5 @@ class WebSite(BaseModel):
     getest = pw.BooleanField(default=False)
     levenshtein = pw.IntegerField(default=-1)
     best_match = pw.BooleanField(default=True)
+    ranking = pw.IntegerField(default=-1)
     bestaat = pw.BooleanField(default=False)

@@ -69,6 +69,117 @@ def progress_bar_message(cnt, total, kvk_nr=None, naam=None):
     return msg
 
 
+def clean_name(naam):
+    """
+    Clean the name of a company to get a better match with the url
+
+    Parameters
+    ----------
+    naam: str
+        Original name of the company
+
+    Returns
+    -------
+    str:
+        Clearn name
+    """
+    naam_small = naam.lower()
+    naam_small = re.sub("B\.V\.", "", naam_small)
+    naam_small = re.sub("N\.V\.", "", naam_small)
+    naam_small = re.sub("C\.V\.", "", naam_small)
+    naam_small = re.sub("\(.*\).*$", "", naam_small)
+    naam_small = re.sub("[&\"]", "", naam_small)
+    naam_small = re.sub("\s+", "", naam_small)
+
+    return naam_small
+
+
+def collect_web_sites(company, url_name):
+    """
+    Collect all the web sites of a company and store it in a data frame
+
+    Parameters
+    ----------
+    company: table of the companay
+
+    Returns
+    -------
+    DataFrame
+        Dataframes with the url and som other info
+
+    """
+    min_distance = None
+    web_df = pd.DataFrame(index=range(len(company.websites)),
+                          columns=["url", "distance", "subdomain", "domain", "suffix", "ranking"])
+    for i_web, web in enumerate(company.websites):
+        ext = tldextract.extract(web.url)
+        domain = ext.domain
+        distance = Levenshtein.distance(domain, url_name)
+        web.levenshtein = distance
+        web.best_match = False
+
+        if min_distance is None or distance < min_distance:
+            min_distance = distance
+
+        web_df.loc[i_web, :] = [web.url, distance, ext.subdomain, ext.domain, ext.suffix, 0]
+
+        logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
+
+        # self.scrape_url(web)
+
+    if min_distance is None:
+        web_df = None
+
+    return web_df
+
+
+def get_best_matching_web_site(web_df, impose_url=None):
+    """
+    From all the web sites stored in the data frame web_df, get the best match
+
+    Parameters
+    ----------
+    web_df: Dataframe
+        Contains a list of the urls of the company
+    impose_url: str
+        String with the url to impose
+
+    Returns
+    -------
+    DataFrame
+        Top row of best matching url
+    """
+
+    if impose_url:
+        # just select the url to impose
+        web_df = web_df[web_df["url"] == impose_url].copy()
+    else:
+        # select all the web sites with a minimum distance or one higher
+        web_df = web_df[web_df["distance"] - web_df["distance"].min() <= 1].copy()
+
+    def rate_it(column_name, ranking, value="www", score=1):
+        """
+        In case the column 'column_name' has a value equal to 'value' add the 'score
+        to the current 'ranking' and return the result
+        """
+        return ranking + score if column_name == value else ranking
+
+    # loop over the subdomains and add the score in case we have a web site with this
+    # sub domain. Do the same after that for the prefixes
+    for subdomain, score in [("www", 2), ("", 1), ("https", 1), ("http", 1)]:
+        web_df["ranking"] = web_df.apply(
+            lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
+            axis=1)
+    for suffix, score in [("com", 3), ("nl", 2), ("org", 1), ("eu", 1)]:
+        web_df["ranking"] = web_df.apply(
+            lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
+
+    # sort first on the ranking, then on the distance
+    web_df.sort_values(["ranking", "distance"], ascending=[False, True], inplace=True)
+
+    return web_df
+
+
 class KvKRange(object):
     """
     A class holding the range of kvk numbers
@@ -125,7 +236,8 @@ class KvKUrlParser(object):
                  update_sql_tables=False,
                  kvk_range_read=None,
                  kvk_range_process=None,
-                 merge_database=False
+                 merge_database=False,
+                 impose_url_for_kvk=None
                  ):
 
         self.address_keys = address_keys
@@ -138,6 +250,8 @@ class KvKUrlParser(object):
 
         self.output_directory = Path(output_directory)
         self.cache_directory = Path(cache_directory)
+
+        self.impose_url_for_kvk = impose_url_for_kvk
 
         # create the file path using the new pathlib library
         self.data_base = self.output_directory / database_name
@@ -348,63 +462,34 @@ class KvKUrlParser(object):
                 logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
                 continue
 
+            impose_url = self.impose_url_for_kvk.get(kvk_nr)
+
             postcodes = list()
             for address in company.address:
                 logger.debug("Found postcode {}".format(address.postcode))
                 postcodes.append(address.postcode)
 
             # remove space and put to lower for better comparison with the url
-            naam_small = re.sub("\s+", "", naam.lower())
+            naam_small = clean_name(naam)
             logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
 
-            min_distance = None
-            web_df = pd.DataFrame(index=range(len(company.websites)),
-                                  columns=["url", "distance", "subdomain", "domain", "suffix"])
-            for cnt, web in enumerate(company.websites):
-                ext = tldextract.extract(web.url)
-                domain = ext.domain
-                distance = Levenshtein.distance(domain, naam_small)
-                web.levenshtein = distance
-
-                web_df.loc[cnt, :] = [web.url, distance, ext.subdomain, ext.domain, ext.suffix]
-
-                if min_distance is None or distance < min_distance:
-                    min_distance = distance
-
-                logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
-
-                # self.scrape_url(web)
+            web_df = collect_web_sites(company, naam_small)
 
             # only select the close matches
-            if min_distance:
-                web_df = web_df[web_df["distance"] - min_distance == 0]
+            if web_df is not None:
 
-                web_df["ranking"] = 0
+                web_df = get_best_matching_web_site(web_df, impose_url)
 
-                def rate_it(column_name, ranking, value="www", score=1):
-                    return ranking + score if column_name == value else ranking
-
-                # only select the www
-                for subdomain, score in [("www", 2), ("https", 1), ("http", 1)]:
-                    web_df["ranking"] = web_df.apply(
-                        lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
-                        axis=1)
-                for suffix, score in [("nl", 2), ("com", 1), ("org", 1), ("eu", 1)]:
-                    web_df["ranking"] = web_df.apply(
-                        lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
-
-                web_df.sort_values(["ranking", "distance"], ascending=[False, True], inplace=True)
-
+                # the first row in the data frame is the best matching web site
                 web_df_best = web_df.head(1)
 
-                if self.progressbar:
-                    wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
-
+                # store the best matching web site
                 logger.debug("Best matching url: {}".format(web_df.head(1)))
                 web_match_index = web_df_best.index.values[0]
                 web_match = company.websites[web_match_index]
                 web_match.best_match = True
                 web_match.url = web_df_best["url"].values[0]
+                web_match.ranking = web_df_best["ranking"].values[0]
                 logger.debug("Best matching url: {}".format(web_match.url))
 
                 # update all the properties
@@ -413,6 +498,10 @@ class KvKUrlParser(object):
                 company.url = web_match.url
                 company.processed = True
                 company.save()
+
+                # update the progress bar if needed
+                if self.progressbar:
+                    wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
 
         if self.progressbar:
             progress.finish()
