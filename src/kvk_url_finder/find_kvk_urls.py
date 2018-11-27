@@ -195,6 +195,7 @@ def main(args_in):
     else:
         kvk_selection_file_name = None
         kvk_selection_kvk_nummer = None
+        kvk_selection_kvk_sub_nummer = None
 
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
