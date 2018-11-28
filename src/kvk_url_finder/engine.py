@@ -9,6 +9,7 @@ import Levenshtein
 import pandas as pd
 import progressbar as pb
 import tldextract
+import difflib
 
 from cbs_utils.misc import get_logger
 from kvk_url_finder.models import *
@@ -81,14 +82,21 @@ def clean_name(naam):
     Returns
     -------
     str:
-        Clearn name
+        Clean name
     """
+    # de naam altijd in kleine letters
     naam_small = naam.lower()
-    naam_small = re.sub("B\.V\.", "", naam_small)
-    naam_small = re.sub("N\.V\.", "", naam_small)
-    naam_small = re.sub("C\.V\.", "", naam_small)
+
+    # alles wat er uit zit als B.V. N.V., etc  wordt verwijderd
+    naam_small = re.sub("\s(\w\.)+[\s]*", "", naam_small)
+
+    # alles wat tussen haakjes staat + wat er nog achter komt verwijderen
     naam_small = re.sub("\(.*\).*$", "", naam_small)
+
+    # alle & tekens verwijderen
     naam_small = re.sub("[&\"]", "", naam_small)
+
+    # all spacies verwijderen
     naam_small = re.sub("\s+", "", naam_small)
 
     return naam_small
@@ -109,21 +117,36 @@ def collect_web_sites(company, url_name):
 
     """
     min_distance = None
+    max_sequence_match = None
     web_df = pd.DataFrame(index=range(len(company.websites)),
                           columns=["url", "distance", "subdomain", "domain", "suffix", "ranking"])
     for i_web, web in enumerate(company.websites):
         ext = tldextract.extract(web.url)
-        domain = ext.domain
-        distance = Levenshtein.distance(domain, url_name)
+
+        # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl, the sub domain is
+        # ramlehapotheek, which is closer to the company name the the domain leef. Therefore pick the minimum
+        subdomain_dist = Levenshtein.distance(ext.subdomain, url_name)
+        domain_dist = Levenshtein.distance(ext.domain, url_name)
+        distance = min(subdomain_dist, domain_dist)
         web.levenshtein = distance
+
+        # also we are going to match the sequeneces. The match range between 0 (no match) and 1 (full match)
+        subdomain_match = difflib.SequenceMatcher(ext.subdomain, url_name).quick_ratio()
+        domain_match = difflib.SequenceMatcher(ext.domain, url_name).quick_ratio()
+        match = max(subdomain_match, domain_match)
+        web.match = match
+
         web.best_match = False
 
         if min_distance is None or distance < min_distance:
             min_distance = distance
 
+        if max_sequence_match is None or match > max_sequence_match:
+            max_sequence_match = match
+
         web_df.loc[i_web, :] = [web.url, distance, ext.subdomain, ext.domain, ext.suffix, 0]
 
-        logger.debug("   * {} - {}  - {}".format(web.url, domain, distance))
+        logger.debug("   * {} - {}  - {}".format(web.url, ext.domain, distance))
 
         # self.scrape_url(web)
 
@@ -462,6 +485,7 @@ class KvKUrlParser(object):
                 logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
                 continue
 
+            # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to impose a url
             impose_url = self.impose_url_for_kvk.get(kvk_nr)
 
             postcodes = list()
