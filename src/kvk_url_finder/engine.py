@@ -118,33 +118,40 @@ def collect_web_sites(company, url_name):
     """
     min_distance = None
     max_sequence_match = None
+    index_string_match = index_distance = None
     web_df = pd.DataFrame(index=range(len(company.websites)),
-                          columns=["url", "distance", "subdomain", "domain", "suffix", "ranking"])
+                          columns=["url", "distance", "string_match",
+                                   "subdomain", "domain", "suffix", "ranking"])
     for i_web, web in enumerate(company.websites):
         ext = tldextract.extract(web.url)
 
-        # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl, the sub domain is
-        # ramlehapotheek, which is closer to the company name the the domain leef. Therefore pick the minimum
+        # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl,
+        # the sub domain is ramlehapotheek, which is closer to the company name the the domain leef.
+        # Therefore pick the minimum
         subdomain_dist = Levenshtein.distance(ext.subdomain, url_name)
         domain_dist = Levenshtein.distance(ext.domain, url_name)
         distance = min(subdomain_dist, domain_dist)
         web.levenshtein = distance
 
-        # also we are going to match the sequeneces. The match range between 0 (no match) and 1 (full match)
-        subdomain_match = difflib.SequenceMatcher(ext.subdomain, url_name).quick_ratio()
-        domain_match = difflib.SequenceMatcher(ext.domain, url_name).quick_ratio()
-        match = max(subdomain_match, domain_match)
-        web.match = match
+        # also we are going to match the sequences. The match range between 0 (no match) and 1
+        # (full match)
+        subdomain_match = difflib.SequenceMatcher(None, ext.subdomain, url_name).ratio()
+        domain_match = difflib.SequenceMatcher(None, ext.domain, url_name).ratio()
+        string_match = max(subdomain_match, domain_match)
+        web.string_match = string_match
 
         web.best_match = False
 
         if min_distance is None or distance < min_distance:
+            index_distance = i_web
             min_distance = distance
 
-        if max_sequence_match is None or match > max_sequence_match:
-            max_sequence_match = match
+        if max_sequence_match is None or string_match > max_sequence_match:
+            index_string_match = i_web
+            max_sequence_match = string_match
 
-        web_df.loc[i_web, :] = [web.url, distance, ext.subdomain, ext.domain, ext.suffix, 0]
+        web_df.loc[i_web, :] = [web.url, distance, string_match,
+                                ext.subdomain, ext.domain, ext.suffix, 0]
 
         logger.debug("   * {} - {}  - {}".format(web.url, ext.domain, distance))
 
@@ -152,6 +159,11 @@ def collect_web_sites(company, url_name):
 
     if min_distance is None:
         web_df = None
+    elif index_string_match != index_distance:
+        logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
+                       "match {}: {}".format(index_distance, web_df.loc[index_distance, "url"],
+                                             index_string_match,
+                                             web_df.loc[index_string_match, "string_match"]))
 
     return web_df
 
@@ -198,7 +210,8 @@ def get_best_matching_web_site(web_df, impose_url=None):
             lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
 
     # sort first on the ranking, then on the distance
-    web_df.sort_values(["ranking", "distance"], ascending=[False, True], inplace=True)
+    web_df.sort_values(["ranking", "distance", "string_match"], ascending=[False, True, False],
+                       inplace=True)
 
     return web_df
 
@@ -485,7 +498,8 @@ class KvKUrlParser(object):
                 logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
                 continue
 
-            # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to impose a url
+            # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
+            # impose a url
             impose_url = self.impose_url_for_kvk.get(kvk_nr)
 
             postcodes = list()
@@ -497,6 +511,8 @@ class KvKUrlParser(object):
             naam_small = clean_name(naam)
             logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
 
+            # for all the websites of the company, collect all the available urls' and see how
+            # close they match
             web_df = collect_web_sites(company, naam_small)
 
             # only select the close matches
