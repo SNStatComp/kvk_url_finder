@@ -163,7 +163,7 @@ def collect_web_sites(company, url_name):
         logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
                        "match {}: {}".format(index_distance, web_df.loc[index_distance, "url"],
                                              index_string_match,
-                                             web_df.loc[index_string_match, "string_match"]))
+                                             web_df.loc[index_string_match, "url"]))
 
     return web_df
 
