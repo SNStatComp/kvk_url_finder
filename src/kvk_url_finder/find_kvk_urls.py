@@ -203,6 +203,7 @@ def main(args_in):
     kvk_range_process = process_settings["kvk_range_process"]
     maximum_entries = process_settings["maximum_entries"]
     impose_url_for_kvk = process_settings["impose_url_for_kvk"]
+    threshold_distance = process_settings["threshold_distance"]
 
     # create the KvKUrl object, but first move to the workding directory, so everything we do
     # is with respect to this directory
@@ -232,7 +233,8 @@ def main(args_in):
             maximum_entries=maximum_entries,
             force_process=args.force_process,
             merge_database=args.merge_database,
-            impose_url_for_kvk=impose_url_for_kvk
+            impose_url_for_kvk=impose_url_for_kvk,
+            threshold_distance=threshold_distance
         )
 
 

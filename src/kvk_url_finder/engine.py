@@ -168,7 +168,7 @@ def collect_web_sites(company, url_name):
     return web_df
 
 
-def get_best_matching_web_site(web_df, impose_url=None):
+def get_best_matching_web_site(web_df, impose_url=None, threshold_distance=None):
     """
     From all the web sites stored in the data frame web_df, get the best match
 
@@ -178,6 +178,8 @@ def get_best_matching_web_site(web_df, impose_url=None):
         Contains a list of the urls of the company
     impose_url: str
         String with the url to impose
+    threshold_distance: int or None
+        Only consider urls with a levenstein distance small than this value. If None, to not select
 
     Returns
     -------
@@ -188,9 +190,9 @@ def get_best_matching_web_site(web_df, impose_url=None):
     if impose_url:
         # just select the url to impose
         web_df = web_df[web_df["url"] == impose_url].copy()
-    else:
+    elif threshold_distance is not None:
         # select all the web sites with a minimum distance or one higher
-        web_df = web_df[web_df["distance"] - web_df["distance"].min() <= 1].copy()
+        web_df = web_df[web_df["distance"] - web_df["distance"].min() <= threshold_distance].copy()
 
     def rate_it(column_name, ranking, value="www", score=1):
         """
@@ -273,7 +275,8 @@ class KvKUrlParser(object):
                  kvk_range_read=None,
                  kvk_range_process=None,
                  merge_database=False,
-                 impose_url_for_kvk=None
+                 impose_url_for_kvk=None,
+                 threshold_distance=None
                  ):
 
         self.address_keys = address_keys
@@ -301,6 +304,8 @@ class KvKUrlParser(object):
 
         self.reset_database = reset_database
         self.extend_database = extend_database
+
+        self.threshold_distance = threshold_distance
 
         self.maximum_entries = maximum_entries
 
@@ -518,7 +523,8 @@ class KvKUrlParser(object):
             # only select the close matches
             if web_df is not None:
 
-                web_df = get_best_matching_web_site(web_df, impose_url)
+                web_df = get_best_matching_web_site(web_df, impose_url,
+                                                    threshold_distance=self.threshold_distance)
 
                 # the first row in the data frame is the best matching web site
                 web_df_best = web_df.head(1)

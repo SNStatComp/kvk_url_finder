@@ -49,6 +49,7 @@ process_settings:
     stop: # 34074187
   # max entries can be used to stop processing after a fixed number of kvk's
   maximum_entries: 1
+  threshold_distance: 5
   impose_url_for_kvk:
     # all the url that fail to give the correct match can here be impose
     # 24255704: apotheekdorpsweg.leef.nl
