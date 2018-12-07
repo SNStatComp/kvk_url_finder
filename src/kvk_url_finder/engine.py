@@ -906,6 +906,7 @@ class KvKUrlParser(object):
         urls.loc[:, COMPANY_KEY] = None
         urls.loc[:, BEST_MATCH_KEY] = False
         urls.loc[:, LEVENSHTEIN_KEY] = -1
+        urls.loc[:, STRING_MATCH_KEY] = -1
         urls.set_index([KVK_KEY, URL_KEY], inplace=True)
         idx = pd.IndexSlice
 

@@ -9,6 +9,8 @@ CITY_KEY = "plaats"
 COMPANY_KEY = "company"
 BEST_MATCH_KEY = "best_match"
 LEVENSHTEIN_KEY = "levenshtein"
+STRING_MATCH_KEY = "string_match"
+RANKING_KEY = "ranking"
 
 # postpone the parsing of the database after we have created the parser class
 database = pw.SqliteDatabase(None)
