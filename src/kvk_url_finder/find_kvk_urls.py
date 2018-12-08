@@ -188,7 +188,7 @@ def main(args_in):
     kvk_url_keys = kvk_urls_db["keys"]
 
     selection_db = databases.get("kvk_selection_data_base")
-    if selection_db:
+    if selection_db and selection_db.get("apply_selection", True):
         kvk_selection_file_name = selection_db["file_name"]
         kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
         kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
