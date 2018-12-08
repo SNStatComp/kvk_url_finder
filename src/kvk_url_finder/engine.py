@@ -936,10 +936,19 @@ class KvKUrlParser(object):
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
-        logger.info("Adding companies to url table")
-        company_vs_kvk = Company.select().where(
-            Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
+        kvk_list = self.addresses_df[KVK_KEY].tolist()
+        logger.info("Adding companies to url table. Selection from {}".format(len(kvk_list)))
+        try:
+            company_vs_kvk = Company.select().where(
+                Company.kvk_nummer << kvk_list)
+            selected_kvk = True
+        except pw.OperationalError as err:
+            logger.info(f"Failed making a selection because:\n{err}\nTry again with all")
+            company_vs_kvk = Company.select()
+            selected_kvk = False
+
         n_comp = len(company_vs_kvk)
+        logger.info(f"Found: {n_comp} companies")
         wdg = PB_WIDGETS
         if self.progressbar:
             wdg[-1] = progress_bar_message(0, n_comp)
@@ -949,6 +958,10 @@ class KvKUrlParser(object):
 
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
+            if not selected_kvk:
+                # we need to check if this kvk is in de address list  still
+                if kvk_nr not in kvk_list:
+                    continue
             try:
                 urls.loc[idx[kvk_nr,], COMPANY_KEY] = company
             except KeyError:
