@@ -954,15 +954,20 @@ class KvKUrlParser(object):
         kvk_list = self.addresses_df[KVK_KEY].tolist()
         logger.info("Adding companies to url table. Selection from {}".format(len(kvk_list)))
         try:
-            company_vs_kvk = Company.select().where(
-                Company.kvk_nummer << kvk_list)
+            company_vs_kvk = Company.select().where(Company.kvk_nummer.in_(kvk_list))
             selected_kvk = True
         except pw.OperationalError as err:
             logger.info(f"Failed making a selection because:\n{err}\nTry again with all")
             company_vs_kvk = Company.select()
             selected_kvk = False
 
-        n_comp = company_vs_kvk.count()
+        try:
+            n_comp = company_vs_kvk.count()
+        except (pw.OperationalError, sqlite3.OperationalError) as err:
+            logger.info(f"Failed counting :\n{err}\nTry again with all")
+            company_vs_kvk = Company.select()
+            n_comp = company_vs_kvk.count()
+            selected_kvk = False
 
         logger.info(f"Found: {n_comp} companies")
         wdg = PB_WIDGETS
