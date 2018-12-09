@@ -922,7 +922,8 @@ class KvKUrlParser(object):
                 Company.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
-                    progress.update()
+                    progress.update(cnt)
+                    sys.stdout.flush()
 
         if progress:
             progress.finish()
@@ -983,7 +984,7 @@ class KvKUrlParser(object):
                 logger.debug("Could not add kvk {} to url list".format(kvk_nr))
             if progress:
                 wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
-                progress.update()
+                progress.update(counter)
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
@@ -1050,7 +1051,7 @@ class KvKUrlParser(object):
 
             if progress:
                 wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
-                progress.update()
+                progress.update(counter)
 
         if progress:
             progress.finish()
