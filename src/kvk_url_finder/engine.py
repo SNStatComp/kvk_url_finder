@@ -197,7 +197,8 @@ def get_best_matching_web_site(web_df, impose_url=None,
     else:
         if threshold_distance is not None:
             # select all the web sites with a minimum distance or one higher
-            web_df = web_df[web_df["distance"] - web_df["distance"].min() <= threshold_distance].copy()
+            web_df = web_df[
+                web_df["distance"] - web_df["distance"].min() <= threshold_distance].copy()
 
         if threshold_string_match is not None:
             df = web_df[web_df["string_match"] >= threshold_string_match].copy()
@@ -426,7 +427,7 @@ class KvKUrlParser(object):
         df.set_index(KVK_KEY, inplace=True, drop=True)
         df = df[~df.index.duplicated()]
 
-        # also create a data frame from the unique address kvkś
+        # also create a data frame from the unique address kvk's
         name_key2 = NAME_KEY + "2"
         df2 = self.addresses_df[[KVK_KEY, NAME_KEY]]
         df2 = df2.rename(columns={NAME_KEY: name_key2})
@@ -706,7 +707,7 @@ class KvKUrlParser(object):
         n_after = df.index.size
         logger.debug("Kept {} out of {} records".format(n_after, n_before))
 
-        # check if we have  any valid entires in the range
+        # check if we have  any valid entries in the range
         if n_after == 0:
             logger.info(dataframe.info())
             raise ValueError("No records found in kvk range {} {} (kvk range: {} -- {})".format(
@@ -908,10 +909,23 @@ class KvKUrlParser(object):
         logger.info("Start writing table urls")
 
         n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
+        wdg = PB_WIDGETS
+        if self.progressbar:
+            wdg[-1] = progress_bar_message(0, n_batch)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
+        else:
+            progress = None
+
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
                 logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
                 Company.insert_many(batch).execute()
+                if progress:
+                    wdg[-1] = progress_bar_message(cnt, n_batch)
+                    progress.update()
+
+        if progress:
+            progress.finish()
         logger.debug("Done with company table")
 
     # @profile
@@ -947,7 +961,8 @@ class KvKUrlParser(object):
             company_vs_kvk = Company.select()
             selected_kvk = False
 
-        n_comp = len(company_vs_kvk)
+        n_comp = company_vs_kvk.count()
+
         logger.info(f"Found: {n_comp} companies")
         wdg = PB_WIDGETS
         if self.progressbar:
