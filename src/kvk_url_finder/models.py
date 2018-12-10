@@ -35,6 +35,7 @@ class Company(BaseModel):
 
 class Address(BaseModel):
     company = pw.ForeignKeyField(Company, backref="address")
+    naam = pw.CharField(null=True)
     plaats = pw.CharField(null=True)
     postcode = pw.CharField(null=True)
     straat = pw.CharField(null=True)

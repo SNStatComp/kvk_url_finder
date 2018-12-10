@@ -145,32 +145,6 @@ def main(args_in):
 
     # with the global statement line we make sure to change the global variable at the top
     # when settin gup the logger
-    global logger
-    logger = setup_logging(
-        write_log_to_file=args.write_log_to_file,
-        log_file_base=args.log_file_base,
-        log_level_file=args.log_level_file,
-        log_level=args.log_level,
-        progress_bar=args.progressbar
-    )
-
-    script_name = os.path.basename(sys.argv[0])
-    start_time = pd.to_datetime("now")
-    message = "Start {script} (v: {version}) at {start_time}:\n{cmd}".format(script=script_name,
-                                                                             version=__version__,
-                                                                             start_time=start_time,
-                                                                             cmd=sys.argv[:])
-    if not args.progressbar:
-        logger.info(message)
-    else:
-        print(message)
-
-    # change the log level to our requested level
-    if args.progressbar:
-        logger.setLevel(logging.INFO)
-
-    # read the yaml file and put the whole structure into a dictionary: *settings*
-    logger.info("Reading settings file {}".format(args.configuration_file))
     with open(args.configuration_file, "r") as stream:
         settings = yaml.load(stream=stream)
 
@@ -209,6 +183,30 @@ def main(args_in):
     # create the KvKUrl object, but first move to the workding directory, so everything we do
     # is with respect to this directory
     with Chdir(working_directory) as _:
+
+        global logger
+        logger = setup_logging(
+            write_log_to_file=args.write_log_to_file,
+            log_file_base=args.log_file_base,
+            log_level_file=args.log_level_file,
+            log_level=args.log_level,
+            progress_bar=args.progressbar
+        )
+
+        script_name = os.path.basename(sys.argv[0])
+        start_time = pd.to_datetime("now")
+        message = "Start {script} (v: {version}) at {start_time}:\n{cmd}" \
+                  "".format(script=script_name, version=__version__,
+                            start_time=start_time, cmd=sys.argv[:])
+        if not args.progressbar:
+            logger.info(message)
+        else:
+            print(message)
+
+        # change the log level to our requested level
+        if args.progressbar:
+            logger.setLevel(logging.INFO)
+
         # make the directories in case they do not exist yet
         make_directory(cache_directory)
         make_directory(output_directory)

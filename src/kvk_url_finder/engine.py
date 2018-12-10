@@ -7,6 +7,7 @@ import sqlite3
 
 import Levenshtein
 import pandas as pd
+import numpy as np
 import progressbar as pb
 import tldextract
 import difflib
@@ -947,28 +948,21 @@ class KvKUrlParser(object):
         urls.loc[:, BEST_MATCH_KEY] = False
         urls.loc[:, LEVENSHTEIN_KEY] = -1
         urls.loc[:, STRING_MATCH_KEY] = -1
-        urls.set_index([KVK_KEY, URL_KEY], inplace=True)
-        idx = pd.IndexSlice
+        urls.sort_values([KVK_KEY], inplace=True)
+        # count the number of urls per kvk
+        n_url_per_kvk = urls.groupby(KVK_KEY)[KVK_KEY].count()
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        logger.info("Adding companies to url table. Selection from {}".format(len(kvk_list)))
-        try:
-            company_vs_kvk = Company.select().where(Company.kvk_nummer.in_(kvk_list))
-            selected_kvk = True
-        except pw.OperationalError as err:
-            logger.info(f"Failed making a selection because:\n{err}\nTry again with all")
-            company_vs_kvk = Company.select()
-            selected_kvk = False
+        company_vs_kvk = Company.select()
+        n_comp = company_vs_kvk.count()
 
-        try:
-            n_comp = company_vs_kvk.count()
-        except (pw.OperationalError, sqlite3.OperationalError) as err:
-            logger.info(f"Failed counting :\n{err}\nTry again with all")
-            company_vs_kvk = Company.select()
-            n_comp = company_vs_kvk.count()
-            selected_kvk = False
+        kvk_comp_list = list()
+        for company in company_vs_kvk:
+            kvk_comp_list.append(int(company.kvk_nummer))
+        kvk_comp = set(kvk_comp_list)
+        kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
 
         logger.info(f"Found: {n_comp} companies")
         wdg = PB_WIDGETS
@@ -978,23 +972,31 @@ class KvKUrlParser(object):
         else:
             progress = None
 
+        company_list = list()
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            if not selected_kvk:
-                # we need to check if this kvk is in de address list  still
-                if kvk_nr not in kvk_list:
-                    continue
+            # we need to check if this kvk is in de address list  still
+            if kvk_nr in kvk_not_in_addresses:
+                logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
+                continue
+
             try:
-                urls.loc[idx[kvk_nr,], COMPANY_KEY] = company
+                n_url = n_url_per_kvk.loc[kvk_nr]
             except KeyError:
-                logger.debug("Could not add kvk {} to url list".format(kvk_nr))
+                continue
+
+            # add the company number of url time to the list
+            company_list.extend([company] * n_url)
+
             if progress:
-                wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
+                wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
                 progress.update(counter)
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
+        if progress:
+            progress.finish()
 
-        urls.reset_index(inplace=True)
+        urls[COMPANY_KEY] = company_list
 
         # in case there is a None at a row, remove it (as there is not company found)
         urls.dropna(axis=0, inplace=True)
@@ -1008,10 +1010,20 @@ class KvKUrlParser(object):
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
         n_batch = int(len(url_list) / MAX_SQL_CHUNK) + 1
+        if self.progressbar:
+            wdg[-1] = progress_bar_message(0, n_batch)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
+        else:
+            progress = None
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
                 logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
                 WebSite.insert_many(batch).execute()
+                if progress:
+                    wdg[-1] = progress_bar_message(cnt, n_batch)
+                    progress.update(cnt)
+        if progress:
+            progress.finish()
 
         logger.debug("Done")
 
@@ -1028,17 +1040,23 @@ class KvKUrlParser(object):
 
         # create selection of data columns
         self.addresses_df[COMPANY_KEY] = None
-        columns = [KVK_KEY, ADDRESS_KEY, POSTAL_CODE_KEY, CITY_KEY, COMPANY_KEY]
+        columns = [KVK_KEY, NAME_KEY, ADDRESS_KEY, POSTAL_CODE_KEY, CITY_KEY, COMPANY_KEY]
         df = self.addresses_df[columns].copy()
-        df.set_index([KVK_KEY, POSTAL_CODE_KEY], inplace=True)
+        df.sort_values([KVK_KEY], inplace=True)
+        # count the number of urls per kvk
+        n_url_per_kvk = df.groupby(KVK_KEY)[KVK_KEY].count()
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         logger.info("Adding companies to addresses table")
-        company_vs_kvk = (Company
-                          .select()
-                          .where(Company.kvk_nummer << self.addresses_df[KVK_KEY].tolist())
-                          )
+        kvk_list = self.addresses_df[KVK_KEY].tolist()
+        company_vs_kvk = Company.select()
+        kvk_comp_list = list()
+        for company in company_vs_kvk:
+            kvk_comp_list.append(int(company.kvk_nummer))
+        kvk_comp = set(kvk_comp_list)
+        kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
+
         idx = pd.IndexSlice
         n_comp = company_vs_kvk.count()
         wdg = None
@@ -1049,23 +1067,30 @@ class KvKUrlParser(object):
         else:
             progress = None
 
+        company_list = list()
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            df.loc[idx[kvk_nr,], COMPANY_KEY] = company.kvk_nummer  # company
+            if kvk_nr in kvk_not_in_addresses:
+                logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
+                continue
+
+            try:
+                n_url = n_url_per_kvk.loc[kvk_nr]
+            except KeyError:
+                continue
+            company_list.extend([company] * n_url)
+
             if counter % MAX_SQL_CHUNK == 0:
                 logger.info(" Added {} / {}".format(counter, n_comp))
 
             if progress:
-                wdg[-1] = progress_bar_message(0, n_comp, kvk_nr, company.naam)
+                wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
                 progress.update(counter)
 
         if progress:
             progress.finish()
 
-        df.reset_index(inplace=True)
-
-        if progress:
-            progress.finish()
+        df[COMPANY_KEY] = company_list
 
         # the kvk key is already visible via the company_id
         df.drop([KVK_KEY], inplace=True, axis=1)
@@ -1076,10 +1101,21 @@ class KvKUrlParser(object):
         # turn the list of dictionaries into a sql table
         logger.info("Start writing table urls")
         n_batch = int(len(address_list) / MAX_SQL_CHUNK) + 1
+        if self.progressbar:
+            wdg = PB_WIDGETS
+            wdg[-1] = progress_bar_message(0, n_comp)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
+        else:
+            progress = None
         with database.atomic():
             for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
                 logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
                 Address.insert_many(batch).execute()
+                if progress:
+                    wdg[-1] = progress_bar_message(cnt, n_batch)
+                    progress.update(cnt)
+        if progress:
+            progress.finish()
 
     def __exit__(self, *args):
         """
