@@ -335,6 +335,7 @@ class KvKUrlParser(object):
 
         self.url_df: pd.DataFrame = None
         self.addresses_df: pd.DataFrame = None
+        self.kvk_df: pd.DataFrame = None
 
         logger.info("Connecting to database {}".format(database_name))
         self.database_name = database_name
@@ -904,8 +905,8 @@ class KvKUrlParser(object):
             logger.debug("Empty addressses data frame. Nothing to write")
             return
 
-        kvk = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
-        record_list = list(kvk.to_dict(orient="index").values())
+        self.kvk_df = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
+        record_list = list(self.kvk_df.to_dict(orient="index").values())
         logger.info("Start writing table urls")
 
         n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
