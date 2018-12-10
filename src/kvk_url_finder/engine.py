@@ -469,28 +469,28 @@ class KvKUrlParser(object):
 
         if start is not None or stop is not None:
             if start is None:
-                logger.debug("Make query from start until stop {}".format(stop))
+                logger.info("Make query from start until stop {}".format(stop))
                 query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite))
             elif stop is None:
-                logger.debug("Make query from start {} until end".format(start))
+                logger.info("Make query from start {} until end".format(start))
                 query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite))
             else:
-                logger.debug("Make query from start {} until stop {}".format(start, stop))
+                logger.info("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
                          .prefetch(WebSite, Address)
                          )
         else:
-            logger.debug("Make query without selecting in the kvk range")
+            logger.info("Make query without selecting in the kvk range")
             query = (Company.select().prefetch(WebSite, Address))
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
-            logger.debug("Maximum queries imposed as {}".format(maximum_queries))
+            logger.info("Maximum queries imposed as {}".format(maximum_queries))
         else:
             maximum_queries = query.count()
-            logger.debug("Maximum queries obtained from selection as {}".format(maximum_queries))
+            logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         if self.progressbar:
             wdg = PB_WIDGETS
