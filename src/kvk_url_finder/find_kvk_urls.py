@@ -152,6 +152,7 @@ def main(args_in):
     working_directory = general["working_directory"][platform.system()]
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
+    database_name = general["database_name"]
 
     databases = settings["databases"]
     address_db = databases['addresses']
@@ -223,6 +224,7 @@ def main(args_in):
             address_keys=address_keys,
             kvk_url_keys=kvk_url_keys,
             reset_database=args.reset_database,
+            database_name=database_name,
             extend_database=args.extend_database,
             progressbar=args.progressbar,
             n_url_count_threshold=n_url_count_threshold,
