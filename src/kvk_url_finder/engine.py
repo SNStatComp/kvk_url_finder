@@ -12,7 +12,7 @@ import progressbar as pb
 import tldextract
 import difflib
 
-from cbs_utils.misc import get_logger
+from cbs_utils.misc import (get_logger, Timer)
 from kvk_url_finder.models import *
 
 try:
@@ -458,6 +458,53 @@ class KvKUrlParser(object):
         n_after = self.addresses_df.index.size
         logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
 
+    def find_match_for_company(self, company, kvk_nr, naam):
+
+
+
+        # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
+        # impose a url
+        impose_url = self.impose_url_for_kvk.get(kvk_nr)
+
+        postcodes = list()
+        for address in company.address:
+            logger.debug("Found postcode {}".format(address.postcode))
+            postcodes.append(address.postcode)
+
+        # remove space and put to lower for better comparison with the url
+        naam_small = clean_name(naam)
+        logger.info("Checking {}: {} ({})".format(kvk_nr, naam, naam_small))
+
+        # for all the websites of the company, collect all the available urls' and see how
+        # close they match
+        web_df = collect_web_sites(company, naam_small)
+
+        # only select the close matches
+        if web_df is not None:
+
+            web_df = get_best_matching_web_site(web_df, impose_url,
+                                                threshold_distance=self.threshold_distance,
+                                                threshold_string_match=self.threshold_string_match)
+
+            # the first row in the data frame is the best matching web site
+            web_df_best = web_df.head(1)
+
+            # store the best matching web site
+            logger.debug("Best matching url: {}".format(web_df.head(1)))
+            web_match_index = web_df_best.index.values[0]
+            web_match = company.websites[web_match_index]
+            web_match.best_match = True
+            web_match.url = web_df_best["url"].values[0]
+            web_match.ranking = web_df_best["ranking"].values[0]
+            logger.debug("Best matching url: {}".format(web_match.url))
+
+            # update all the properties
+            for web in company.websites:
+                web.save()
+            company.url = web_match.url
+            company.processed = True
+            company.save()
+
     # @profile
     def find_best_matching_url(self):
         """
@@ -470,10 +517,12 @@ class KvKUrlParser(object):
         if start is not None or stop is not None:
             if start is None:
                 logger.info("Make query from start until stop {}".format(stop))
-                query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite))
+                query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite,
+                                                                                     Address))
             elif stop is None:
                 logger.info("Make query from start {} until end".format(start))
-                query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite))
+                query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite,
+                                                                                      Address))
             else:
                 logger.info("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
@@ -512,63 +561,24 @@ class KvKUrlParser(object):
                 os.remove(STOP_FILE)
                 break
 
-            if self.progressbar:
-                progress.update(cnt)
-                sys.stdout.flush()
+            if company.processed and not self.force_process:
+                logger.debug("Company {} ({}) already processed. Skipping"
+                             "".format(company.kvk_nummer, company.naam))
+                continue
 
             kvk_nr = company.kvk_nummer
             naam: str = company.naam
 
-            if company.processed and not self.force_process:
-                logger.debug("Company {} ({}) already processed. Skipping".format(kvk_nr, naam))
-                continue
+            with Timer() as _:
+                self.find_match_for_company(company, kvk_nr, naam)
 
-            # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
-            # impose a url
-            impose_url = self.impose_url_for_kvk.get(kvk_nr)
+            # update the progress bar if needed
+            if self.progressbar:
+                wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
 
-            postcodes = list()
-            for address in company.address:
-                logger.debug("Found postcode {}".format(address.postcode))
-                postcodes.append(address.postcode)
-
-            # remove space and put to lower for better comparison with the url
-            naam_small = clean_name(naam)
-            logger.info("Checking {} : {} {} ({})".format(cnt, kvk_nr, naam, naam_small))
-
-            # for all the websites of the company, collect all the available urls' and see how
-            # close they match
-            web_df = collect_web_sites(company, naam_small)
-
-            # only select the close matches
-            if web_df is not None:
-
-                web_df = get_best_matching_web_site(web_df, impose_url,
-                                                    threshold_distance=self.threshold_distance,
-                                                    threshold_string_match=self.threshold_string_match)
-
-                # the first row in the data frame is the best matching web site
-                web_df_best = web_df.head(1)
-
-                # store the best matching web site
-                logger.debug("Best matching url: {}".format(web_df.head(1)))
-                web_match_index = web_df_best.index.values[0]
-                web_match = company.websites[web_match_index]
-                web_match.best_match = True
-                web_match.url = web_df_best["url"].values[0]
-                web_match.ranking = web_df_best["ranking"].values[0]
-                logger.debug("Best matching url: {}".format(web_match.url))
-
-                # update all the properties
-                for web in company.websites:
-                    web.save()
-                company.url = web_match.url
-                company.processed = True
-                company.save()
-
-                # update the progress bar if needed
-                if self.progressbar:
-                    wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
+            if self.progressbar:
+                progress.update(cnt)
+                sys.stdout.flush()
 
         if self.progressbar:
             progress.finish()
