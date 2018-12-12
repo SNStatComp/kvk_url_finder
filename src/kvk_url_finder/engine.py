@@ -366,7 +366,8 @@ class KvKUrlParser(object):
 
         if not merge_database:
             logger.info("Matching the best url's")
-            self.find_best_matching_url()
+            with Timer("find best match") as _:
+                self.find_best_matching_url()
         else:
             logger.info("Merge database")
             self.merge_external_database()
@@ -461,7 +462,7 @@ class KvKUrlParser(object):
         n_after = self.addresses_df.index.size
         logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
 
-    def find_match_for_company(self, company, kvk_nr, naam, save=True):
+    def find_match_for_company(self, company, kvk_nr, naam):
 
         # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
         # impose a url
@@ -500,12 +501,12 @@ class KvKUrlParser(object):
             logger.debug("Best matching url: {}".format(web_match.url))
 
             # update all the properties
-            if save:
+            if self.save:
                 for web in company.websites:
                     web.save()
             company.url = web_match.url
             company.processed = True
-            if save:
+            if self.save:
                 company.save()
 
     # @profile
@@ -520,12 +521,10 @@ class KvKUrlParser(object):
         if start is not None or stop is not None:
             if start is None:
                 logger.info("Make query from start until stop {}".format(stop))
-                query = (Company.select().where(Company.kvk_nummer <= stop).prefetch(WebSite,
-                                                                                     Address))
+                query = (Company.select().where(Company.kvk_nummer <= stop))
             elif stop is None:
                 logger.info("Make query from start {} until end".format(start))
-                query = (Company.select().where(Company.kvk_nummer >= start).prefetch(WebSite,
-                                                                                      Address))
+                query = (Company.select().where(Company.kvk_nummer >= start))
             else:
                 logger.info("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
@@ -534,7 +533,7 @@ class KvKUrlParser(object):
                          )
         else:
             logger.info("Make query without selecting in the kvk range")
-            query = (Company.select().prefetch(WebSite, Address))
+            query = (Company.select())
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
@@ -572,7 +571,7 @@ class KvKUrlParser(object):
             naam: str = company.naam
 
             with Timer(name=f"{kvk_nr}") as _:
-                self.find_match_for_company(company, kvk_nr, naam, save=self.save)
+                self.find_match_for_company(company, kvk_nr, naam)
 
             # update the progress bar if needed
             if self.progressbar:
@@ -585,13 +584,10 @@ class KvKUrlParser(object):
         if self.progressbar:
             progress.finish()
 
-        #with Timer("Updating tables") as _:
-        #    with Company.update() as query:
-        #        query.execute()
-        #    with WebSite.update() as query:
-        #        query.execute()
-        #    with Address.update() as query:
-        #        query.execute()
+        # this is not faster than save per record
+        # with Timer("Updating tables") as _:
+        #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
+        #    query.execute()
 
     def scrape_url(self, url):
         """
