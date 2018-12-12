@@ -294,11 +294,14 @@ class KvKUrlParser(object):
                  merge_database=False,
                  impose_url_for_kvk=None,
                  threshold_distance=None,
-                 threshold_string_match=None
+                 threshold_string_match=None,
+                 save=True
                  ):
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
+
+        self.save = save
 
         self.kvk_selection_input_file_name = kvk_selection_input_file_name
         self.kvk_selection_kvk_key = kvk_selection_kvk_key
@@ -458,9 +461,7 @@ class KvKUrlParser(object):
         n_after = self.addresses_df.index.size
         logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
 
-    def find_match_for_company(self, company, kvk_nr, naam):
-
-
+    def find_match_for_company(self, company, kvk_nr, naam, save=True):
 
         # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
         # impose a url
@@ -499,11 +500,13 @@ class KvKUrlParser(object):
             logger.debug("Best matching url: {}".format(web_match.url))
 
             # update all the properties
-            for web in company.websites:
-                web.save()
+            if save:
+                for web in company.websites:
+                    web.save()
             company.url = web_match.url
             company.processed = True
-            company.save()
+            if save:
+                company.save()
 
     # @profile
     def find_best_matching_url(self):
@@ -528,7 +531,6 @@ class KvKUrlParser(object):
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
-                         .prefetch(WebSite, Address)
                          )
         else:
             logger.info("Make query without selecting in the kvk range")
@@ -569,8 +571,8 @@ class KvKUrlParser(object):
             kvk_nr = company.kvk_nummer
             naam: str = company.naam
 
-            with Timer() as _:
-                self.find_match_for_company(company, kvk_nr, naam)
+            with Timer(name=f"{kvk_nr}") as _:
+                self.find_match_for_company(company, kvk_nr, naam, save=self.save)
 
             # update the progress bar if needed
             if self.progressbar:
@@ -582,6 +584,14 @@ class KvKUrlParser(object):
 
         if self.progressbar:
             progress.finish()
+
+        #with Timer("Updating tables") as _:
+        #    with Company.update() as query:
+        #        query.execute()
+        #    with WebSite.update() as query:
+        #        query.execute()
+        #    with Address.update() as query:
+        #        query.execute()
 
     def scrape_url(self, url):
         """

@@ -23,6 +23,7 @@ class UnknownField(object):
 class BaseModel(pw.Model):
     class Meta:
         database = database
+        only_save_dirty = True
 
 
 # this class describes the format of the sql data base
