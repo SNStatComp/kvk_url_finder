@@ -152,7 +152,7 @@ def main(args_in):
     working_directory = general["working_directory"][platform.system()]
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
-    database_name = general["database_name"]
+    database_name = general.get("database_name", "kvk_db.sqlite")
 
     databases = settings["databases"]
     address_db = databases['addresses']
