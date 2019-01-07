@@ -534,13 +534,11 @@ class KvKUrlParser(object):
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
-                         .prefetch(WebSite, Address)
-                         )
+                         .prefetch(WebSite, Address))
         else:
             logger.info("Make query without selecting in the kvk range")
             query = (Company.select()
-                     .prefetch(WebSite, Address)
-                    )
+                     .prefetch(WebSite, Address))
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
