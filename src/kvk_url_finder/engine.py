@@ -220,7 +220,7 @@ def get_best_matching_web_site(web_df, impose_url=None,
 
     # loop over the subdomains and add the score in case we have a web site with this
     # sub domain. Do the same after that for the prefixes
-    for subdomain, score in [("www", 2), ("", 1), ("https", 1), ("http", 1)]:
+    for subdomain, score in [("www", 1), ("", 1), ("https", 1), ("http", 1)]:
         web_df["ranking"] = web_df.apply(
             lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
             axis=1)
@@ -521,19 +521,26 @@ class KvKUrlParser(object):
         if start is not None or stop is not None:
             if start is None:
                 logger.info("Make query from start until stop {}".format(stop))
-                query = (Company.select().where(Company.kvk_nummer <= stop))
+                query = (Company
+                         .select().where(Company.kvk_nummer <= stop)
+                         .prefetch(WebSite, Address))
             elif stop is None:
                 logger.info("Make query from start {} until end".format(start))
-                query = (Company.select().where(Company.kvk_nummer >= start))
+                query = (Company
+                         .select().where(Company.kvk_nummer >= start)
+                         .prefetch(WebSite, Address))
             else:
                 logger.info("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
+                         .prefetch(WebSite, Address)
                          )
         else:
             logger.info("Make query without selecting in the kvk range")
-            query = (Company.select())
+            query = (Company.select()
+                     .prefetch(WebSite, Address)
+                    )
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
@@ -919,7 +926,7 @@ class KvKUrlParser(object):
         """
         logger.info("Start writing to mysql data base")
         if self.addresses_df.index.size == 0:
-            logger.debug("Empty addressses data frame. Nothing to write")
+            logger.debug("Empty addresses data frame. Nothing to write")
             return
 
         self.kvk_df = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
