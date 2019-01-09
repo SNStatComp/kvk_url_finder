@@ -35,7 +35,7 @@ import sys
 import pandas as pd
 import yaml
 
-from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
+from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory, Timer)
 from kvk_url_finder.engine import KvKUrlParser
 
 try:
@@ -87,6 +87,8 @@ def _parse_the_command_line_arguments(args):
                              "as processes")
     parser.add_argument("--merge_database", action="store_true",
                         help="Merge the current sql data base marked to the selection data base")
+    parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
+                        choices=range(1, 8))
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -111,7 +113,8 @@ def setup_logging(write_log_to_file=False,
     else:
         log_file_base = None
 
-    _logger = create_logger(file_log_level=log_level_file,
+    _logger = create_logger(name=__name__,
+                            file_log_level=log_level_file,
                             console_log_level=log_level,
                             log_file=log_file_base)
 
@@ -194,6 +197,8 @@ def main(args_in):
             progress_bar=args.progressbar
         )
 
+        # with the global statement line we make sure to change the global variable at the top
+
         script_name = os.path.basename(sys.argv[0])
         start_time = pd.to_datetime("now")
         message = "Start {script} (v: {version}) at {start_time}:\n{cmd}" \
@@ -212,32 +217,50 @@ def main(args_in):
         make_directory(cache_directory)
         make_directory(output_directory)
 
-        # create the object and do you thing
-        KvKUrlParser(
-            cache_directory=cache_directory,
+        kvk_parser = KvKUrlParser(
             output_directory=output_directory,
-            address_input_file_name=address_input_file_name,
-            url_input_file_name=kvk_url_file_name,
-            kvk_selection_input_file_name=kvk_selection_file_name,
-            kvk_selection_kvk_key=kvk_selection_kvk_nummer,
-            kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
-            address_keys=address_keys,
-            kvk_url_keys=kvk_url_keys,
             reset_database=args.reset_database,
             database_name=database_name,
-            extend_database=args.extend_database,
-            progressbar=args.progressbar,
-            n_url_count_threshold=n_url_count_threshold,
-            update_sql_tables=args.update_sql_tables,
-            kvk_range_read=kvk_range_read,
-            kvk_range_process=kvk_range_process,
-            maximum_entries=maximum_entries,
             force_process=args.force_process,
-            merge_database=args.merge_database,
-            impose_url_for_kvk=impose_url_for_kvk,
-            threshold_distance=threshold_distance,
-            threshold_string_match=threshold_string_match,
-        )
+            kvk_range_process=kvk_range_process,
+            number_of_processes=args.n_processes)
+        if args.update_sql_tables:
+            kvk_parser.update_sql_tables()
+        kvk_parser.get_kvk_list_per_process()
+        logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
+
+        if args.merge_database:
+            kvk_parser.merge_external_database()
+        else:
+
+            # create the object and do you thing
+            for i_proc,  kvk_range in enumerate(kvk_parser.kvk_ranges):
+                kvk_parser = KvKUrlParser(
+                    cache_directory=cache_directory,
+                    output_directory=output_directory,
+                    address_input_file_name=address_input_file_name,
+                    url_input_file_name=kvk_url_file_name,
+                    kvk_selection_input_file_name=kvk_selection_file_name,
+                    kvk_selection_kvk_key=kvk_selection_kvk_nummer,
+                    kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
+                    address_keys=address_keys,
+                    kvk_url_keys=kvk_url_keys,
+                    reset_database=args.reset_database,
+                    database_name=database_name,
+                    extend_database=args.extend_database,
+                    progressbar=args.progressbar,
+                    n_url_count_threshold=n_url_count_threshold,
+                    kvk_range_read=kvk_range_read,
+                    kvk_range_process=kvk_range,
+                    maximum_entries=maximum_entries,
+                    force_process=args.force_process,
+                    impose_url_for_kvk=impose_url_for_kvk,
+                    threshold_distance=threshold_distance,
+                    threshold_string_match=threshold_string_match,
+                    i_proc=i_proc,
+                )
+
+                kvk_parser.run()
 
 
 def _run():

@@ -250,8 +250,12 @@ class KvKRange(object):
     """
 
     def __init__(self, kvk_range):
-        self.start = kvk_range["start"]
-        self.stop = kvk_range["stop"]
+        if kvk_range is not None:
+            self.start = kvk_range["start"]
+            self.stop = kvk_range["stop"]
+        else:
+            self.start = None
+            self.stop = None
 
 
 class KvKUrlParser(object):
@@ -288,14 +292,14 @@ class KvKUrlParser(object):
                  progressbar=False,
                  n_url_count_threshold=100,
                  force_process=False,
-                 update_sql_tables=False,
                  kvk_range_read=None,
                  kvk_range_process=None,
-                 merge_database=False,
                  impose_url_for_kvk=None,
                  threshold_distance=None,
                  threshold_string_match=None,
-                 save=True
+                 save=True,
+                 number_of_processes=1,
+                 i_proc=None
                  ):
 
         self.address_keys = address_keys
@@ -335,11 +339,14 @@ class KvKUrlParser(object):
         self.progressbar = progressbar
 
         self.kvk_range_read = KvKRange(kvk_range_read)
+
         self.kvk_range_process = KvKRange(kvk_range_process)
 
         self.url_df: pd.DataFrame = None
         self.addresses_df: pd.DataFrame = None
         self.kvk_df: pd.DataFrame = None
+
+        self.number_of_processes = number_of_processes
 
         logger.info("Connecting to database {}".format(database_name))
         self.database_name = database_name
@@ -349,28 +356,59 @@ class KvKUrlParser(object):
         if self.reset_database:
             database.drop_tables([Company, Address, WebSite])
 
+        self.kvk_ranges = None
+
+    def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
-        if update_sql_tables:
-            if self.kvk_selection_input_file_name:
-                self.read_database_selection()
-            self.read_database_addresses()
-            self.read_database_urls()
-            self.merge_data_base_kvks()
+        logger.info("Matching the best url's")
+        with Timer("find best match") as _:
+            self.find_best_matching_url()
 
-            self.company_kvks_to_sql()
-            self.urls_per_kvk_to_sql()
-            self.addresses_per_kvk_to_sql()
-        else:
-            logger.debug("Skip updating the sql tables")
+    def update_sql_tables(self):
+        if self.kvk_selection_input_file_name:
+            self.read_database_selection()
+        self.read_database_addresses()
+        self.read_database_urls()
+        self.merge_data_base_kvks()
 
-        if not merge_database:
-            logger.info("Matching the best url's")
-            with Timer("find best match") as _:
-                self.find_best_matching_url()
-        else:
-            logger.info("Merge database")
-            self.merge_external_database()
+        self.company_kvks_to_sql()
+        self.urls_per_kvk_to_sql()
+        self.addresses_per_kvk_to_sql()
+
+    def get_kvk_list_per_process(self):
+        """
+        Get a list of kvk numbers in the query
+        """
+        query = Company.select(Company.kvk_nummer, Company.processed)
+        kvk_to_process = list()
+        start = self.kvk_range_process.start
+        stop = self.kvk_range_process.stop
+        for q in query:
+            kvk = q.kvk_nummer
+            if start is not None and kvk < start or stop is not None and kvk > stop:
+                # skip because is outside range
+                continue
+            if not self.force_process and q.processed:
+                # skip because we have already processed this record and the 'force' option is False
+                continue
+            # we can processes this record, so add it to the list
+            kvk_to_process.append(kvk)
+
+        n_kvk = len(kvk_to_process)
+        n_per_proc = int(n_kvk / self.number_of_processes)
+        self.kvk_ranges = list()
+
+        for i_proc in range(self.number_of_processes):
+            if i_proc == self.number_of_processes - 1:
+                kvk_list = kvk_to_process[i_proc * n_per_proc:]
+            else:
+                kvk_list = kvk_to_process[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
+
+            kvk_first = kvk_list[0]
+            kvk_last = kvk_list[-1]
+
+            self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
 
     def merge_external_database(self):
         """
@@ -544,7 +582,7 @@ class KvKUrlParser(object):
             maximum_queries = self.maximum_entries
             logger.info("Maximum queries imposed as {}".format(maximum_queries))
         else:
-            maximum_queries = query.count()
+            maximum_queries = len(query)
             logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         if self.progressbar:
