@@ -13,7 +13,12 @@ STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 
 # postpone the parsing of the database after we have created the parser class
-database = pw.SqliteDatabase(None)
+database = pw.SqliteDatabase(None, pragmas={
+    'journal_mode': 'wal',
+    'cache_size': -1 * 64000,  # 64MB
+    'foreign_keys': 1,
+    'ignore_check_constraints': 0,
+    'synchronous': 0})
 
 
 class UnknownField(object):
@@ -52,3 +57,12 @@ class WebSite(BaseModel):
     best_match = pw.BooleanField(default=True)
     ranking = pw.IntegerField(default=-1)
     bestaat = pw.BooleanField(default=False)
+
+
+def connect_database(database_name, reset_database):
+    database.init(database_name)
+    database.connect()
+    database.create_tables([Company, Address, WebSite])
+    if reset_database:
+        database.drop_tables([Company, Address, WebSite])
+

@@ -2,17 +2,16 @@ import os
 import re
 import sys
 from pathlib import Path
-
-import sqlite3
+import logging
+import multiprocessing as mp
 
 import Levenshtein
 import pandas as pd
-import numpy as np
 import progressbar as pb
 import tldextract
 import difflib
 
-from cbs_utils.misc import (get_logger, Timer)
+from cbs_utils.misc import (get_logger, Timer, create_logger)
 from kvk_url_finder.models import *
 
 try:
@@ -258,7 +257,7 @@ class KvKRange(object):
             self.stop = None
 
 
-class KvKUrlParser(object):
+class KvKUrlParser(mp.Process):
     """
     Class to parse a csv file and couple the unique kwk numbers to a list of urls
 
@@ -276,7 +275,6 @@ class KvKUrlParser(object):
 
     def __init__(self,
                  cache_directory=".",
-                 output_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
                  kvk_selection_input_file_name=None,
@@ -288,7 +286,6 @@ class KvKUrlParser(object):
                  extend_database=False,
                  compression=None,
                  maximum_entries=None,
-                 database_name="kvk_db.sqlite",
                  progressbar=False,
                  n_url_count_threshold=100,
                  force_process=False,
@@ -299,26 +296,48 @@ class KvKUrlParser(object):
                  threshold_string_match=None,
                  save=True,
                  number_of_processes=1,
-                 i_proc=None
+                 i_proc=0,
+                 log_file_base="log",
+                 log_level_file=logging.DEBUG,
                  ):
+
+        # launch the process
+        mp.Process.__init__(self)
+        self.i_proc = i_proc
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
 
         self.save = save
 
+        # create a logger per process
+        self.logger = create_logger(
+            name="{}_{}".format("KvKUlrParser", i_proc),
+            file_log_level=log_level_file,
+            console_log_level=logging.INFO,
+            file_log_format_long=True,
+            log_file="{}_{}".format(log_file_base, i_proc),
+        )
+        if progressbar:
+            # switch off all logging because we are showing the progress bar via the print statement
+            # logger.disabled = True
+            # logger.disabled = True
+            # logger.setLevel(logging.CRITICAL)
+            for handle in self.logger.handlers:
+                try:
+                    getattr(handle, "baseFilename")
+                except AttributeError:
+                    # this is the stream handle because we get an AtrributeError. Set it to critical
+                    handle.setLevel(logging.CRITICAL)
+
         self.kvk_selection_input_file_name = kvk_selection_input_file_name
         self.kvk_selection_kvk_key = kvk_selection_kvk_key
         self.kvk_selection_kvk_sub_key = kvk_selection_kvk_sub_key
         self.kvk_selection = None
 
-        self.output_directory = Path(output_directory)
         self.cache_directory = Path(cache_directory)
 
         self.impose_url_for_kvk = impose_url_for_kvk
-
-        # create the file path using the new pathlib library
-        self.data_base = self.output_directory / database_name
 
         self.force_process = force_process
 
@@ -348,20 +367,12 @@ class KvKUrlParser(object):
 
         self.number_of_processes = number_of_processes
 
-        logger.info("Connecting to database {}".format(database_name))
-        self.database_name = database_name
-        database.init(database_name)
-        self.connection = database.connect()
-        database.create_tables([Company, Address, WebSite])
-        if self.reset_database:
-            database.drop_tables([Company, Address, WebSite])
-
         self.kvk_ranges = None
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
-        logger.info("Matching the best url's")
+        self.logger.info("Matching the best url's")
         with Timer("find best match") as _:
             self.find_best_matching_url()
 
@@ -418,7 +429,7 @@ class KvKUrlParser(object):
         -------
 
         """
-        logger.debug("Start merging..")
+        self.logger.debug("Start merging..")
 
         infile = Path(self.kvk_selection_input_file_name)
         outfile_ext = infile.suffix
@@ -443,16 +454,16 @@ class KvKUrlParser(object):
         result.reset_index(inplace=True)
         result.rename(columns={KVK_KEY: self.kvk_selection_kvk_key}, inplace=True)
 
-        logger.info("Writing merged data base to {}".format(outfile.name))
+        self.logger.info("Writing merged data base to {}".format(outfile.name))
         result.to_excel(outfile.name)
 
-        logger.debug("Merge them")
+        self.logger.debug("Merge them")
 
     def read_database_selection(self):
         """
         Read the external data base that contains a selection of kvk number we want to process
         """
-        logger.info("Reading selection data base")
+        self.logger.info("Reading selection data base")
         df = pd.read_excel(self.kvk_selection_input_file_name)
 
         df.drop_duplicates([self.kvk_selection_kvk_key], inplace=True)
@@ -498,7 +509,7 @@ class KvKUrlParser(object):
         self.addresses_df.reset_index(inplace=True)
 
         n_after = self.addresses_df.index.size
-        logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
+        self.logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
 
     def find_match_for_company(self, company, kvk_nr, naam):
 
@@ -508,12 +519,12 @@ class KvKUrlParser(object):
 
         postcodes = list()
         for address in company.address:
-            logger.debug("Found postcode {}".format(address.postcode))
+            self.logger.debug("Found postcode {}".format(address.postcode))
             postcodes.append(address.postcode)
 
         # remove space and put to lower for better comparison with the url
         naam_small = clean_name(naam)
-        logger.info("Checking {}: {} ({})".format(kvk_nr, naam, naam_small))
+        self.logger.info("Checking {}: {} ({})".format(kvk_nr, naam, naam_small))
 
         # for all the websites of the company, collect all the available urls' and see how
         # close they match
@@ -530,13 +541,13 @@ class KvKUrlParser(object):
             web_df_best = web_df.head(1)
 
             # store the best matching web site
-            logger.debug("Best matching url: {}".format(web_df.head(1)))
+            self.logger.debug("Best matching url: {}".format(web_df.head(1)))
             web_match_index = web_df_best.index.values[0]
             web_match = company.websites[web_match_index]
             web_match.best_match = True
             web_match.url = web_df_best["url"].values[0]
             web_match.ranking = web_df_best["ranking"].values[0]
-            logger.debug("Best matching url: {}".format(web_match.url))
+            self.logger.debug("Best matching url: {}".format(web_match.url))
 
             # update all the properties
             if self.save:
@@ -558,55 +569,55 @@ class KvKUrlParser(object):
 
         if start is not None or stop is not None:
             if start is None:
-                logger.info("Make query from start until stop {}".format(stop))
+                self.logger.info("Make query from start until stop {}".format(stop))
                 query = (Company
                          .select().where(Company.kvk_nummer <= stop)
                          .prefetch(WebSite, Address))
             elif stop is None:
-                logger.info("Make query from start {} until end".format(start))
+                self.logger.info("Make query from start {} until end".format(start))
                 query = (Company
                          .select().where(Company.kvk_nummer >= start)
                          .prefetch(WebSite, Address))
             else:
-                logger.info("Make query from start {} until stop {}".format(start, stop))
+                self.logger.info("Make query from start {} until stop {}".format(start, stop))
                 query = (Company
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
                          .prefetch(WebSite, Address))
         else:
-            logger.info("Make query without selecting in the kvk range")
+            self.logger.info("Make query without selecting in the kvk range")
             query = (Company.select()
                      .prefetch(WebSite, Address))
 
         if self.maximum_entries is not None:
             maximum_queries = self.maximum_entries
-            logger.info("Maximum queries imposed as {}".format(maximum_queries))
+            self.logger.info("Maximum queries imposed as {}".format(maximum_queries))
         else:
-            maximum_queries = len(query)
-            logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
+            maximum_queries = [q.processed for q in query].count(False)
+            self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
-        if self.progressbar:
+        if self.progressbar and self.i_proc == 0:
             wdg = PB_WIDGETS
             wdg[-1] = progress_bar_message(0, maximum_queries)
             progress = pb.ProgressBar(widgets=wdg, maxval=maximum_queries, fd=sys.stdout).start()
         else:
             progress = None
 
-        logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
+        self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
                                                                           start, stop))
         for cnt, company in enumerate(query):
 
             # first check if we do not have to stop
             if self.maximum_entries is not None and cnt == self.maximum_entries:
-                logger.info("Maximum entries reached")
+                self.logger.info("Maximum entries reached")
                 break
             if os.path.exists(STOP_FILE):
-                logger.info("Stop file found. Quit processing")
+                self.logger.info("Stop file found. Quit processing")
                 os.remove(STOP_FILE)
                 break
 
             if company.processed and not self.force_process:
-                logger.debug("Company {} ({}) already processed. Skipping"
+                self.logger.debug("Company {} ({}) already processed. Skipping"
                              "".format(company.kvk_nummer, company.naam))
                 continue
 
@@ -617,14 +628,12 @@ class KvKUrlParser(object):
                 self.find_match_for_company(company, kvk_nr, naam)
 
             # update the progress bar if needed
-            if self.progressbar:
+            if progress:
                 wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
-
-            if self.progressbar:
                 progress.update(cnt)
                 sys.stdout.flush()
 
-        if self.progressbar:
+        if progress:
             progress.finish()
 
         # this is not faster than save per record

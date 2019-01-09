@@ -31,12 +31,14 @@ import logging
 import os
 import platform
 import sys
+from pathlib import Path
 
 import pandas as pd
 import yaml
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory, Timer)
 from kvk_url_finder.engine import KvKUrlParser
+from kvk_url_finder.models import connect_database
 
 try:
     from kvk_url_finder import __version__
@@ -119,7 +121,7 @@ def setup_logging(write_log_to_file=False,
                             log_file=log_file_base)
 
     if progress_bar:
-        # switch of all logging because we are showing the progress bar via the print statement
+        # switch off all logging because we are showing the progress bar via the print statement
         # logger.disabled = True
         # logger.disabled = True
         # logger.setLevel(logging.CRITICAL)
@@ -217,10 +219,11 @@ def main(args_in):
         make_directory(cache_directory)
         make_directory(output_directory)
 
+        db_file_name = Path(output_directory) / database_name
+        logger.info("Connecting to database {}".format(db_file_name))
+        connect_database(db_file_name, reset_database=args.reset_database)
+
         kvk_parser = KvKUrlParser(
-            output_directory=output_directory,
-            reset_database=args.reset_database,
-            database_name=database_name,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             number_of_processes=args.n_processes)
@@ -237,7 +240,6 @@ def main(args_in):
             for i_proc,  kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
                     cache_directory=cache_directory,
-                    output_directory=output_directory,
                     address_input_file_name=address_input_file_name,
                     url_input_file_name=kvk_url_file_name,
                     kvk_selection_input_file_name=kvk_selection_file_name,
@@ -246,7 +248,6 @@ def main(args_in):
                     address_keys=address_keys,
                     kvk_url_keys=kvk_url_keys,
                     reset_database=args.reset_database,
-                    database_name=database_name,
                     extend_database=args.extend_database,
                     progressbar=args.progressbar,
                     n_url_count_threshold=n_url_count_threshold,
@@ -258,9 +259,11 @@ def main(args_in):
                     threshold_distance=threshold_distance,
                     threshold_string_match=threshold_string_match,
                     i_proc=i_proc,
+                    log_file_base=args.log_file_base,
+                    log_level_file=args.log_level_file,
                 )
 
-                kvk_parser.run()
+                kvk_parser.start()
 
 
 def _run():
