@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import logging
 import multiprocessing as mp
+from tqdm import tqdm
 
 import Levenshtein
 import pandas as pd
@@ -596,45 +597,35 @@ class KvKUrlParser(mp.Process):
             maximum_queries = [q.processed for q in query].count(False)
             self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
-        if self.progressbar and self.i_proc == 0:
-            wdg = PB_WIDGETS
-            wdg[-1] = progress_bar_message(0, maximum_queries)
-            progress = pb.ProgressBar(widgets=wdg, maxval=maximum_queries, fd=sys.stdout).start()
-        else:
-            progress = None
-
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
                                                                           start, stop))
-        for cnt, company in enumerate(query):
 
-            # first check if we do not have to stop
-            if self.maximum_entries is not None and cnt == self.maximum_entries:
-                self.logger.info("Maximum entries reached")
-                break
-            if os.path.exists(STOP_FILE):
-                self.logger.info("Stop file found. Quit processing")
-                os.remove(STOP_FILE)
-                break
+        with tqdm(total=100, file=sys.stdout) as pbar:
+            for cnt, company in enumerate(query):
 
-            if company.processed and not self.force_process:
-                self.logger.debug("Company {} ({}) already processed. Skipping"
-                             "".format(company.kvk_nummer, company.naam))
-                continue
+                # first check if we do not have to stop
+                if self.maximum_entries is not None and cnt == self.maximum_entries:
+                    self.logger.info("Maximum entries reached")
+                    break
+                if os.path.exists(STOP_FILE):
+                    self.logger.info("Stop file found. Quit processing")
+                    os.remove(STOP_FILE)
+                    break
 
-            kvk_nr = company.kvk_nummer
-            naam: str = company.naam
+                if company.processed and not self.force_process:
+                    self.logger.debug("Company {} ({}) already processed. Skipping"
+                                 "".format(company.kvk_nummer, company.naam))
+                    continue
 
-            with Timer(name=f"{kvk_nr}") as _:
-                self.find_match_for_company(company, kvk_nr, naam)
+                kvk_nr = company.kvk_nummer
+                naam: str = company.naam
 
-            # update the progress bar if needed
-            if progress:
-                wdg[-1] = progress_bar_message(cnt, maximum_queries, kvk_nr, naam)
-                progress.update(cnt)
-                sys.stdout.flush()
+                with Timer(name=f"{kvk_nr}") as _:
+                    self.find_match_for_company(company, kvk_nr, naam)
 
-        if progress:
-            progress.finish()
+                if self.i_proc == 0:
+                    pbar.update()
+
 
         # this is not faster than save per record
         # with Timer("Updating tables") as _:

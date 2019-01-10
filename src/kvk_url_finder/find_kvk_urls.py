@@ -111,7 +111,8 @@ def setup_logging(write_log_to_file=False,
     if write_log_to_file:
         # http://stackoverflow.com/questions/29087297/
         # is-there-a-way-to-change-the-filemode-for-a-logger-object-that-is-not-configured
-        sys.stderr = open(log_file_base + ".err", 'w')
+        # sys.stderr = open(log_file_base + ".err", 'w')
+        pass
     else:
         log_file_base = None
 
@@ -219,10 +220,12 @@ def main(args_in):
         make_directory(cache_directory)
         make_directory(output_directory)
 
+        # connect to the sqlite database
         db_file_name = Path(output_directory) / database_name
         logger.info("Connecting to database {}".format(db_file_name))
         connect_database(db_file_name, reset_database=args.reset_database)
 
+        # get the list of kvk number from the database
         kvk_parser = KvKUrlParser(
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
@@ -232,6 +235,8 @@ def main(args_in):
         kvk_parser.get_kvk_list_per_process()
         logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
 
+        # either merge the database with an external database (if the merge option is given) or
+        # process all the urls
         if args.merge_database:
             kvk_parser.merge_external_database()
         else:
