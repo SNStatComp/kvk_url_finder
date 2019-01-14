@@ -2,6 +2,7 @@ PyYAML
 tldextract
 progressbar
 pandas
+numpy
 scrapy
 peewee
 line_profiler
