@@ -32,6 +32,7 @@ import os
 import platform
 import sys
 from pathlib import Path
+import multiprocessing as mp
 
 import pandas as pd
 import yaml
@@ -229,7 +230,9 @@ def main(args_in):
         kvk_parser = KvKUrlParser(
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
-            number_of_processes=args.n_processes)
+            number_of_processes=args.n_processes,
+            progressbar=args.progressbar,
+        )
         if args.update_sql_tables:
             kvk_parser.update_sql_tables()
         kvk_parser.get_kvk_list_per_process()

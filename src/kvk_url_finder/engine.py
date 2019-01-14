@@ -311,13 +311,15 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
+        log_file = "{}_{}".format(log_file_base, i_proc)
+
         # create a logger per process
         self.logger = create_logger(
             name="{}_{}".format("KvKUlrParser", i_proc),
             file_log_level=log_level_file,
             console_log_level=logging.INFO,
             file_log_format_long=True,
-            log_file="{}_{}".format(log_file_base, i_proc),
+            log_file=log_file
         )
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -594,38 +596,45 @@ class KvKUrlParser(mp.Process):
             maximum_queries = self.maximum_entries
             self.logger.info("Maximum queries imposed as {}".format(maximum_queries))
         else:
-            maximum_queries = [q.processed for q in query].count(False)
+            # count the number of none-processed queries (ie in which the processed flag == False
+            maximum_queries = [q.processed and not self.force_process for q in query].count(False)
             self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
                                                                           start, stop))
 
-        with tqdm(total=100, file=sys.stdout) as pbar:
-            for cnt, company in enumerate(query):
+        if self.progressbar:
+            pbar = tqdm(total=maximum_queries, position=1, file=sys.stdout)
+        else:
+            pbar = None
 
-                # first check if we do not have to stop
-                if self.maximum_entries is not None and cnt == self.maximum_entries:
-                    self.logger.info("Maximum entries reached")
-                    break
-                if os.path.exists(STOP_FILE):
-                    self.logger.info("Stop file found. Quit processing")
-                    os.remove(STOP_FILE)
-                    break
+        for cnt, company in enumerate(query):
 
-                if company.processed and not self.force_process:
-                    self.logger.debug("Company {} ({}) already processed. Skipping"
-                                 "".format(company.kvk_nummer, company.naam))
-                    continue
+            # first check if we do not have to stop
+            if self.maximum_entries is not None and cnt == self.maximum_entries:
+                self.logger.info("Maximum entries reached")
+                break
+            if os.path.exists(STOP_FILE):
+                self.logger.info("Stop file found. Quit processing")
+                os.remove(STOP_FILE)
+                break
 
-                kvk_nr = company.kvk_nummer
-                naam: str = company.naam
+            if company.processed and not self.force_process:
+                self.logger.debug("Company {} ({}) already processed. Skipping"
+                                  "".format(company.kvk_nummer, company.naam))
+                continue
 
-                with Timer(name=f"{kvk_nr}") as _:
-                    self.find_match_for_company(company, kvk_nr, naam)
+            kvk_nr = company.kvk_nummer
+            naam: str = company.naam
 
-                if self.i_proc == 0:
-                    pbar.update()
+            with Timer(name=f"{kvk_nr}") as _:
+                self.find_match_for_company(company, kvk_nr, naam)
 
+            if pbar:
+                pbar.update()
+
+        if pbar is not None:
+            pbar.close()
 
         # this is not faster than save per record
         # with Timer("Updating tables") as _:
