@@ -604,7 +604,7 @@ class KvKUrlParser(mp.Process):
                                                                           start, stop))
 
         if self.progressbar:
-            pbar = tqdm(total=maximum_queries, position=1, file=sys.stdout)
+            pbar = tqdm(total=maximum_queries, position=self.i_proc, file=sys.stdout)
         else:
             pbar = None
 
