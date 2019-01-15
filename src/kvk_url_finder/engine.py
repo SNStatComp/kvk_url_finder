@@ -404,7 +404,7 @@ class KvKUrlParser(mp.Process):
         stop = self.kvk_range_process.stop
         number_in_range = 0
         for q in query:
-            if number_in_range >= self.maximum_entries:
+            if self.maximum_entries is not None and number_in_range >= self.maximum_entries:
                 # maximum entries reached
                 break
             kvk = q.kvk_nummer
