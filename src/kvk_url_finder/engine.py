@@ -11,6 +11,7 @@ import pandas as pd
 import progressbar as pb
 import tldextract
 import difflib
+import peewee as pw
 
 from cbs_utils.misc import (get_logger, create_logger)
 from kvk_url_finder.models import *
@@ -664,7 +665,11 @@ class KvKUrlParser(mp.Process):
             kvk_nr = company.kvk_nummer
             naam: str = company.naam
 
-            self.find_match_for_company(company, kvk_nr, naam)
+            try:
+                self.find_match_for_company(company, kvk_nr, naam)
+            except pw.DatabaseError as err:
+                self.logger.warning(f"{err}")
+                self.logger.warning("skipping")
 
             if pbar:
                 pbar.update()
