@@ -297,7 +297,7 @@ class KvKUrlParser(mp.Process):
                  threshold_string_match=None,
                  save=True,
                  number_of_processes=1,
-                 i_proc=0,
+                 i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
                  ):
@@ -311,7 +311,10 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
-        log_file = "{}_{}".format(log_file_base, i_proc)
+        if i_proc is None:
+            log_file = log_file_base
+        else:
+            log_file = "{}_{}".format(log_file_base, i_proc)
 
         # create a logger per process
         self.logger = create_logger(

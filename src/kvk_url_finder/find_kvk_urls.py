@@ -226,12 +226,27 @@ def main(args_in):
         logger.info("Connecting to database {}".format(db_file_name))
         connect_database(db_file_name, reset_database=args.reset_database)
 
-        # get the list of kvk number from the database
+        # get the list of kvk number from the database. In case a data base is empty, it is
+        # created from the input files
         kvk_parser = KvKUrlParser(
+            cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
+            n_url_count_threshold=n_url_count_threshold,
             number_of_processes=args.n_processes,
             progressbar=args.progressbar,
+            address_input_file_name=address_input_file_name,
+            url_input_file_name=kvk_url_file_name,
+            kvk_selection_input_file_name=kvk_selection_file_name,
+            kvk_selection_kvk_key=kvk_selection_kvk_nummer,
+            kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
+            address_keys=address_keys,
+            kvk_url_keys=kvk_url_keys,
+            reset_database=args.reset_database,
+            extend_database=args.extend_database,
+            kvk_range_read=kvk_range_read,
+            log_file_base=args.log_file_base,
+            log_level_file=args.log_level_file,
         )
         if args.update_sql_tables:
             kvk_parser.update_sql_tables()
@@ -248,18 +263,7 @@ def main(args_in):
             for i_proc,  kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
                     cache_directory=cache_directory,
-                    address_input_file_name=address_input_file_name,
-                    url_input_file_name=kvk_url_file_name,
-                    kvk_selection_input_file_name=kvk_selection_file_name,
-                    kvk_selection_kvk_key=kvk_selection_kvk_nummer,
-                    kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
-                    address_keys=address_keys,
-                    kvk_url_keys=kvk_url_keys,
-                    reset_database=args.reset_database,
-                    extend_database=args.extend_database,
                     progressbar=args.progressbar,
-                    n_url_count_threshold=n_url_count_threshold,
-                    kvk_range_read=kvk_range_read,
                     kvk_range_process=kvk_range,
                     maximum_entries=maximum_entries,
                     force_process=args.force_process,
