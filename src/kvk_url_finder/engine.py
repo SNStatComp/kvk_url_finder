@@ -404,6 +404,9 @@ class KvKUrlParser(mp.Process):
         stop = self.kvk_range_process.stop
         number_in_range = 0
         for q in query:
+            if number_in_range >= self.maximum_entries:
+                # maximum entries reached
+                break
             kvk = q.kvk_nummer
             if start is not None and kvk < start or stop is not None and kvk > stop:
                 # skip because is outside range
@@ -612,13 +615,10 @@ class KvKUrlParser(mp.Process):
             query = (Company.select()
                      .prefetch(WebSite, Address))
 
-        if self.maximum_entries is not None:
-            maximum_queries = self.maximum_entries
-            self.logger.info("Maximum queries imposed as {}".format(maximum_queries))
-        else:
-            # count the number of none-processed queries (ie in which the processed flag == False
-            maximum_queries = [q.processed and not self.force_process for q in query].count(False)
-            self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
+        # count the number of none-processed queries (ie in which the processed flag == False
+        # we have already imposed the max_entries option in the selection of the ranges
+        maximum_queries = [q.processed and not self.force_process for q in query].count(False)
+        self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
                                                                           start, stop))

@@ -246,6 +246,7 @@ def main(args_in):
             reset_database=args.reset_database,
             extend_database=args.extend_database,
             kvk_range_read=kvk_range_read,
+            maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
             log_level_file=args.log_level_file,
         )
