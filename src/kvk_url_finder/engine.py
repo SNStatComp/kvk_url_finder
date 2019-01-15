@@ -303,7 +303,8 @@ class KvKUrlParser(mp.Process):
                  ):
 
         # launch the process
-        mp.Process.__init__(self)
+        if i_proc is not None and number_of_processes > 1:
+            mp.Process.__init__(self)
         self.i_proc = i_proc
 
         self.address_keys = address_keys
@@ -382,7 +383,7 @@ class KvKUrlParser(mp.Process):
         with Timer("find best match") as _:
             self.find_best_matching_url()
 
-    def update_sql_tables(self):
+    def generate_sql_tables(self):
         if self.kvk_selection_input_file_name:
             self.read_database_selection()
         self.read_database_addresses()
@@ -401,11 +402,13 @@ class KvKUrlParser(mp.Process):
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        number_in_range = 0
         for q in query:
             kvk = q.kvk_nummer
             if start is not None and kvk < start or stop is not None and kvk > stop:
                 # skip because is outside range
                 continue
+            number_in_range += 1
             if not self.force_process and q.processed:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
@@ -413,6 +416,20 @@ class KvKUrlParser(mp.Process):
             kvk_to_process.append(kvk)
 
         n_kvk = len(kvk_to_process)
+
+        # check the ranges
+        try:
+            assert number_in_range > 0
+        except AssertionError:
+            logger.warning(f"No kvk numbers where found in range {start} -- {stop}")
+            raise
+        try:
+            assert n_kvk > 0
+        except AssertionError:
+            logger.warning(f"Found {number_in_range} kvk numbers in range {start} -- {stop} " 
+                           f"but none to be processed")
+            raise
+
         n_per_proc = int(n_kvk / self.number_of_processes)
         self.kvk_ranges = list()
 
