@@ -448,7 +448,16 @@ class KvKUrlParser(mp.Process):
                            f"but none to be processed")
             raise
 
-        n_per_proc = int(n_kvk / self.number_of_processes)
+        try:
+            assert n_kvk >= self.number_of_processes
+        except AssertionError as err:
+            print("{}".format(err), file=sys.stderr)
+            print(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
+                  f"with {n_kvk} to process, with only {self.number_of_processes} cores",
+                  file=sys.stderr)
+            raise
+
+        n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
         self.kvk_ranges = list()
 
         for i_proc in range(self.number_of_processes):
