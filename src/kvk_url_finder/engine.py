@@ -12,7 +12,7 @@ import progressbar as pb
 import tldextract
 import difflib
 
-from cbs_utils.misc import (get_logger, Timer, create_logger)
+from cbs_utils.misc import (get_logger, create_logger)
 from kvk_url_finder.models import *
 
 try:
@@ -305,6 +305,17 @@ class KvKUrlParser(mp.Process):
         # launch the process
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
+            formatter = logging.Formatter("{:2d} ".format(i_proc) +
+                                          '%(levelname)8s --- '
+                                          '%(message)s '
+                                          '(%(filename)s:%(lineno)s)',
+                                          datefmt='%Y-%m-%d %H:%M:%S')
+        else:
+            formatter = logging.Formatter('%(levelname)8s --- '
+                                          '%(message)s '
+                                          '(%(filename)s:%(lineno)s)',
+                                          datefmt='%Y-%m-%d %H:%M:%S')
+
         self.i_proc = i_proc
 
         self.address_keys = address_keys
@@ -323,7 +334,9 @@ class KvKUrlParser(mp.Process):
             file_log_level=log_level_file,
             console_log_level=logging.INFO,
             file_log_format_long=True,
-            log_file=log_file
+            log_file=log_file,
+            formatter=formatter,
+            formatter_file=formatter
         )
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -380,8 +393,7 @@ class KvKUrlParser(mp.Process):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
         self.logger.info("Matching the best url's")
-        with Timer("find best match") as _:
-            self.find_best_matching_url()
+        self.find_best_matching_url()
 
     def generate_sql_tables(self):
         if self.kvk_selection_input_file_name:
@@ -429,7 +441,7 @@ class KvKUrlParser(mp.Process):
         try:
             assert n_kvk > 0
         except AssertionError:
-            logger.warning(f"Found {number_in_range} kvk numbers in range {start} -- {stop} " 
+            logger.warning(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
                            f"but none to be processed")
             raise
 
@@ -592,6 +604,7 @@ class KvKUrlParser(mp.Process):
 
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
 
         if start is not None or stop is not None:
             if start is None:
@@ -610,6 +623,7 @@ class KvKUrlParser(mp.Process):
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
                          .prefetch(WebSite, Address))
+                self.logger.info("Done!")
         else:
             self.logger.info("Make query without selecting in the kvk range")
             query = (Company.select()
@@ -617,11 +631,12 @@ class KvKUrlParser(mp.Process):
 
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
+        self.logger.info("Counting all")
         maximum_queries = [q.processed and not self.force_process for q in query].count(False)
         self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
-                                                                          start, stop))
+                                                                               start, stop))
 
         if self.progressbar:
             pbar = tqdm(total=maximum_queries, position=self.i_proc, file=sys.stdout)
@@ -647,8 +662,7 @@ class KvKUrlParser(mp.Process):
             kvk_nr = company.kvk_nummer
             naam: str = company.naam
 
-            with Timer(name=f"{kvk_nr}") as _:
-                self.find_match_for_company(company, kvk_nr, naam)
+            self.find_match_for_company(company, kvk_nr, naam)
 
             if pbar:
                 pbar.update()
