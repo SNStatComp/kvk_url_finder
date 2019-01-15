@@ -306,12 +306,14 @@ class KvKUrlParser(mp.Process):
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
             formatter = logging.Formatter("{:2d} ".format(i_proc) +
+                                          "[%(asctime)s]"
                                           '%(levelname)8s --- '
                                           '%(message)s '
                                           '(%(filename)s:%(lineno)s)',
                                           datefmt='%Y-%m-%d %H:%M:%S')
         else:
-            formatter = logging.Formatter('%(levelname)8s --- '
+            formatter = logging.Formatter("[%(asctime)s]" 
+                                          '%(levelname)8s --- '
                                           '%(message)s '
                                           '(%(filename)s:%(lineno)s)',
                                           datefmt='%Y-%m-%d %H:%M:%S')
