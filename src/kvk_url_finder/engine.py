@@ -1159,7 +1159,7 @@ class UrlCollection(object):
         self.company_websites = self.company.websites
         self.company_name_small = clean_name(self.company_name)
 
-        self.threshold_distance = threshold_distance,
+        self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
 
         number_of_websites = len(self.company_websites)
@@ -1177,6 +1177,8 @@ class UrlCollection(object):
             self.web_df = self.web_df[self.web_df["url"] == impose_url].copy()
         else:
             self.get_best_matching_web_site()
+
+        self.logger.info("Best MAtch".format(self.web_df.head(1)))
 
     def collect_web_sites(self):
         """
