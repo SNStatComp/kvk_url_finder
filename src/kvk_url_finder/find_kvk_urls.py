@@ -72,6 +72,8 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument('-q', '--quiet', help="Be quiet: no output", action="store_const",
                         dest="log_level", const=logging.WARNING)
     parser.add_argument('--progressbar', help="Show a progress bar", action="store_true")
+    parser.add_argument('--singlebar', help="Only show one bar for multiprocessing",
+                        action="store_true")
     parser.add_argument('--reset_database', help="Reset the data base in case we have generated"
                                                  "a sql file already", action="store_true")
     parser.add_argument('--extend_database', help="Extend the data base in case we have generated"
@@ -232,6 +234,7 @@ def main(args_in):
             kvk_range_process=kvk_range_process,
             number_of_processes=args.n_processes,
             progressbar=args.progressbar,
+            singlebar=args.singlebar,
         )
         if args.update_sql_tables:
             kvk_parser.update_sql_tables()
@@ -269,6 +272,7 @@ def main(args_in):
                     i_proc=i_proc,
                     log_file_base=args.log_file_base,
                     log_level_file=args.log_level_file,
+                    singlebar=args.singlebar,
                 )
 
                 kvk_parser.start()

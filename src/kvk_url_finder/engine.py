@@ -288,6 +288,7 @@ class KvKUrlParser(mp.Process):
                  compression=None,
                  maximum_entries=None,
                  progressbar=False,
+                 singlebar=False,
                  n_url_count_threshold=100,
                  force_process=False,
                  kvk_range_read=None,
@@ -359,6 +360,11 @@ class KvKUrlParser(mp.Process):
 
         self.compression = compression
         self.progressbar = progressbar
+        self.showbar = progressbar
+        if singlebar and i_proc > 0:
+            # in case the single bar option is given, we only show the bar of the first process
+            self.showbar = False
+
 
         self.kvk_range_read = KvKRange(kvk_range_read)
 
@@ -603,7 +609,7 @@ class KvKUrlParser(mp.Process):
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
                                                                           start, stop))
 
-        if self.progressbar:
+        if self.progressbar and self.showbar:
             pbar = tqdm(total=maximum_queries, position=self.i_proc, file=sys.stdout)
         else:
             pbar = None
