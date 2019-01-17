@@ -1,17 +1,16 @@
+import difflib
+import logging
+import multiprocessing as mp
 import os
 import re
 import sys
 from pathlib import Path
-import logging
-import multiprocessing as mp
-from tqdm import tqdm
 
 import Levenshtein
 import pandas as pd
 import progressbar as pb
 import tldextract
-import difflib
-import peewee as pw
+from tqdm import tqdm
 
 from cbs_utils.misc import (get_logger, create_logger)
 from kvk_url_finder.models import *
@@ -314,7 +313,7 @@ class KvKUrlParser(mp.Process):
                                           "(%(filename)s:%(lineno)s)",
                                           datefmt="%Y-%m-%d %H:%M:%S")
         else:
-            formatter = logging.Formatter("[%(asctime)s]" 
+            formatter = logging.Formatter("[%(asctime)s]"
                                           "%(levelname)8s --- "
                                           "%(message)s "
                                           "(%(filename)s:%(lineno)s)",
@@ -384,7 +383,6 @@ class KvKUrlParser(mp.Process):
         if singlebar and i_proc > 0:
             # in case the single bar option is given, we only show the bar of the first process
             self.showbar = False
-
 
         self.kvk_range_read = KvKRange(kvk_range_read)
 

@@ -32,12 +32,11 @@ import os
 import platform
 import sys
 from pathlib import Path
-import multiprocessing as mp
 
 import pandas as pd
 import yaml
 
-from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory, Timer)
+from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import connect_database
 
@@ -266,7 +265,7 @@ def main(args_in):
         else:
 
             # create the object and do you thing
-            for i_proc,  kvk_range in enumerate(kvk_parser.kvk_ranges):
+            for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
                     cache_directory=cache_directory,
                     progressbar=args.progressbar,

@@ -65,4 +65,3 @@ def connect_database(database_name, reset_database):
     database.create_tables([Company, Address, WebSite])
     if reset_database:
         database.drop_tables([Company, Address, WebSite])
-

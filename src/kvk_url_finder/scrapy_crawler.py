@@ -1,7 +1,6 @@
-import scrapy
-from twisted.internet import reactor
 from scrapy.crawler import CrawlerRunner
 from scrapy.utils.log import configure_logging
+from twisted.internet import reactor
 
 from kvk_url_finder.electronics import ElectronicsSpider
 
