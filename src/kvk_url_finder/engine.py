@@ -11,8 +11,9 @@ import pandas as pd
 import progressbar as pb
 import tldextract
 import difflib
+import peewee as pw
 
-from cbs_utils.misc import (get_logger, Timer, create_logger)
+from cbs_utils.misc import (get_logger, create_logger)
 from kvk_url_finder.models import *
 
 try:
@@ -298,13 +299,27 @@ class KvKUrlParser(mp.Process):
                  threshold_string_match=None,
                  save=True,
                  number_of_processes=1,
-                 i_proc=0,
+                 i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
                  ):
 
         # launch the process
-        mp.Process.__init__(self)
+        if i_proc is not None and number_of_processes > 1:
+            mp.Process.__init__(self)
+            formatter = logging.Formatter("{:2d} ".format(i_proc) +
+                                          "[%(asctime)s]"
+                                          "%(levelname)8s --- "
+                                          "%(message)s "
+                                          "(%(filename)s:%(lineno)s)",
+                                          datefmt="%Y-%m-%d %H:%M:%S")
+        else:
+            formatter = logging.Formatter("[%(asctime)s]" 
+                                          "%(levelname)8s --- "
+                                          "%(message)s "
+                                          "(%(filename)s:%(lineno)s)",
+                                          datefmt="%Y-%m-%d %H:%M:%S")
+
         self.i_proc = i_proc
 
         self.address_keys = address_keys
@@ -312,7 +327,10 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
-        log_file = "{}_{}".format(log_file_base, i_proc)
+        if i_proc is None:
+            log_file = log_file_base
+        else:
+            log_file = "{}_{}".format(log_file_base, i_proc)
 
         # create a logger per process
         self.logger = create_logger(
@@ -320,7 +338,9 @@ class KvKUrlParser(mp.Process):
             file_log_level=log_level_file,
             console_log_level=logging.INFO,
             file_log_format_long=True,
-            log_file=log_file
+            log_file=log_file,
+            formatter=formatter,
+            formatter_file=formatter
         )
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -382,10 +402,9 @@ class KvKUrlParser(mp.Process):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
         self.logger.info("Matching the best url's")
-        with Timer("find best match") as _:
-            self.find_best_matching_url()
+        self.find_best_matching_url()
 
-    def update_sql_tables(self):
+    def generate_sql_tables(self):
         if self.kvk_selection_input_file_name:
             self.read_database_selection()
         self.read_database_addresses()
@@ -404,11 +423,16 @@ class KvKUrlParser(mp.Process):
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        number_in_range = 0
         for q in query:
+            if self.maximum_entries is not None and number_in_range >= self.maximum_entries:
+                # maximum entries reached
+                break
             kvk = q.kvk_nummer
             if start is not None and kvk < start or stop is not None and kvk > stop:
                 # skip because is outside range
                 continue
+            number_in_range += 1
             if not self.force_process and q.processed:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
@@ -416,7 +440,30 @@ class KvKUrlParser(mp.Process):
             kvk_to_process.append(kvk)
 
         n_kvk = len(kvk_to_process)
-        n_per_proc = int(n_kvk / self.number_of_processes)
+
+        # check the ranges
+        try:
+            assert number_in_range > 0
+        except AssertionError:
+            logger.warning(f"No kvk numbers where found in range {start} -- {stop}")
+            raise
+        try:
+            assert n_kvk > 0
+        except AssertionError:
+            logger.warning(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
+                           f"but none to be processed")
+            raise
+
+        try:
+            assert n_kvk >= self.number_of_processes
+        except AssertionError as err:
+            print("{}".format(err), file=sys.stderr)
+            print(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
+                  f"with {n_kvk} to process, with only {self.number_of_processes} cores",
+                  file=sys.stderr)
+            raise
+
+        n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
         self.kvk_ranges = list()
 
         for i_proc in range(self.number_of_processes):
@@ -575,6 +622,7 @@ class KvKUrlParser(mp.Process):
 
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
 
         if start is not None or stop is not None:
             if start is None:
@@ -593,21 +641,20 @@ class KvKUrlParser(mp.Process):
                          .select()
                          .where(Company.kvk_nummer.between(start, stop))
                          .prefetch(WebSite, Address))
+                self.logger.info("Done!")
         else:
             self.logger.info("Make query without selecting in the kvk range")
             query = (Company.select()
                      .prefetch(WebSite, Address))
 
-        if self.maximum_entries is not None:
-            maximum_queries = self.maximum_entries
-            self.logger.info("Maximum queries imposed as {}".format(maximum_queries))
-        else:
-            # count the number of none-processed queries (ie in which the processed flag == False
-            maximum_queries = [q.processed and not self.force_process for q in query].count(False)
-            self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
+        # count the number of none-processed queries (ie in which the processed flag == False
+        # we have already imposed the max_entries option in the selection of the ranges
+        self.logger.info("Counting all")
+        maximum_queries = [q.processed and not self.force_process for q in query].count(False)
+        self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
-                                                                          start, stop))
+                                                                               start, stop))
 
         if self.progressbar and self.showbar:
             pbar = tqdm(total=maximum_queries, position=self.i_proc, file=sys.stdout)
@@ -633,8 +680,11 @@ class KvKUrlParser(mp.Process):
             kvk_nr = company.kvk_nummer
             naam: str = company.naam
 
-            with Timer(name=f"{kvk_nr}") as _:
+            try:
                 self.find_match_for_company(company, kvk_nr, naam)
+            except pw.DatabaseError as err:
+                self.logger.warning(f"{err}")
+                self.logger.warning("skipping")
 
             if pbar:
                 pbar.update()
