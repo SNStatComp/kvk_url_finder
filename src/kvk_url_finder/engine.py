@@ -1175,10 +1175,11 @@ class UrlCollection(object):
         if impose_url:
             # just select the url to impose
             self.web_df = self.web_df[self.web_df["url"] == impose_url].copy()
-        else:
+        elif self.web_df is not None:
             self.get_best_matching_web_site()
-
-        self.logger.info("Best MAtch".format(self.web_df.head(1)))
+            self.logger.info("Best Match".format(self.web_df.head(1)))
+        else:
+            self.logger.info("No website found for".format(self.company_name))
 
     def collect_web_sites(self):
         """
