@@ -18,7 +18,8 @@ database = pw.SqliteDatabase(None, pragmas={
     'cache_size': -1 * 64000,  # 64MB
     'foreign_keys': 1,
     'ignore_check_constraints': 0,
-    'synchronous': 0})
+    'synchronous': 0,
+    'cache': 'shared'})
 
 
 class UnknownField(object):
