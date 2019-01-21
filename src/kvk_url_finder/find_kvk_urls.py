@@ -38,6 +38,7 @@ import pandas as pd
 import yaml
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
+import kvk_url_finder
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import connect_database
 
@@ -267,29 +268,30 @@ def main(args_in):
 
             # create the object and do you thing
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                kvk_parser = KvKUrlParser(
-                    cache_directory=cache_directory,
-                    progressbar=args.progressbar,
-                    kvk_range_process=kvk_range,
-                    maximum_entries=maximum_entries,
-                    force_process=args.force_process,
-                    impose_url_for_kvk=impose_url_for_kvk,
-                    threshold_distance=threshold_distance,
-                    threshold_string_match=threshold_string_match,
-                    i_proc=i_proc,
-                    number_of_processes=args.n_processes,
-                    log_file_base=args.log_file_base,
-                    log_level_file=args.log_level_file,
-                    singlebar=args.singlebar,
-                )
+                with kvk_url_finder.models.database as database:
+                    kvk_parser = KvKUrlParser(
+                        cache_directory=cache_directory,
+                        progressbar=args.progressbar,
+                        kvk_range_process=kvk_range,
+                        maximum_entries=maximum_entries,
+                        force_process=args.force_process,
+                        impose_url_for_kvk=impose_url_for_kvk,
+                        threshold_distance=threshold_distance,
+                        threshold_string_match=threshold_string_match,
+                        i_proc=i_proc,
+                        number_of_processes=args.n_processes,
+                        log_file_base=args.log_file_base,
+                        log_level_file=args.log_level_file,
+                        singlebar=args.singlebar,
+                    )
 
-                if args.n_processes > 1:
-                    # start is the multiprocessing.Process method that calls the run method of
-                    # our class.
-                    kvk_parser.start()
-                else:
-                    # for one cpu we can directly call run
-                    kvk_parser.run()
+                    if args.n_processes > 1:
+                        # start is the multiprocessing.Process method that calls the run method of
+                        # our class.
+                        kvk_parser.start()
+                    else:
+                        # for one cpu we can directly call run
+                        kvk_parser.run()
 
 
 def _run():
