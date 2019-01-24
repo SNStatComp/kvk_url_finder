@@ -305,7 +305,7 @@ def _run():
     start = time.time()
     main(sys.argv[1:])
     duration = time.time() - start
-    logger.info(f"Total processing time: {duration} seconds ")
+    print(f"Total processing time: {duration} seconds ")
 
 
 if __name__ == '__main__':
