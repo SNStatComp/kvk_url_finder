@@ -4,6 +4,7 @@ import multiprocessing as mp
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import Levenshtein
@@ -487,6 +488,7 @@ class KvKUrlParser(mp.Process):
         else:
             pbar = None
 
+        start = time.time()
         for cnt, company in enumerate(query):
 
             # first check if we do not have to stop
@@ -523,6 +525,8 @@ class KvKUrlParser(mp.Process):
         if pbar is not None:
             pbar.close()
 
+        duration = time.time() -start
+        logger.info(f"Done processing in {duration} seconds")
         # this is not faster than save per record
         # with Timer("Updating tables") as _:
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
