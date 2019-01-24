@@ -502,12 +502,15 @@ class KvKUrlParser(mp.Process):
                                   "".format(company.kvk_nummer, company.naam))
                 continue
 
+            self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
+
             try:
-                company_url_match = CompanyUrlMatch(company,
-                                                    imposed_urls=self.impose_url_for_kvk,
-                                                    distance_threshold=self.threshold_distance,
-                                                    string_match_threshold=self.threshold_string_match,
-                                                    )
+                company_url_match = \
+                    CompanyUrlMatch(company,
+                                    imposed_urls=self.impose_url_for_kvk,
+                                    distance_threshold=self.threshold_distance,
+                                    string_match_threshold=self.threshold_string_match,
+                                    )
                 logger.info("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
