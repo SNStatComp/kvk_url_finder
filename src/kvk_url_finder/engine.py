@@ -483,6 +483,7 @@ class KvKUrlParser(mp.Process):
 
         if self.progressbar and self.showbar:
             pbar = tqdm(total=maximum_queries, position=self.i_proc, file=sys.stdout)
+            pbar.set_description("@{:2d}: ".format(self.i_proc))
         else:
             pbar = None
 
