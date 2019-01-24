@@ -12,60 +12,57 @@ BEST_MATCH_KEY = "best_match"
 LEVENSHTEIN_KEY = "levenshtein"
 STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
+MAX_PROCESSES = 128
 
-# postpone the parsing of the database after we have created the parser class
-#database = pw.SqliteDatabase(None, pragmas={
-#    'journal_mode': 'wal',
-#    'cache_size': -1 * 64000,  # 64MB
-#    'foreign_keys': 1,
-#    'ignore_check_constraints': 0,
-#    'synchronous': 0,
-#    'cache': 'shared'})
-database = PooledPostgresqlExtDatabase(
-    "kvk_db", user="postgres", host="localhost", port=5432, password="vliet123",
-    max_connections=8, stale_timeout=300)
+
+def init_database():
+    db = PooledPostgresqlExtDatabase(
+        "kvk_db", user="postgres", host="localhost", port=5432, password="vliet123",
+        max_connections=MAX_PROCESSES, stale_timeout=300)
+    return db
 
 
 class UnknownField(object):
     def __init__(self, *_, **__): pass
 
 
-class BaseModel(pw.Model):
-    class Meta:
-        database = database
-        only_save_dirty = True
+def init_models(db, reset_tables=False):
+    class BaseModel(pw.Model):
+        class Meta:
+            database = db
+            only_save_dirty = True
 
+    # this class describes the format of the sql data base
+    class Company(BaseModel):
+        kvk_nummer = pw.IntegerField(primary_key=True)
+        naam = pw.CharField(null=True)
+        url = pw.CharField(null=True)
+        processed = pw.BooleanField(default=False)
 
-# this class describes the format of the sql data base
-class Company(BaseModel):
-    kvk_nummer = pw.IntegerField(primary_key=True)
-    naam = pw.CharField(null=True)
-    url = pw.CharField(null=True)
-    processed = pw.BooleanField(default=False)
+    class Address(BaseModel):
+        company = pw.ForeignKeyField(Company, backref="address")
+        naam = pw.CharField(null=True)
+        plaats = pw.CharField(null=True)
+        postcode = pw.CharField(null=True)
+        straat = pw.CharField(null=True)
 
+    class WebSite(BaseModel):
+        company = pw.ForeignKeyField(Company, backref="websites")
+        url = pw.CharField(null=False)
+        naam = pw.CharField(null=False)
+        getest = pw.BooleanField(default=False)
+        levenshtein = pw.IntegerField(default=-1)
+        string_match = pw.FloatField(default=-1)
+        best_match = pw.BooleanField(default=True)
+        ranking = pw.IntegerField(default=-1)
+        bestaat = pw.BooleanField(default=False)
 
-class Address(BaseModel):
-    company = pw.ForeignKeyField(Company, backref="address")
-    naam = pw.CharField(null=True)
-    plaats = pw.CharField(null=True)
-    postcode = pw.CharField(null=True)
-    straat = pw.CharField(null=True)
+    tables = (Company, Address, WebSite)
 
+    if db.is_closed():
+        db.connect()
+    if reset_tables and Company.table_exists():
+        db.drop_tables(tables)
+    db.create_tables(tables)
 
-class WebSite(BaseModel):
-    company = pw.ForeignKeyField(Company, backref="websites")
-    url = pw.CharField(null=False)
-    naam = pw.CharField(null=False)
-    getest = pw.BooleanField(default=False)
-    levenshtein = pw.IntegerField(default=-1)
-    string_match = pw.FloatField(default=-1)
-    best_match = pw.BooleanField(default=True)
-    ranking = pw.IntegerField(default=-1)
-    bestaat = pw.BooleanField(default=False)
-
-
-def connect_database(database_name, reset_database):
-    database.connect()
-    if reset_database:
-        database.drop_tables([Company, Address, WebSite])
-    database.create_tables([Company, Address, WebSite])
+    return tables

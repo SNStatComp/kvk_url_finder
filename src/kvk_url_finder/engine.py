@@ -264,13 +264,11 @@ class KvKUrlParser(mp.Process):
 
         self.kvk_ranges = None
 
-    def __enter__(self):
-        #kself.database = database.connect()
-        return self
-
-    def __exit__(self, *args):
-        pass
-        #self.database.close()
+        self.database = init_database()
+        tables = init_models(self.database, self.reset_database)
+        self.Company = tables[0]
+        self.Address = tables[1]
+        self.WebSite = tables[2]
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -293,7 +291,7 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = Company.select(Company.kvk_nummer, Company.processed)
+        query = self.Company.select(self.Company.kvk_nummer, self.Company.processed)
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -367,7 +365,7 @@ class KvKUrlParser(mp.Process):
 
         outfile = Path(outfile_base + "_merged" + outfile_ext)
 
-        query = Company.select()
+        query = self.Company.select()
         df_sql = pd.DataFrame(list(query.dicts()))
         df_sql.set_index(KVK_KEY, inplace=True)
 
@@ -454,25 +452,25 @@ class KvKUrlParser(mp.Process):
         if start is not None or stop is not None:
             if start is None:
                 self.logger.info("Make query from start until stop {}".format(stop))
-                query = (Company
-                         .select().where(Company.kvk_nummer <= stop)
-                         .prefetch(WebSite, Address))
+                query = (self.Company
+                         .select().where(self.Company.kvk_nummer <= stop)
+                         .prefetch(self.WebSite, self.Address))
             elif stop is None:
                 self.logger.info("Make query from start {} until end".format(start))
-                query = (Company
-                         .select().where(Company.kvk_nummer >= start)
-                         .prefetch(WebSite, Address))
+                query = (self.Company
+                         .select().where(self.Company.kvk_nummer >= start)
+                         .prefetch(self.WebSite, self.Address))
             else:
                 self.logger.info("Make query from start {} until stop {}".format(start, stop))
-                query = (Company
+                query = (self.Company
                          .select()
-                         .where(Company.kvk_nummer.between(start, stop))
-                         .prefetch(WebSite, Address))
+                         .where(self.Company.kvk_nummer.between(start, stop))
+                         .prefetch(self.WebSite, self.Address))
                 self.logger.info("Done!")
         else:
             self.logger.info("Make query without selecting in the kvk range")
-            query = (Company.select()
-                     .prefetch(WebSite, Address))
+            query = (self.Company.select()
+                     .prefetch(self.WebSite, self.Address))
 
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
@@ -710,7 +708,7 @@ class KvKUrlParser(mp.Process):
         we wrote to the data base. This means that we can increase n. This is taken care of here
         """
         # get the last kvk number of the website list
-        last_website = WebSite.select().order_by(WebSite.company_id.desc()).get()
+        last_website = self.WebSite.select().order_by(self.WebSite.company_id.desc()).get()
         kvk_last = int(last_website.company.kvk_nummer)
 
         try:
@@ -761,7 +759,7 @@ class KvKUrlParser(mp.Process):
 
         nr = self.addresses_df.index.size
         logger.info("Removing duplicated kvk entries")
-        query = Company.select()
+        query = self.Company.select()
         kvk_list = list()
         try:
             for company in query:
@@ -802,9 +800,9 @@ class KvKUrlParser(mp.Process):
         kvk_list = list()
         url_list = list()
         name_list = list()
-        query = (Company
+        query = (self.Company
                  .select()
-                 .prefetch(WebSite)
+                 .prefetch(self.WebSite)
                  )
         for cnt, company in enumerate(query):
             kvk_nr = company.kvk_nummer
@@ -834,7 +832,7 @@ class KvKUrlParser(mp.Process):
         logger.debug("Getting all  companies in Company table")
         kvk_list = list()
         name_list = list()
-        for company in Company.select():
+        for company in self.Company.select():
             kvk_list.append(int(company.kvk_nummer))
             name_list.append(company.naam)
         companies_in_db = pd.DataFrame(data=list(zip(kvk_list, name_list)),
@@ -871,10 +869,10 @@ class KvKUrlParser(mp.Process):
         else:
             progress = None
 
-        with database.atomic():
+        with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
                 logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
-                Company.insert_many(batch).execute()
+                self.Company.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
@@ -908,7 +906,7 @@ class KvKUrlParser(mp.Process):
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        company_vs_kvk = Company.select()
+        company_vs_kvk = self.Company.select()
         n_comp = company_vs_kvk.count()
 
         kvk_comp_list = list()
@@ -968,10 +966,10 @@ class KvKUrlParser(mp.Process):
             progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
         else:
             progress = None
-        with database.atomic():
+        with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
                 logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
-                WebSite.insert_many(batch).execute()
+                self.WebSite.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
@@ -1003,7 +1001,7 @@ class KvKUrlParser(mp.Process):
         # table
         logger.info("Adding companies to addresses table")
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        company_vs_kvk = Company.select()
+        company_vs_kvk = self.Company.select()
         kvk_comp_list = list()
         for company in company_vs_kvk:
             kvk_comp_list.append(int(company.kvk_nummer))
@@ -1060,21 +1058,15 @@ class KvKUrlParser(mp.Process):
             progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
         else:
             progress = None
-        with database.atomic():
+        with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
                 logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
-                Address.insert_many(batch).execute()
+                self.Address.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
         if progress:
             progress.finish()
-
-    def __exit__(self, *args):
-        """
-        Make sure to close the database after we are done
-        """
-        database.close()
 
 
 class ScrapeCompany(object):
@@ -1176,7 +1168,8 @@ class UrlCollection(object):
                                             "subdomain", "domain", "suffix", "ranking"])
 
         # remove space and put to lower for better comparison with the url
-        self.logger.info("Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
+        self.logger.info(
+            "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
         self.collect_web_sites()
 
         self.logger.info("Get best match")
@@ -1209,8 +1202,10 @@ class UrlCollection(object):
 
             # also we are going to match the sequences. The match range between 0 (no match) and 1
             # (full match)
-            subdomain_match = difflib.SequenceMatcher(None, ext.subdomain, self.company_name_small).ratio()
-            domain_match = difflib.SequenceMatcher(None, ext.domain, self.company_name_small).ratio()
+            subdomain_match = difflib.SequenceMatcher(None, ext.subdomain,
+                                                      self.company_name_small).ratio()
+            domain_match = difflib.SequenceMatcher(None, ext.domain,
+                                                   self.company_name_small).ratio()
             string_match = max(subdomain_match, domain_match)
             web.string_match = string_match
 
@@ -1233,7 +1228,8 @@ class UrlCollection(object):
             self.web_df = None
         elif index_string_match != index_distance:
             logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
-                           "match {}: {}".format(index_distance, self.web_df.loc[index_distance, "url"],
+                           "match {}: {}".format(index_distance,
+                                                 self.web_df.loc[index_distance, "url"],
                                                  index_string_match,
                                                  self.web_df.loc[index_string_match, "url"]))
 
@@ -1244,7 +1240,8 @@ class UrlCollection(object):
 
         if self.threshold_distance is not None:
             # select all the web sites with a minimum distance or one higher
-            mask = (self.web_df["distance"] - self.web_df["distance"].min()) <= self.threshold_distance
+            mask = (self.web_df["distance"] - self.web_df[
+                "distance"].min()) <= self.threshold_distance
             self.web_df = self.web_df[mask].copy()
 
         if self.threshold_string_match is not None:
@@ -1275,5 +1272,6 @@ class UrlCollection(object):
                 lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
 
         # sort first on the ranking, then on the distance
-        self.web_df.sort_values(["ranking", "distance", "string_match"], ascending=[False, True, False],
+        self.web_df.sort_values(["ranking", "distance", "string_match"],
+                                ascending=[False, True, False],
                                 inplace=True)
