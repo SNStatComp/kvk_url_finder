@@ -260,7 +260,7 @@ def main(args_in):
         else:
 
             # create the object and do you thing
-            processes = list()
+            jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
                     cache_directory=cache_directory,
@@ -284,13 +284,13 @@ def main(args_in):
                     # for one cpu we can directly call run
                     kvk_parser.run()
 
-                processes.append(kvk_parser)
+                jobs.append(kvk_parser)
 
             if args.n_processes > 1:
-                sleep = 10
-                print(f"Done processing. Close all after {sleep} s")
-                time.sleep(sleep)
-            for i_proc, process in enumerate(processes):
+                # this will block the script until all jobs are done
+                for job in jobs:
+                    job.join()
+            for i_proc, process in enumerate(jobs):
                 db = process.database
                 if not db.is_closed():
                     logger.info(f"Closing process {i_proc} ")
@@ -302,7 +302,10 @@ def main(args_in):
 def _run():
     """Entry point for console_scripts
     """
+    start = time.time()
     main(sys.argv[1:])
+    duration = time.time() - start
+    logger.info(f"Total processing time: {duration} seconds ")
 
 
 if __name__ == '__main__':
