@@ -161,7 +161,7 @@ def main(args_in):
     working_directory = general["working_directory"][platform.system()]
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
-    database_name = general.get("database_name", "kvk_db.sqlite")
+    database_name = general.get("database_name", "kvk_db")
 
     databases = settings["databases"]
     address_db = databases['addresses']
@@ -224,14 +224,15 @@ def main(args_in):
         make_directory(output_directory)
 
         # connect to the sqlite database
-        db_file_name = Path(output_directory) / database_name
-        db_exists_before_connecting = db_file_name.exists()
-        logger.info("Connecting to database {}".format(db_file_name))
+        #db_file_name = Path(output_directory) / database_name
+        db_file_name = None
+        # db_exists_before_connecting = db_file_name.exists()
+        #logger.info("Connecting to database {}".format(db_file_name))
         connect_database(db_file_name, reset_database=args.reset_database)
 
         # get the list of kvk number from the database. In case a data base is empty, it is
         # created from the input files
-        kvk_parser = KvKUrlParser(
+        with KvKUrlParser(
             cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
@@ -250,14 +251,14 @@ def main(args_in):
             kvk_range_read=kvk_range_read,
             maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
-            log_level_file=args.log_level_file,
-        )
-        # in case the database did not exist yet at the start or in case the --update option is
-        # given, update the sql data base from the input files
-        if args.update_sql_tables or not db_exists_before_connecting:
-            kvk_parser.generate_sql_tables()
-        kvk_parser.get_kvk_list_per_process()
-        logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
+            log_level_file=args.log_level_file
+        ) as kvk_parser:
+            # in case the database did not exist yet at the start or in case the --update option is
+            # given, update the sql data base from the input files
+            if args.update_sql_tables:
+                kvk_parser.generate_sql_tables()
+            kvk_parser.get_kvk_list_per_process()
+            logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
 
         # either merge the database with an external database (if the merge option is given) or
         # process all the urls
@@ -267,7 +268,7 @@ def main(args_in):
 
             # create the object and do you thing
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                kvk_parser = KvKUrlParser(
+                with KvKUrlParser(
                     cache_directory=cache_directory,
                     progressbar=args.progressbar,
                     kvk_range_process=kvk_range,
@@ -281,15 +282,15 @@ def main(args_in):
                     log_file_base=args.log_file_base,
                     log_level_file=args.log_level_file,
                     singlebar=args.singlebar,
-                )
+                ) as kvk_parser:
+                    if args.n_processes > 1:
+                        # start is the multiprocessing.Process method that calls the run method of
+                        # our class.
+                        kvk_parser.start()
+                    else:
+                        # for one cpu we can directly call run
+                        kvk_parser.run()
 
-                if args.n_processes > 1:
-                    # start is the multiprocessing.Process method that calls the run method of
-                    # our class.
-                    kvk_parser.start()
-                else:
-                    # for one cpu we can directly call run
-                    kvk_parser.run()
 
 
 def _run():

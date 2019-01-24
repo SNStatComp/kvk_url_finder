@@ -1,4 +1,5 @@
 import peewee as pw
+from playhouse.pool import PooledPostgresqlExtDatabase
 
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
@@ -13,13 +14,16 @@ STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 
 # postpone the parsing of the database after we have created the parser class
-database = pw.SqliteDatabase(None, pragmas={
-    'journal_mode': 'wal',
-    'cache_size': -1 * 64000,  # 64MB
-    'foreign_keys': 1,
-    'ignore_check_constraints': 0,
-    'synchronous': 0,
-    'cache': 'shared'})
+#database = pw.SqliteDatabase(None, pragmas={
+#    'journal_mode': 'wal',
+#    'cache_size': -1 * 64000,  # 64MB
+#    'foreign_keys': 1,
+#    'ignore_check_constraints': 0,
+#    'synchronous': 0,
+#    'cache': 'shared'})
+database = PooledPostgresqlExtDatabase(
+    "kvk_db", user="postgres", host="localhost", port=5432, password="vliet123",
+    max_connections=8, stale_timeout=300)
 
 
 class UnknownField(object):
@@ -61,8 +65,7 @@ class WebSite(BaseModel):
 
 
 def connect_database(database_name, reset_database):
-    database.init(database_name)
     database.connect()
-    database.create_tables([Company, Address, WebSite])
     if reset_database:
         database.drop_tables([Company, Address, WebSite])
+    database.create_tables([Company, Address, WebSite])

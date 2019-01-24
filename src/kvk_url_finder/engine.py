@@ -264,6 +264,14 @@ class KvKUrlParser(mp.Process):
 
         self.kvk_ranges = None
 
+    def __enter__(self):
+        #kself.database = database.connect()
+        return self
+
+    def __exit__(self, *args):
+        pass
+        #self.database.close()
+
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
