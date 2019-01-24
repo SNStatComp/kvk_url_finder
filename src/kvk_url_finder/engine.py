@@ -248,7 +248,7 @@ class KvKUrlParser(mp.Process):
         self.compression = compression
         self.progressbar = progressbar
         self.showbar = progressbar
-        if singlebar and i_proc > 0:
+        if singlebar and i_proc > 0 or i_proc is None:
             # in case the single bar option is given, we only show the bar of the first process
             self.showbar = False
 
