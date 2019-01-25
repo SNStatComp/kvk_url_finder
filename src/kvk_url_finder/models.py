@@ -15,6 +15,12 @@ LEVENSHTEIN_KEY = "levenshtein"
 STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
+PRAGMAS = {
+    "journal_mode": "wal",
+    "foreingn_keys": 1,
+    "ignore_check_constraints": 0,
+    "synchronous": 0
+}
 
 
 def init_database(database_name: Path, database_type="postgres"):
@@ -22,11 +28,11 @@ def init_database(database_name: Path, database_type="postgres"):
     assert database_type in valid_types
     if database_type == "postgres":
         db = PooledPostgresqlExtDatabase(
+
             database_name, user="postgres", host="localhost", port=5432, password="vliet123",
             max_connections=MAX_PROCESSES, stale_timeout=300)
     elif database_type == "sqlite":
-        db = PooledSqliteExtDatabase(str(database_name), max_connections=MAX_PROCESSES,
-                                     stale_timeout=300)
+        db = pw.SqliteDatabase(str(database_name), pragmas=PRAGMAS)
     else:
         raise AssertionError("Allowed database types:  {}".format(valid_types))
     return db
