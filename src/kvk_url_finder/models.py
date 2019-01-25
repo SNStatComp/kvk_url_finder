@@ -1,5 +1,7 @@
+from pathlib import Path
+
 import peewee as pw
-from playhouse.pool import (PooledPostgresqlExtDatabase, PooledCSqliteExtDatabase)
+from playhouse.pool import (PooledPostgresqlExtDatabase, PooledSqliteExtDatabase)
 
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
@@ -15,7 +17,7 @@ RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
 
 
-def init_database(database_name, database_type="postgres"):
+def init_database(database_name: Path, database_type="postgres"):
     valid_types = ("sqlite", "postgres")
     assert database_type in valid_types
     if database_type == "postgres":
@@ -23,8 +25,8 @@ def init_database(database_name, database_type="postgres"):
             database_name, user="postgres", host="localhost", port=5432, password="vliet123",
             max_connections=MAX_PROCESSES, stale_timeout=300)
     elif database_type == "sqlite":
-        db = PooledCSqliteExtDatabase(database_name, max_connections=MAX_PROCESSES,
-                                      stale_timeout=300)
+        db = PooledSqliteExtDatabase(str(database_name), max_connections=MAX_PROCESSES,
+                                     stale_timeout=300)
     else:
         raise AssertionError("Allowed database types:  {}".format(valid_types))
     return db

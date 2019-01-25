@@ -229,11 +229,14 @@ def main(args_in):
         if database_type == "sqlite":
             # only for sqlite the database is a real file
             database_name = Path(output_directory) / database_name
+            if database_name.suffix == "":
+                database_name = database_name.with_suffix(".sql")
 
         # get the list of kvk number from the database. In case a data base is empty, it is
         # created from the input files
         kvk_parser = KvKUrlParser(
             database_name=database_name,
+            database_type=database_type,
             cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
@@ -273,6 +276,7 @@ def main(args_in):
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
                     database_name=database_name,
+                    database_type=database_type,
                     cache_directory=cache_directory,
                     progressbar=args.progressbar,
                     kvk_range_process=kvk_range,
