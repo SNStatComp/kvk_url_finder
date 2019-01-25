@@ -144,6 +144,7 @@ class KvKUrlParser(mp.Process):
     """
 
     def __init__(self,
+                 database_name=None,
                  cache_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
@@ -265,7 +266,7 @@ class KvKUrlParser(mp.Process):
 
         self.kvk_ranges = None
 
-        self.database = init_database()
+        self.database = init_database(database_name)
         tables = init_models(self.database, self.reset_database)
         self.Company = tables[0]
         self.Address = tables[1]

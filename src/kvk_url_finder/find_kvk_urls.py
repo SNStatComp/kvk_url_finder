@@ -32,6 +32,7 @@ import os
 import platform
 import sys
 import time
+from pathlib import Path
 
 import pandas as pd
 import yaml
@@ -161,6 +162,7 @@ def main(args_in):
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
+    database_type = general.get("database_type", "postgres")
 
     databases = settings["databases"]
     address_db = databases['addresses']
@@ -222,9 +224,16 @@ def main(args_in):
         make_directory(cache_directory)
         make_directory(output_directory)
 
+        # connect to the sqlite database
+
+        if database_type == "sqlite":
+            # only for sqlite the database is a real file
+            database_name = Path(output_directory) / database_name
+
         # get the list of kvk number from the database. In case a data base is empty, it is
         # created from the input files
         kvk_parser = KvKUrlParser(
+            database_name=database_name,
             cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
@@ -263,6 +272,7 @@ def main(args_in):
             jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
                 kvk_parser = KvKUrlParser(
+                    database_name=database_name,
                     cache_directory=cache_directory,
                     progressbar=args.progressbar,
                     kvk_range_process=kvk_range,

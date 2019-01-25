@@ -5,6 +5,8 @@ general:
     Windows: /P/Projects/something_els
   cache_directory: cache
   output_directory: .
+  database_name: kvk_db
+  database_type: postgres  # sqlite
 databases:
   addresses:
     # the initial data base with  the postal codes, addresses + kvk numberw
