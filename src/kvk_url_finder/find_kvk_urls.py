@@ -31,16 +31,15 @@ import logging
 import os
 import platform
 import sys
+import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import yaml
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
-import kvk_url_finder
 from kvk_url_finder.engine import KvKUrlParser
-from kvk_url_finder.models import connect_database
+from kvk_url_finder.models import MAX_PROCESSES
 
 try:
     from kvk_url_finder import __version__
@@ -94,7 +93,7 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--merge_database", action="store_true",
                         help="Merge the current sql data base marked to the selection data base")
     parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
-                        choices=range(1, 8))
+                        choices=range(1, MAX_PROCESSES))
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -162,7 +161,8 @@ def main(args_in):
     working_directory = general["working_directory"][platform.system()]
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
-    database_name = general.get("database_name", "kvk_db.sqlite")
+    database_name = general.get("database_name", "kvk_db")
+    database_type = general.get("database_type", "postgres")
 
     databases = settings["databases"]
     address_db = databases['addresses']
@@ -225,14 +225,18 @@ def main(args_in):
         make_directory(output_directory)
 
         # connect to the sqlite database
-        db_file_name = Path(output_directory) / database_name
-        db_exists_before_connecting = db_file_name.exists()
-        logger.info("Connecting to database {}".format(db_file_name))
-        connect_database(db_file_name, reset_database=args.reset_database)
+
+        if database_type == "sqlite":
+            # only for sqlite the database is a real file
+            database_name = Path(output_directory) / database_name
+            if database_name.suffix == "":
+                database_name = database_name.with_suffix(".sql")
 
         # get the list of kvk number from the database. In case a data base is empty, it is
         # created from the input files
         kvk_parser = KvKUrlParser(
+            database_name=database_name,
+            database_type=database_type,
             cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
@@ -251,14 +255,15 @@ def main(args_in):
             kvk_range_read=kvk_range_read,
             maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
-            log_level_file=args.log_level_file,
-        )
+            log_level_file=args.log_level_file)
         # in case the database did not exist yet at the start or in case the --update option is
         # given, update the sql data base from the input files
-        if args.update_sql_tables or not db_exists_before_connecting:
+        if args.update_sql_tables:
             kvk_parser.generate_sql_tables()
         kvk_parser.get_kvk_list_per_process()
         logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
+        if not kvk_parser.database.is_closed():
+            kvk_parser.database.close()
 
         # either merge the database with an external database (if the merge option is given) or
         # process all the urls
@@ -267,37 +272,54 @@ def main(args_in):
         else:
 
             # create the object and do you thing
+            jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                with kvk_url_finder.models.database as database:
-                    kvk_parser = KvKUrlParser(
-                        cache_directory=cache_directory,
-                        progressbar=args.progressbar,
-                        kvk_range_process=kvk_range,
-                        maximum_entries=maximum_entries,
-                        force_process=args.force_process,
-                        impose_url_for_kvk=impose_url_for_kvk,
-                        threshold_distance=threshold_distance,
-                        threshold_string_match=threshold_string_match,
-                        i_proc=i_proc,
-                        number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base,
-                        log_level_file=args.log_level_file,
-                        singlebar=args.singlebar,
-                    )
+                kvk_parser = KvKUrlParser(
+                    database_name=database_name,
+                    database_type=database_type,
+                    cache_directory=cache_directory,
+                    progressbar=args.progressbar,
+                    kvk_range_process=kvk_range,
+                    maximum_entries=maximum_entries,
+                    force_process=args.force_process,
+                    impose_url_for_kvk=impose_url_for_kvk,
+                    threshold_distance=threshold_distance,
+                    threshold_string_match=threshold_string_match,
+                    i_proc=i_proc,
+                    number_of_processes=args.n_processes,
+                    log_file_base=args.log_file_base,
+                    log_level_file=args.log_level_file,
+                    singlebar=args.singlebar)
+                if args.n_processes > 1:
+                    # start is the multiprocessing.Process method that calls the run method of
+                    # our class.
+                    kvk_parser.start()
+                else:
+                    # for one cpu we can directly call run
+                    kvk_parser.run()
 
-                    if args.n_processes > 1:
-                        # start is the multiprocessing.Process method that calls the run method of
-                        # our class.
-                        kvk_parser.start()
-                    else:
-                        # for one cpu we can directly call run
-                        kvk_parser.run()
+                jobs.append(kvk_parser)
+
+            if args.n_processes > 1:
+                # this will block the script until all jobs are done
+                for job in jobs:
+                    job.join()
+            for i_proc, process in enumerate(jobs):
+                db = process.database
+                if not db.is_closed():
+                    logger.info(f"Closing process {i_proc} ")
+                    db.close()
+
+        print("Goodbye!")
 
 
 def _run():
     """Entry point for console_scripts
     """
+    start = time.time()
     main(sys.argv[1:])
+    duration = time.time() - start
+    print(f"Total processing time: {duration} seconds ")
 
 
 if __name__ == '__main__':
