@@ -34,7 +34,7 @@ def init_database(database_name: Path, database_type="postgres"):
     elif database_type == "sqlite":
         db = pw.SqliteDatabase(str(database_name), pragmas=PRAGMAS)
     else:
-        raise AssertionError("Allowed database types:  {}".format(valid_types))
+        raise ValueError("Allowed database types:  {}".format(DATABASE_TYPES))
     return db
 
 
