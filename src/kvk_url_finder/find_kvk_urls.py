@@ -238,6 +238,9 @@ def main(args_in):
             database_name = Path(output_directory) / database_name
             if database_name.suffix == "":
                 database_name = database_name.with_suffix(".sql")
+            logger.info(f"Using sqlite database: {database_name}")
+        else:
+            logger.info(f"Using postgres database: {database_name}")
 
         # get the list of kvk number from the database. In case a data base is empty, it is
         # created from the input files

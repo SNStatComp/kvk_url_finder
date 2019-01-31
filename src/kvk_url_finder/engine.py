@@ -42,7 +42,7 @@ __license__ = "mit"
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
 
-MAX_SQL_CHUNK = 1000
+MAX_SQL_CHUNK = 500
 
 STOP_FILE = "stop"
 
