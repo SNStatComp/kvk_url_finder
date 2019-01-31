@@ -28,7 +28,6 @@ def init_database(database_name: Path, database_type="postgres"):
     assert database_type in DATABASE_TYPES
     if database_type == "postgres":
         db = PooledPostgresqlExtDatabase(
-
             database_name, user="postgres", host="localhost", port=5432, password="vliet123",
             max_connections=MAX_PROCESSES, stale_timeout=300)
     elif database_type == "sqlite":
