@@ -297,22 +297,26 @@ def main(args_in):
             # create the object and do you thing
             jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                kvk_parser = KvKUrlParser(
-                    database_name=database_name,
-                    database_type=database_type,
-                    cache_directory=cache_directory,
-                    progressbar=args.progressbar,
-                    kvk_range_process=kvk_range,
-                    maximum_entries=maximum_entries,
-                    force_process=args.force_process,
-                    impose_url_for_kvk=impose_url_for_kvk,
-                    threshold_distance=threshold_distance,
-                    threshold_string_match=threshold_string_match,
-                    i_proc=i_proc,
-                    number_of_processes=args.n_processes,
-                    log_file_base=args.log_file_base,
-                    log_level_file=args.log_level_file,
-                    singlebar=args.singlebar)
+                if args.n_processes > 1 and platform.system() != "Linux":
+                    logger.debug("Do not create object for windows")
+                    kvk_parser = None
+                else:
+                    kvk_parser = KvKUrlParser(
+                        database_name=database_name,
+                        database_type=database_type,
+                        cache_directory=cache_directory,
+                        progressbar=args.progressbar,
+                        kvk_range_process=kvk_range,
+                        maximum_entries=maximum_entries,
+                        force_process=args.force_process,
+                        impose_url_for_kvk=impose_url_for_kvk,
+                        threshold_distance=threshold_distance,
+                        threshold_string_match=threshold_string_match,
+                        i_proc=i_proc,
+                        number_of_processes=args.n_processes,
+                        log_file_base=args.log_file_base,
+                        log_level_file=args.log_level_file,
+                        singlebar=args.singlebar)
                 if args.n_processes > 1:
                     if platform.system() == "Linux":
                         # start is the multiprocessing.Process method calling the run method of
