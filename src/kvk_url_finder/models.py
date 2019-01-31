@@ -21,11 +21,11 @@ PRAGMAS = {
     "ignore_check_constraints": 0,
     "synchronous": 0
 }
+DATABASE_TYPES = ("sqlite", "postgres")
 
 
 def init_database(database_name: Path, database_type="postgres"):
-    valid_types = ("sqlite", "postgres")
-    assert database_type in valid_types
+    assert database_type in DATABASE_TYPES
     if database_type == "postgres":
         db = PooledPostgresqlExtDatabase(
 

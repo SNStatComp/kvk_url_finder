@@ -39,7 +39,7 @@ import yaml
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
-from kvk_url_finder.models import MAX_PROCESSES
+from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
 
 try:
     from kvk_url_finder import __version__
@@ -94,6 +94,9 @@ def _parse_the_command_line_arguments(args):
                         help="Merge the current sql data base marked to the selection data base")
     parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
                         choices=range(1, MAX_PROCESSES))
+    parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
+                        help="Type of database to use. If not given, select from the settings file "
+                             "or take postgres")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -162,7 +165,11 @@ def main(args_in):
     cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
-    database_type = general.get("database_type", "postgres")
+    if args.database_type is not None:
+        database_type = args.database_type
+    else:
+        database_type = general.get("database_type", "postgres")
+    assert database_type in DATABASE_TYPES
 
     databases = settings["databases"]
     address_db = databases['addresses']

@@ -317,26 +317,15 @@ class KvKUrlParser(mp.Process):
         n_kvk = len(kvk_to_process)
 
         # check the ranges
-        try:
-            assert number_in_range > 0
-        except AssertionError:
-            logger.warning(f"No kvk numbers where found in range {start} -- {stop}")
-            raise
-        try:
-            assert n_kvk > 0
-        except AssertionError:
-            logger.warning(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
-                           f"but none to be processed")
-            raise
+        if number_in_range == 0:
+            raise ValueError(f"No kvk numbers where found in range {start} -- {stop}")
+        if n_kvk == 0:
+            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}" 
+                             f"but none to be processed")
 
-        try:
-            assert n_kvk >= self.number_of_processes
-        except AssertionError as err:
-            print("{}".format(err), file=sys.stderr)
-            print(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
-                  f"with {n_kvk} to process, with only {self.number_of_processes} cores",
-                  file=sys.stderr)
-            raise
+        if n_kvk < self.number_of_processes:
+            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop} " 
+                             f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
         self.kvk_ranges = list()
