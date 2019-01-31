@@ -29,10 +29,12 @@ have
 import argparse
 import logging
 import os
+import re
 import platform
 import sys
 import time
 from pathlib import Path
+import subprocess
 
 import pandas as pd
 import yaml
@@ -92,6 +94,12 @@ def _parse_the_command_line_arguments(args):
                              "as processes")
     parser.add_argument("--merge_database", action="store_true",
                         help="Merge the current sql data base marked to the selection data base")
+    parser.add_argument("--kvk_start", type=int,
+                        help="Start processing at this kvk number. This overrules the setting in"
+                             "the yaml file if given")
+    parser.add_argument("--kvk_stop", type=int,
+                        help="Stop processing at this kvk number. This overrules the setting in"
+                             "the yaml file if given")
     parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
                         choices=range(1, MAX_PROCESSES))
     parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
@@ -198,6 +206,11 @@ def main(args_in):
     threshold_distance = process_settings["threshold_distance"]
     threshold_string_match = process_settings["threshold_string_match"]
 
+    if args.kvk_start is not None:
+        kvk_range_process["start"] = args.kvk_start
+    if args.kvk_stop is not None:
+        kvk_range_process["stop"] = args.kvk_stop
+
     # create the KvKUrl object, but first move to the workding directory, so everything we do
     # is with respect to this directory
     with Chdir(working_directory) as _:
@@ -301,9 +314,31 @@ def main(args_in):
                     log_level_file=args.log_level_file,
                     singlebar=args.singlebar)
                 if args.n_processes > 1:
-                    # start is the multiprocessing.Process method that calls the run method of
-                    # our class.
-                    kvk_parser.start()
+                    if platform.system() == "Linux":
+                        # start is the multiprocessing.Process method calling the run method of
+                        # our class. this in only allowed on linux
+                        kvk_parser.start()
+                    else:
+                        # on windows, multitreading does not work, so launc the processes as single
+                        # processes
+                        cmd = list(["python.exe"])
+                        cmd.append(sys.argv[0])
+                        cmd.append(str(Path(sys.argv[1]).absolute()))
+                        cmd.extend(["--kvk_start", str(kvk_range["start"])])
+                        cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
+                        cmd.extend(sys.argv[2:])
+                        i_np = None
+                        for ii, c in enumerate(cmd):
+                            if re.match("^--n_p.*", str(c)):
+                                i_np = ii
+                        assert i_np is not None
+
+                        cmd.pop(i_np)
+                        cmd.pop(i_np)
+                        print(cmd)
+                        process = subprocess.Popen(cmd, shell=True)
+                                                   #stdout=subprocess.PIPE,
+                                                   #stderr=subprocess.PIPE)
                 else:
                     # for one cpu we can directly call run
                     kvk_parser.run()
