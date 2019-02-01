@@ -152,11 +152,6 @@ def setup_logging(write_log_to_file=False,
     merge_loggers(_logger, "cbs_utils")
     merge_loggers(_logger, "kvk_url_finder.engine")
 
-    _logger.info("{:10s}: {}".format("Running", sys.argv))
-    _logger.info("{:10s}: {}".format("Version", __version__))
-    _logger.info("{:10s}: {}".format("Directory", os.getcwd()))
-    _logger.debug("Debug message")
-
     return _logger
 
 
@@ -223,6 +218,8 @@ def main(args_in):
             log_level=args.log_level,
             progress_bar=args.progressbar
         )
+        logger.debug("ARGV_IN: {}".format(args_in))
+        logger.debug("ARGV: {}".format(args))
 
         # with the global statement line we make sure to change the global variable at the top
 
