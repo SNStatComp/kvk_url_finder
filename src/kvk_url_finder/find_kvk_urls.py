@@ -308,7 +308,8 @@ def main(args_in):
                     cmd.extend(sys.argv[2:])
                     cmd.extend(["--n_processes", "1"])
                     cmd.extend(["--write_log"])
-                    cmd.extend(["--log_file_base", "log_sub{:02d}".format(i_proc)])
+                    cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
+                                                                         i_proc)])
                     print(cmd)
                     process = subprocess.Popen(cmd, shell=True)
                 else:
@@ -327,9 +328,10 @@ def main(args_in):
                         threshold_string_match=threshold_string_match,
                         i_proc=i_proc,
                         number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base,
+                        log_file_base=args.log_file_base + "_sub",
                         log_level_file=args.log_level_file,
-                        singlebar=args.singlebar)
+                        singlebar=args.singlebar,
+                    )
 
                     if args.n_processes > 1:
                         # we should not be running on windows if we are here
@@ -365,4 +367,5 @@ def _run():
 
 
 if __name__ == '__main__':
+    print("Enter run with python version {}".format(sys.base_prefix))
     _run()
