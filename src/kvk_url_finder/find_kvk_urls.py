@@ -297,63 +297,63 @@ def main(args_in):
             # create the object and do you thing
             jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                if args.n_processes > 1:
-                    # for more than 1 processor, launch multiple processes.
-                    if platform.system() == "Linux":
-                        # for Linux platforms we use the start method of the multiprocessing module
-                        kvk_parser = KvKUrlParser(
-                            database_name=database_name,
-                            database_type=database_type,
-                            cache_directory=cache_directory,
-                            progressbar=args.progressbar,
-                            kvk_range_process=kvk_range,
-                            maximum_entries=maximum_entries,
-                            force_process=args.force_process,
-                            impose_url_for_kvk=impose_url_for_kvk,
-                            threshold_distance=threshold_distance,
-                            threshold_string_match=threshold_string_match,
-                            i_proc=i_proc,
-                            number_of_processes=args.n_processes,
-                            log_file_base=args.log_file_base,
-                            log_level_file=args.log_level_file,
-                            singlebar=args.singlebar)
 
-                        # start is the multiprocessing.Process method calling the run method of
-                        # our class. this in only allowed on linux
-                        kvk_parser.start()
-                    else:
-                        # on windows, multiprocessing doesn't work, so launch the processes as
-                        # single  process
-                        cmd = list(["python.exe"])
-                        cmd.append(sys.argv[0])
-                        cmd.append(str(Path(sys.argv[1]).absolute()))
-                        cmd.extend(["--kvk_start", str(kvk_range["start"])])
-                        cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
-                        cmd.extend(sys.argv[2:])
-                        # set the location of the --n_process argument to true
-                        match = [bool(re.match("^--n_p.*", str(c))) for c in cmd]
-                        n_proc_index = match.index(True)
-                        cmd.pop(n_proc_index)
-                        cmd.pop(n_proc_index)
-                        print(cmd)
-                        process = subprocess.Popen(cmd, shell=True)
-                                                   #stdout=subprocess.PIPE,
-                                                   #stderr=subprocess.PIPE)
+                if args.n_processes > 1 and platform.system() == "Windows":
+                    logger.info("Do not make object again for multiprocessing on windows")
+                    kvk_sub_parser = None
+                    # for multiprocessing on windows, we create a command line call to the
+                    # utility with the proper ranges
+                    cmd = list(["python.exe"])
+                    cmd.append(sys.argv[0])
+                    cmd.append(str(Path(sys.argv[1]).absolute()))
+                    cmd.extend(["--kvk_start", str(kvk_range["start"])])
+                    cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
+                    cmd.extend(sys.argv[2:])
+                    cmd.extend(["--n_processes", "1"])
+                    cmd.extend(["--write_log"])
+                    cmd.extend(["--log_file_base", "log_sub{:02d}".format(i_proc)])
+                    print(cmd)
+                    process = subprocess.Popen(cmd, shell=True)
                 else:
-                    # for one cpu we can directly call run
-                    kvk_parser.run()
+                    # for linux -or- for single processing on windows, create a new object which
+                    # we are goign to launch
+                    kvk_sub_parser = KvKUrlParser(
+                        database_name=database_name,
+                        database_type=database_type,
+                        cache_directory=cache_directory,
+                        progressbar=args.progressbar,
+                        kvk_range_process=kvk_range,
+                        maximum_entries=maximum_entries,
+                        force_process=args.force_process,
+                        impose_url_for_kvk=impose_url_for_kvk,
+                        threshold_distance=threshold_distance,
+                        threshold_string_match=threshold_string_match,
+                        i_proc=i_proc,
+                        number_of_processes=args.n_processes,
+                        log_file_base=args.log_file_base,
+                        log_level_file=args.log_level_file,
+                        singlebar=args.singlebar)
 
-                jobs.append(kvk_parser)
+                    if args.n_processes > 1:
+                        # we should not be running on windows if we are here
+                        assert platform.system() != "Windows"
+                        kvk_sub_parser.start()
+                    else:
+                        # for one cpu we can directly call run
+                        kvk_sub_parser.run()
 
-            if args.n_processes > 1:
-                # this will block the script until all jobs are done
-                for job in jobs:
-                    job.join()
-            for i_proc, process in enumerate(jobs):
-                db = process.database
-                if not db.is_closed():
-                    logger.info(f"Closing process {i_proc} ")
-                    db.close()
+                    jobs.append(kvk_sub_parser)
+
+                    if args.n_processes > 1:
+                        # this will block the script until all jobs are done
+                        for job in jobs:
+                            job.join()
+
+                    for i_proc, process in enumerate(jobs):
+                        db = process.database
+                        if not db.is_closed():
+                            logger.info(f"Closing process {i_proc} ")
+                            db.close()
 
         print("Goodbye!")
 
