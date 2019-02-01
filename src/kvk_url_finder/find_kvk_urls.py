@@ -218,8 +218,9 @@ def main(args_in):
             log_level=args.log_level,
             progress_bar=args.progressbar
         )
-        logger.debug("ARGV_IN: {}".format(args_in))
-        logger.debug("ARGV: {}".format(args))
+        logger.info("Enter run with python version {}".format(sys.base_prefix))
+        logger.info("ARGV_IN: {}".format(args_in))
+        logger.info("ARGV: {}".format(args))
 
         # with the global statement line we make sure to change the global variable at the top
 
@@ -367,5 +368,4 @@ def _run():
 
 
 if __name__ == '__main__':
-    print("Enter run with python version {}".format(sys.base_prefix))
     _run()
