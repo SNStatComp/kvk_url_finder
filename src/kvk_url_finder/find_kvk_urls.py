@@ -220,7 +220,8 @@ def main(args_in):
         )
         logger.info("Enter run with python version {}".format(sys.base_prefix))
         logger.info("ARGV_IN: {}".format(" ".join(args_in)))
-        logger.info("ARGV: {}".format(" ".join([":".join(it) for it in args.items()])))
+        args_str = [":".join(at, getattr(args, at)) for at in dir(args) if not at.startswith("_")]
+        logger.info("ARGV: {}".format(" ".join(args_str)))
 
         # with the global statement line we make sure to change the global variable at the top
 
