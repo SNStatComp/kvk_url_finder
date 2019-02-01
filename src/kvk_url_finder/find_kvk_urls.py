@@ -28,8 +28,8 @@ have
 
 import argparse
 import logging
+import logging.config
 import os
-import re
 import platform
 import sys
 import time
@@ -38,6 +38,7 @@ import subprocess
 
 import pandas as pd
 import yaml
+import multiprocessing_logging
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
@@ -49,7 +50,10 @@ except ModuleNotFoundError:
     __version__ = "unknown"
 
 # set up global logger
-logger: logging.Logger = None
+
+multiprocessing_logging.install_mp_handler()
+logging.basicConfig(filename='find_kvk.log', filemode='w', level=logging.DEBUG,
+                    format='%(name)s - %(levelname)s - %(message)s')
 
 
 def _parse_the_command_line_arguments(args):
@@ -156,6 +160,7 @@ def setup_logging(write_log_to_file=False,
 
 
 def main(args_in):
+    logger = logging.getLogger(__name__)
     args, parser = _parse_the_command_line_arguments(args_in)
 
     # with the global statement line we make sure to change the global variable at the top
@@ -210,13 +215,13 @@ def main(args_in):
     # is with respect to this directory
     with Chdir(working_directory) as _:
 
-        logger = setup_logging(
-            write_log_to_file=args.write_log_to_file,
-            log_file_base=args.log_file_base,
-            log_level_file=args.log_level_file,
-            log_level=args.log_level,
-            progress_bar=args.progressbar
-        )
+        #logger = setup_logging(
+        #    write_log_to_file=args.write_log_to_file,
+        #    log_file_base=args.log_file_base,
+        #    log_level_file=args.log_level_file,
+        #    log_level=args.log_level,
+        #    progress_bar=args.progressbar
+        #)
         logger.info("Enter run with python version {}".format(sys.base_prefix))
         logger.info("ARGV_IN: {}".format(" ".join(args_in)))
         args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if not None and not at.startswith("_")]
@@ -311,7 +316,7 @@ def main(args_in):
                     cmd.extend(["--write_log"])
                     cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
                                                                          i_proc)])
-                    print(cmd)
+                    logger.info(cmd)
                     process = subprocess.Popen(cmd, shell=False)
                     jobs.append(process)
                 else:
@@ -365,16 +370,17 @@ def main(args_in):
                         except ChildProcessError:
                             logger.info("NoMore: {} : {}".format(ip, process.pid))
 
-            print("Goodbye!")
+            logger.info("Goodbye!")
 
 
 def _run():
     """Entry point for console_scripts
     """
+    logger = logging.getLogger(__name__)
     start = time.time()
     main(sys.argv[1:])
     duration = time.time() - start
-    print(f"Total processing time: {duration} seconds ")
+    logger.info(f"Total processing time: {duration} seconds ")
 
 
 if __name__ == '__main__':

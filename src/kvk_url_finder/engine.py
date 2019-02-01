@@ -202,15 +202,7 @@ class KvKUrlParser(mp.Process):
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
 
         # create a logger per process
-        self.logger = create_logger(
-            name="{}_{}".format("KvKUlrParser", log_file),
-            file_log_level=log_level_file,
-            console_log_level=logging.INFO,
-            file_log_format_long=True,
-            log_file=log_file,
-            formatter=formatter,
-            formatter_file=formatter
-        )
+        self.logger = logging.getLogger(__name__)
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
             # logger.disabled = True
