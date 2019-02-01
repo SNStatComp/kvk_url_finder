@@ -197,10 +197,9 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
-        if i_proc is None:
-            log_file = log_file_base
-        else:
-            log_file = "{}_{}".format(log_file_base, i_proc)
+        log_file = log_file_base + "_kvk"
+        if i_proc is not None:
+            log_file = "{}_{:02d}".format(log_file_base, i_proc)
 
         # create a logger per process
         self.logger = create_logger(

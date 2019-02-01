@@ -219,8 +219,8 @@ def main(args_in):
             progress_bar=args.progressbar
         )
         logger.info("Enter run with python version {}".format(sys.base_prefix))
-        logger.info("ARGV_IN: {}".format(args_in))
-        logger.info("ARGV: {}".format(args))
+        logger.info("ARGV_IN: {}".format(" ".join(args_in)))
+        logger.info("ARGV: {}".format(" ".join([":".join(it) for it in args.items()])))
 
         # with the global statement line we make sure to change the global variable at the top
 
