@@ -203,7 +203,7 @@ class KvKUrlParser(mp.Process):
 
         # create a logger per process
         self.logger = create_logger(
-            name="{}_{}".format("KvKUlrParser", i_proc),
+            name="{}_{}".format("KvKUlrParser", log_file),
             file_log_level=log_level_file,
             console_log_level=logging.INFO,
             file_log_format_long=True,

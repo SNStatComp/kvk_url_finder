@@ -210,7 +210,6 @@ def main(args_in):
     # is with respect to this directory
     with Chdir(working_directory) as _:
 
-        global logger
         logger = setup_logging(
             write_log_to_file=args.write_log_to_file,
             log_file_base=args.log_file_base,
@@ -220,7 +219,7 @@ def main(args_in):
         )
         logger.info("Enter run with python version {}".format(sys.base_prefix))
         logger.info("ARGV_IN: {}".format(" ".join(args_in)))
-        args_str = [":".join(at, getattr(args, at)) for at in dir(args) if not at.startswith("_")]
+        args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if not None and not at.startswith("_")]
         logger.info("ARGV: {}".format(" ".join(args_str)))
 
         # with the global statement line we make sure to change the global variable at the top
@@ -313,7 +312,8 @@ def main(args_in):
                     cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
                                                                          i_proc)])
                     print(cmd)
-                    process = subprocess.Popen(cmd, shell=True)
+                    process = subprocess.Popen(cmd, shell=False)
+                    jobs.append(process)
                 else:
                     # for linux -or- for single processing on windows, create a new object which
                     # we are goign to launch
@@ -345,18 +345,27 @@ def main(args_in):
 
                     jobs.append(kvk_sub_parser)
 
-                    if args.n_processes > 1:
-                        # this will block the script until all jobs are done
-                        for job in jobs:
-                            job.join()
+            if args.n_processes > 1:
+                if platform.system() == "Lines":
+                    # this will block the script until all jobs are done
+                    for job in jobs:
+                        job.join()
 
                     for i_proc, process in enumerate(jobs):
                         db = process.database
                         if not db.is_closed():
                             logger.info(f"Closing process {i_proc} ")
                             db.close()
+                else:
+                    for ip, process in enumerate(jobs):
+                        logger.info("Waitig for proc {} : {}".format(ip, process.pid))
+                        try:
+                            #os.waitpid(process.pid, 0)
+                            logger.info("DONE: {} : {}".format(ip, process.pid))
+                        except ChildProcessError:
+                            logger.info("NoMore: {} : {}".format(ip, process.pid))
 
-        print("Goodbye!")
+            print("Goodbye!")
 
 
 def _run():
