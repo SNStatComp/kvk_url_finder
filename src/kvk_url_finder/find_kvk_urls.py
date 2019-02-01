@@ -297,48 +297,44 @@ def main(args_in):
             # create the object and do you thing
             jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
-                if args.n_processes > 1 and platform.system() != "Linux":
-                    logger.debug("Do not create object for windows")
-                    kvk_parser = None
-                else:
-                    kvk_parser = KvKUrlParser(
-                        database_name=database_name,
-                        database_type=database_type,
-                        cache_directory=cache_directory,
-                        progressbar=args.progressbar,
-                        kvk_range_process=kvk_range,
-                        maximum_entries=maximum_entries,
-                        force_process=args.force_process,
-                        impose_url_for_kvk=impose_url_for_kvk,
-                        threshold_distance=threshold_distance,
-                        threshold_string_match=threshold_string_match,
-                        i_proc=i_proc,
-                        number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base,
-                        log_level_file=args.log_level_file,
-                        singlebar=args.singlebar)
                 if args.n_processes > 1:
+                    # for more than 1 processor, launch multiple processes.
                     if platform.system() == "Linux":
+                        # for Linux platforms we use the start method of the multiprocessing module
+                        kvk_parser = KvKUrlParser(
+                            database_name=database_name,
+                            database_type=database_type,
+                            cache_directory=cache_directory,
+                            progressbar=args.progressbar,
+                            kvk_range_process=kvk_range,
+                            maximum_entries=maximum_entries,
+                            force_process=args.force_process,
+                            impose_url_for_kvk=impose_url_for_kvk,
+                            threshold_distance=threshold_distance,
+                            threshold_string_match=threshold_string_match,
+                            i_proc=i_proc,
+                            number_of_processes=args.n_processes,
+                            log_file_base=args.log_file_base,
+                            log_level_file=args.log_level_file,
+                            singlebar=args.singlebar)
+
                         # start is the multiprocessing.Process method calling the run method of
                         # our class. this in only allowed on linux
                         kvk_parser.start()
                     else:
-                        # on windows, multitreading does not work, so launc the processes as single
-                        # processes
+                        # on windows, multiprocessing doesn't work, so launch the processes as
+                        # single  process
                         cmd = list(["python.exe"])
                         cmd.append(sys.argv[0])
                         cmd.append(str(Path(sys.argv[1]).absolute()))
                         cmd.extend(["--kvk_start", str(kvk_range["start"])])
                         cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
                         cmd.extend(sys.argv[2:])
-                        i_np = None
-                        for ii, c in enumerate(cmd):
-                            if re.match("^--n_p.*", str(c)):
-                                i_np = ii
-                        assert i_np is not None
-
-                        cmd.pop(i_np)
-                        cmd.pop(i_np)
+                        # set the location of the --n_process argument to true
+                        match = [bool(re.match("^--n_p.*", str(c))) for c in cmd]
+                        n_proc_index = match.index(True)
+                        cmd.pop(n_proc_index)
+                        cmd.pop(n_proc_index)
                         print(cmd)
                         process = subprocess.Popen(cmd, shell=True)
                                                    #stdout=subprocess.PIPE,
