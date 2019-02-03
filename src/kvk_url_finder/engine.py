@@ -287,7 +287,7 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = self.Company.select(self.Company.kvk_nummer, self.Company.processed)
+        query = self.Company.select(self.Company.kvk_nummer, self.Company.process_nr)
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -301,7 +301,7 @@ class KvKUrlParser(mp.Process):
                 # skip because is outside range
                 continue
             number_in_range += 1
-            if not self.force_process and q.processed:
+            if not self.force_process and q.process_nr >= 0:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
             # we can processes this record, so add it to the list
@@ -460,7 +460,7 @@ class KvKUrlParser(mp.Process):
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all")
-        maximum_queries = [q.processed and not self.force_process for q in query].count(False)
+        maximum_queries = [q.process_nr >= 0 and not self.force_process for q in query].count(False)
         self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
@@ -484,7 +484,7 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            if company.processed and not self.force_process:
+            if company.process_nr >= 0 and not self.force_process:
                 self.logger.debug("Company {} ({}) already processed. Skipping"
                                   "".format(company.kvk_nummer, company.naam))
                 continue
@@ -497,6 +497,7 @@ class KvKUrlParser(mp.Process):
                                     imposed_urls=self.impose_url_for_kvk,
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
+                                    i_proc=self.i_proc
                                     )
                 logger.info("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
@@ -1078,10 +1079,12 @@ class CompanyUrlMatch(object):
     def __init__(self, company, imposed_urls: dict = None,
                  distance_threshold: int = 10,
                  string_match_threshold: float = 0.5,
-                 save: bool = True):
+                 save: bool = True,
+                 i_proc=0):
 
         self.logger = get_logger(__name__)
         self.save = save
+        self.i_proc = i_proc
 
         self.kvk_nr = company.kvk_nummer
         self.company_name: str = company.naam
@@ -1126,7 +1129,7 @@ class CompanyUrlMatch(object):
                 for web in self.company.websites:
                     web.save()
             self.company.url = web_match.url
-            self.company.processed = True
+            self.company.process_nr = self.i_proc
             if self.save:
                 self.company.save()
 

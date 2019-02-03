@@ -52,7 +52,7 @@ def init_models(db, reset_tables=False):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
         url = pw.CharField(null=True)
-        processed = pw.BooleanField(default=False)
+        process_nr = pw.IntegerField(default=-1) # also give the process number. If -1, not done
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
