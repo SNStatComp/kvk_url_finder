@@ -1,4 +1,5 @@
 import difflib
+import datetime
 import logging
 import multiprocessing as mp
 import os
@@ -287,7 +288,8 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = self.Company.select(self.Company.kvk_nummer, self.Company.process_nr)
+        query = (self.Company.select(self.Company.kvk_nummer, self.Company.process_nr)
+                             .order_by(self.Company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -1130,6 +1132,7 @@ class CompanyUrlMatch(object):
                     web.save()
             self.company.url = web_match.url
             self.company.process_nr = self.i_proc
+            self.company.process_time = datetime.datetime.now
             if self.save:
                 self.company.save()
 
