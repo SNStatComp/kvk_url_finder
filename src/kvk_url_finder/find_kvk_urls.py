@@ -330,7 +330,7 @@ def main(args_in):
                     cmd.extend(sys.argv[2:])
                     cmd.extend(["--n_processes", "1"])
                     cmd.extend(["--nosubprocess"])
-                    cmd.extend(["--process_nr", i_proc])
+                    cmd.extend(["--process_nr", str(i_proc)])
                     cmd.extend(["--write_log"])
                     cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
                                                                          i_proc)])
