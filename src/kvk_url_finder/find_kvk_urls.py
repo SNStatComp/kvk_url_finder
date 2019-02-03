@@ -350,7 +350,7 @@ def main(args_in):
                         threshold_string_match=threshold_string_match,
                         i_proc=i_proc,
                         number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base + "_sub",
+                        log_file_base=args.log_file_base + "_prc",
                         log_level_file=args.log_level_file,
                         singlebar=args.singlebar,
                     )
