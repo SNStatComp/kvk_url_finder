@@ -1,12 +1,11 @@
-import difflib
 import datetime
+import difflib
 import logging
 import multiprocessing as mp
 import os
 import re
 import sys
 import time
-from pathlib import Path
 
 import Levenshtein
 import pandas as pd
@@ -289,7 +288,7 @@ class KvKUrlParser(mp.Process):
         Get a list of kvk numbers in the query
         """
         query = (self.Company.select(self.Company.kvk_nummer, self.Company.process_nr)
-                             .order_by(self.Company.kvk_nummer))
+                 .order_by(self.Company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -315,11 +314,11 @@ class KvKUrlParser(mp.Process):
         if number_in_range == 0:
             raise ValueError(f"No kvk numbers where found in range {start} -- {stop}")
         if n_kvk == 0:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}" 
+            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}"
                              f"but none to be processed")
 
         if n_kvk < self.number_of_processes:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop} " 
+            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
@@ -512,7 +511,7 @@ class KvKUrlParser(mp.Process):
         if pbar is not None:
             pbar.close()
 
-        duration = time.time() -start
+        duration = time.time() - start
         logger.info(f"Done processing in {duration} seconds")
         # this is not faster than save per record
         # with Timer("Updating tables") as _:

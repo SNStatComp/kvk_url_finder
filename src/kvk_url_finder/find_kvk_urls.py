@@ -31,15 +31,15 @@ import logging
 import logging.config
 import os
 import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
-import subprocess
 
 import pandas as pd
 import yaml
 
-from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
+from cbs_utils.misc import (create_logger, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
 
@@ -165,8 +165,8 @@ def setup_logging(write_log_to_file=False,
 
     # with this call we merge the settings of our logger with the logger in the cbs_utils logger
     # so we can control the output
-    #merge_loggers(_logger, "cbs_utils")
-    #merge_loggers(_logger, "kvk_url_finder.engine")
+    # merge_loggers(_logger, "cbs_utils")
+    # merge_loggers(_logger, "kvk_url_finder.engine")
 
     return _logger
 
@@ -240,7 +240,8 @@ def main(args_in):
         )
         logger.info("Enter run with python version {}".format(sys.base_prefix))
         logger.info("ARGV_IN: {}".format(" ".join(args_in)))
-        args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if not None and not at.startswith("_")]
+        args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if
+                    not None and not at.startswith("_")]
         logger.info("ARGV: {}".format(" ".join(args_str)))
 
         # with the global statement line we make sure to change the global variable at the top
@@ -383,7 +384,7 @@ def main(args_in):
                     for ip, process in enumerate(jobs):
                         logger.info("Waitig for proc {} : {}".format(ip, process.pid))
                         try:
-                            #os.waitpid(process.pid, 0)
+                            # os.waitpid(process.pid, 0)
                             logger.info("DONE: {} : {}".format(ip, process.pid))
                         except ChildProcessError:
                             logger.info("NoMore: {} : {}".format(ip, process.pid))

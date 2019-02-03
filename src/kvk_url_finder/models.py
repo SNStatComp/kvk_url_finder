@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import peewee as pw
-from playhouse.pool import (PooledPostgresqlExtDatabase, PooledSqliteExtDatabase)
+from playhouse.pool import (PooledPostgresqlExtDatabase)
 
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
@@ -53,7 +53,7 @@ def init_models(db, reset_tables=False):
         naam = pw.CharField(null=True)
         url = pw.CharField(null=True)
         process_nr = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
-        process_time = pw.DateTimeField(null=True)         # the process time
+        process_time = pw.DateTimeField(null=True)  # the process time
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
