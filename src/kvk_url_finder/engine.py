@@ -1191,8 +1191,8 @@ class UrlCollection(object):
             ext = tldextract.extract(web.url)
 
             # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl,
-            # the sub domain is ramlehapotheek, which is closer to the company name the the domain leef.
-            # Therefore pick the minimum
+            # the sub domain is ramlehapotheek, which is closer to the company name the the
+            # domain leef. Therefore pick the minimum
             subdomain_dist = Levenshtein.distance(ext.subdomain, self.company_name_small)
             domain_dist = Levenshtein.distance(ext.domain, self.company_name_small)
             distance = min(subdomain_dist, domain_dist)

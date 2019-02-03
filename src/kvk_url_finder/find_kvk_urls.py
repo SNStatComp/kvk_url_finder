@@ -112,6 +112,8 @@ def _parse_the_command_line_arguments(args):
                              "the yaml file if given")
     parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
                         choices=range(1, MAX_PROCESSES))
+    parser.add_argument("--process_nr", type=int, help="Impose the default process number",
+                        default=0)
     parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
                         help="Type of database to use. If not given, select from the settings file "
                              "or take postgres")
@@ -328,6 +330,7 @@ def main(args_in):
                     cmd.extend(sys.argv[2:])
                     cmd.extend(["--n_processes", "1"])
                     cmd.extend(["--nosubprocess"])
+                    cmd.extend(["--process_nr", i_proc])
                     cmd.extend(["--write_log"])
                     cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
                                                                          i_proc)])
@@ -348,7 +351,7 @@ def main(args_in):
                         impose_url_for_kvk=impose_url_for_kvk,
                         threshold_distance=threshold_distance,
                         threshold_string_match=threshold_string_match,
-                        i_proc=i_proc,
+                        i_proc=i_proc + args.process_nr,
                         number_of_processes=args.n_processes,
                         log_file_base=args.log_file_base + "_prc",
                         log_level_file=args.log_level_file,
