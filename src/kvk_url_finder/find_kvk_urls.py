@@ -391,7 +391,7 @@ def main(args_in):
 def _run():
     """Entry point for console_scripts
     """
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("kvk_url_finder")
     start = time.time()
     main(sys.argv[1:])
     duration = time.time() - start

@@ -1132,7 +1132,7 @@ class CompanyUrlMatch(object):
                     web.save()
             self.company.url = web_match.url
             self.company.process_nr = self.i_proc
-            self.company.process_time = datetime.datetime.now
+            self.company.process_time = datetime.datetime.now()
             if self.save:
                 self.company.save()
 
