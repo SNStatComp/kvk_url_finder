@@ -100,6 +100,8 @@ def _parse_the_command_line_arguments(args):
                              "as processes")
     parser.add_argument("--subprocess", action="store_true",
                         help="Force to use subprocess, even on Linux ")
+    parser.add_argument("--nosubprocess", action="store_false", dest="subprocess",
+                        help="Prevent to use the forced subprocess ")
     parser.add_argument("--merge_database", action="store_true",
                         help="Merge the current sql data base marked to the selection data base")
     parser.add_argument("--kvk_start", type=int,
@@ -325,6 +327,7 @@ def main(args_in):
                     cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
                     cmd.extend(sys.argv[2:])
                     cmd.extend(["--n_processes", "1"])
+                    cmd.extend(["--nosubprocess"])
                     cmd.extend(["--write_log"])
                     cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
                                                                          i_proc)])
