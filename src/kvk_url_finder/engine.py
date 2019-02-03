@@ -178,14 +178,12 @@ class KvKUrlParser(mp.Process):
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
             formatter = logging.Formatter("{:2d} ".format(i_proc) +
-                                          "[%(asctime)s]"
-                                          "%(levelname)8s --- "
+                                          "%(levelname)-5s : "
                                           "%(message)s "
                                           "(%(filename)s:%(lineno)s)",
                                           datefmt="%Y-%m-%d %H:%M:%S")
         else:
-            formatter = logging.Formatter("[%(asctime)s]"
-                                          "%(levelname)8s --- "
+            formatter = logging.Formatter("%(levelname)-5s : "
                                           "%(message)s "
                                           "(%(filename)s:%(lineno)s)",
                                           datefmt="%Y-%m-%d %H:%M:%S")
@@ -197,12 +195,16 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
-        log_file = log_file_base + "_kvk"
         if i_proc is not None:
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
-
-        # create a logger per process
-        self.logger = logging.getLogger(__name__)
+            self.logger = create_logger(name=f"kvk_url_finder_{i_proc}",
+                                        file_log_level=log_level_file,
+                                        log_file=log_file,
+                                        formatter=formatter)
+            self.logger.info("Set up class logger for proc {}".format(i_proc))
+        else:
+            self.logger = logging.getLogger("kvk_url_finder")
+            self.logger.info("Set up class logger for main {}".format(__name__))
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
             # logger.disabled = True

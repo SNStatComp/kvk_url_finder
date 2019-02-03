@@ -38,7 +38,6 @@ import subprocess
 
 import pandas as pd
 import yaml
-import multiprocessing_logging
 
 from cbs_utils.misc import (create_logger, merge_loggers, Chdir, make_directory)
 from kvk_url_finder.engine import KvKUrlParser
@@ -50,10 +49,13 @@ except ModuleNotFoundError:
     __version__ = "unknown"
 
 # set up global logger
-
-multiprocessing_logging.install_mp_handler()
-logging.basicConfig(filename='find_kvk.log', filemode='w', level=logging.DEBUG,
-                    format='%(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename='find_kvk.log',
+                    filemode='w',
+                    level=logging.CRITICAL,
+                    format='%{asctime}s %(name)-12s - %(levelname)-8s %(message)s',
+                    datefmt="%m-%d %H-%M-%S",
+                    style="{",
+                    )
 
 
 def _parse_the_command_line_arguments(args):
@@ -96,6 +98,8 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--force_process", action="store_true",
                         help="Force to process company table, even if they have been marked "
                              "as processes")
+    parser.add_argument("--subprocess", action="store_true",
+                        help="Force to use subprocess, even on Linux ")
     parser.add_argument("--merge_database", action="store_true",
                         help="Merge the current sql data base marked to the selection data base")
     parser.add_argument("--kvk_start", type=int,
@@ -134,10 +138,14 @@ def setup_logging(write_log_to_file=False,
     else:
         log_file_base = None
 
-    _logger = create_logger(name=__name__,
+    formatter_long = logging.Formatter('[%(asctime)s] %(name)-5s %(levelname)-8s --- %(message)s ' +
+                                       '(%(filename)s:%(lineno)s)', datefmt='%Y-%m-%d %H:%M:%S')
+    _logger = create_logger(name="kvk_url_finder",
                             file_log_level=log_level_file,
                             console_log_level=log_level,
-                            log_file=log_file_base)
+                            log_file=log_file_base,
+                            formatter_file=formatter_long
+                            )
 
     if progress_bar:
         # switch off all logging because we are showing the progress bar via the print statement
@@ -153,14 +161,13 @@ def setup_logging(write_log_to_file=False,
 
     # with this call we merge the settings of our logger with the logger in the cbs_utils logger
     # so we can control the output
-    merge_loggers(_logger, "cbs_utils")
-    merge_loggers(_logger, "kvk_url_finder.engine")
+    #merge_loggers(_logger, "cbs_utils")
+    #merge_loggers(_logger, "kvk_url_finder.engine")
 
     return _logger
 
 
 def main(args_in):
-    logger = logging.getLogger(__name__)
     args, parser = _parse_the_command_line_arguments(args_in)
 
     # with the global statement line we make sure to change the global variable at the top
@@ -211,17 +218,22 @@ def main(args_in):
     if args.kvk_stop is not None:
         kvk_range_process["stop"] = args.kvk_stop
 
+    if (args.n_processes > 1 and platform.system() == "Windows") or args.subprocess:
+        use_subprocess = True
+    else:
+        use_subprocess = False
+
     # create the KvKUrl object, but first move to the workding directory, so everything we do
     # is with respect to this directory
     with Chdir(working_directory) as _:
 
-        #logger = setup_logging(
-        #    write_log_to_file=args.write_log_to_file,
-        #    log_file_base=args.log_file_base,
-        #    log_level_file=args.log_level_file,
-        #    log_level=args.log_level,
-        #    progress_bar=args.progressbar
-        #)
+        logger = setup_logging(
+            write_log_to_file=args.write_log_to_file,
+            log_file_base=args.log_file_base,
+            log_level_file=args.log_level_file,
+            log_level=args.log_level,
+            progress_bar=args.progressbar
+        )
         logger.info("Enter run with python version {}".format(sys.base_prefix))
         logger.info("ARGV_IN: {}".format(" ".join(args_in)))
         args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if not None and not at.startswith("_")]
@@ -301,12 +313,12 @@ def main(args_in):
             jobs = list()
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
 
-                if args.n_processes > 1 and platform.system() == "Windows":
+                if use_subprocess:
                     logger.info("Do not make object again for multiprocessing on windows")
-                    kvk_sub_parser = None
+                    logger.info(f"Test with name {kvk_selection_file_name}")
                     # for multiprocessing on windows, we create a command line call to the
                     # utility with the proper ranges
-                    cmd = list(["python.exe"])
+                    cmd = list(["python"])
                     cmd.append(sys.argv[0])
                     cmd.append(str(Path(sys.argv[1]).absolute()))
                     cmd.extend(["--kvk_start", str(kvk_range["start"])])
