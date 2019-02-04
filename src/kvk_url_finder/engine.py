@@ -192,7 +192,9 @@ class KvKUrlParser(mp.Process):
             self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
+            self.logger.setLevel(logging.getLogger(LOGGER_BASE_NAME).getEffectiveLevel())
             self.logger.info("Set up class logger for main {}".format(__name__))
+            self.logger.debug("With debug on?")
 
         self.i_proc = i_proc
 
