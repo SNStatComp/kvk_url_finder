@@ -2,22 +2,22 @@
 Utility to import kvk/url combinations and turn it into a mysql data base
 
 Usage:
-    python kvk_url_finder.py URL_kvk.csv.bz2  --max 10000
+    python kvk_url_finder_main.py URL_kvk.csv.bz2  --max 10000
 
 With --max you can limit the number of lines read from the csv file. In case the script is called
 multiple times, you continue on last kvk you have stored in the sql database
 
 The script can be runned with kernprof in order to time all the lines
 
-kernprof -l kvk_url_finder.py URL_kvk.csv.bz2  --max 10000
+kernprof -l kvk_url_finder_main.py URL_kvk.csv.bz2  --max 10000
 
 
-This generates a file kvk_url_finder.py.prof
+This generates a file kvk_url_finder_main.py.prof
 
 Alternatively you can use the profiling tool:
 
 
-profiling --dump=kvk.prof kvk_url_finder.py -- URL_kvk.csv.bs2 --max 100 --extend
+profiling --dump=kvk.prof kvk_url_finder_main.py -- URL_kvk.csv.bs2 --max 100 --extend
 
 Note that the first '--' indicates that the rest of the arguments belong to the python script and
 not to profiling
