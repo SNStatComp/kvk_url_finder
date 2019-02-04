@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from cbs_utils.misc import (get_logger, create_logger)
 from kvk_url_finder.models import *
+from kvk_url_finder import LOGGER_BASE_NAME
 
 try:
     from kvk_url_finder import __version__
@@ -182,11 +183,15 @@ class KvKUrlParser(mp.Process):
                                           "%(message)s "
                                           "(%(filename)s:%(lineno)s)",
                                           datefmt="%Y-%m-%d %H:%M:%S")
+            log_file = "{}_{:02d}".format(log_file_base, i_proc)
+            logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
         else:
             formatter = logging.Formatter("%(levelname)-5s : "
                                           "%(message)s "
                                           "(%(filename)s:%(lineno)s)",
                                           datefmt="%Y-%m-%d %H:%M:%S")
+            log_file = log_file_base
+            logger_name = LOGGER_BASE_NAME
 
         self.i_proc = i_proc
 
@@ -196,8 +201,7 @@ class KvKUrlParser(mp.Process):
         self.save = save
 
         if i_proc is not None:
-            log_file = "{}_{:02d}".format(log_file_base, i_proc)
-            self.logger = create_logger(name=f"kvk_url_finder_{i_proc}",
+            self.logger = create_logger(name=logger_name,
                                         file_log_level=log_level_file,
                                         log_file=log_file,
                                         formatter=formatter)

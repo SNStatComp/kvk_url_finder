@@ -40,6 +40,7 @@ import pandas as pd
 import yaml
 
 from cbs_utils.misc import (create_logger, Chdir, make_directory)
+from kvk_url_finder import LOGGER_BASE_NAME
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
 
@@ -47,16 +48,6 @@ try:
     from kvk_url_finder import __version__
 except ModuleNotFoundError:
     __version__ = "unknown"
-
-# set up global logger
-logging.basicConfig(filename='find_kvk.log',
-                    filemode='w',
-                    level=logging.CRITICAL,
-                    format='%{asctime}s %(name)-12s - %(levelname)-8s %(message)s',
-                    datefmt="%m-%d %H-%M-%S",
-                    style="{",
-                    )
-
 
 def _parse_the_command_line_arguments(args):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -144,7 +135,7 @@ def setup_logging(write_log_to_file=False,
 
     formatter_long = logging.Formatter('[%(asctime)s] %(name)-5s %(levelname)-8s --- %(message)s ' +
                                        '(%(filename)s:%(lineno)s)', datefmt='%Y-%m-%d %H:%M:%S')
-    _logger = create_logger(name="kvk_url_finder",
+    _logger = create_logger(name=LOGGER_BASE_NAME,
                             file_log_level=log_level_file,
                             console_log_level=log_level,
                             log_file=log_file_base,
@@ -354,7 +345,7 @@ def main(args_in):
                         threshold_string_match=threshold_string_match,
                         i_proc=i_proc + args.process_nr,
                         number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base + "_prc",
+                        log_file_base=args.log_file_base,
                         log_level_file=args.log_level_file,
                         singlebar=args.singlebar,
                     )
@@ -395,7 +386,7 @@ def main(args_in):
 def _run():
     """Entry point for console_scripts
     """
-    logger = logging.getLogger("kvk_url_finder")
+    logger = logging.getLogger(LOGGER_BASE_NAME)
     start = time.time()
     main(sys.argv[1:])
     duration = time.time() - start
