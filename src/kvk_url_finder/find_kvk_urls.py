@@ -243,6 +243,7 @@ def main(args_in):
         script_name = os.path.basename(sys.argv[0])
         if platform.system() == "Windows":
             script_name += ".exe"
+
         start_time = pd.to_datetime("now")
         message = "Start {script} (v: {version}) at {start_time}:\n{cmd}" \
                   "".format(script=script_name, version=__version__,
@@ -315,11 +316,11 @@ def main(args_in):
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
 
                 if use_subprocess:
+                    python_script = sys.argv[0]
                     logger.info("Do not make object again for multiprocessing on windows")
-                    logger.info(f"Test with name {kvk_selection_file_name}")
                     # for multiprocessing on windows, we create a command line call to the
                     # utility with the proper ranges
-                    cmd = list(["python"])
+                    cmd = list()
                     cmd.append(script_name)
                     cmd.append(str(Path(sys.argv[1]).absolute()))
                     cmd.extend(["--kvk_start", str(kvk_range["start"])])
