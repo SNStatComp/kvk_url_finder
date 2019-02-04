@@ -305,6 +305,8 @@ class KvKUrlParser(mp.Process):
             kvk_to_process.append(kvk)
 
         n_kvk = len(kvk_to_process)
+        self.logger.debug(f"Found {kvk_to_process} kvk's to process with {number_in_range}"
+                          " in range")
 
         # check the ranges
         if number_in_range == 0:
@@ -318,6 +320,7 @@ class KvKUrlParser(mp.Process):
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
+        self.logger.debug("Number of kvk's per process: {n_per_proc}")
         self.kvk_ranges = list()
 
         for i_proc in range(self.number_of_processes):
