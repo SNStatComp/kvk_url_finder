@@ -22,8 +22,6 @@ profiling --dump=kvk.prof kvk_url_finder_main.py -- URL_kvk.csv.bs2 --max 100 --
 Note that the first '--' indicates that the rest of the arguments belong to the python script and
 not to profiling
 
-
-have
 """
 
 import argparse
