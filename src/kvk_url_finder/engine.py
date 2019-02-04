@@ -13,7 +13,7 @@ import progressbar as pb
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (get_logger, create_logger)
+from cbs_utils.misc import (create_logger)
 from kvk_url_finder.models import *
 from kvk_url_finder import LOGGER_BASE_NAME
 
@@ -46,8 +46,6 @@ COMPRESSION_TYPES = [None, "zlib", "blosc"]
 MAX_SQL_CHUNK = 500
 
 STOP_FILE = "stop"
-
-logger = get_logger(__name__)
 
 # set up progress bar properties
 PB_WIDGETS = [pb.Percentage(), ' ', pb.Bar(marker='.', left='[', right=']'), ""]
@@ -176,6 +174,7 @@ class KvKUrlParser(mp.Process):
                  ):
 
         # launch the process
+        console_log_level = logging.getLogger(LOGGER_BASE_NAME).getEffectiveLevel()
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
             formatter = logging.Formatter("{:2d} ".format(i_proc) +
@@ -186,15 +185,17 @@ class KvKUrlParser(mp.Process):
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
             logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
             self.logger = create_logger(name=logger_name,
+                                        console_log_level=console_log_level,
                                         file_log_level=log_level_file,
                                         log_file=log_file,
                                         formatter=formatter)
             self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
-            self.logger.setLevel(logging.getLogger(LOGGER_BASE_NAME).getEffectiveLevel())
+            self.logger.setLevel(console_log_level)
             self.logger.info("Set up class logger for main {}".format(__name__))
-            self.logger.debug("With debug on?")
+
+        self.logger.debug("With debug on?")
 
         self.i_proc = i_proc
 
@@ -267,7 +268,7 @@ class KvKUrlParser(mp.Process):
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
-        self.logger.info("Matching the best url's")
+        self.logger.debug("Matching the best url's")
         self.find_best_matching_url()
 
     def generate_sql_tables(self):
@@ -307,7 +308,7 @@ class KvKUrlParser(mp.Process):
             kvk_to_process.append(kvk)
 
         n_kvk = len(kvk_to_process)
-        self.logger.debug(f"Found {kvk_to_process} kvk's to process with {number_in_range}"
+        self.logger.debug(f"Found {n_kvk} kvk's to process with {number_in_range}"
                           " in range")
 
         # check the ranges
@@ -461,7 +462,7 @@ class KvKUrlParser(mp.Process):
 
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
-        self.logger.info("Counting all")
+        self.logger.info("Counting all...")
         maximum_queries = [q.process_nr >= 0 and not self.force_process for q in query].count(False)
         self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
@@ -492,6 +493,7 @@ class KvKUrlParser(mp.Process):
                 continue
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
+            self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
 
             try:
                 company_url_match = \
@@ -501,7 +503,7 @@ class KvKUrlParser(mp.Process):
                                     string_match_threshold=self.threshold_string_match,
                                     i_proc=self.i_proc
                                     )
-                logger.info("Done with {}".format(company_url_match.company_name))
+                self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
@@ -1084,7 +1086,8 @@ class CompanyUrlMatch(object):
                  save: bool = True,
                  i_proc=0):
 
-        self.logger = get_logger(__name__)
+        self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        self.logger.debug("Company match in debug mode")
         self.save = save
         self.i_proc = i_proc
 
@@ -1097,7 +1100,7 @@ class CompanyUrlMatch(object):
         # impose a url
         self.impose_url = imposed_urls.get(self.kvk_nr)
 
-        self.logger.info("Get Url collection....")
+        self.logger.debug("Get Url collection....")
         self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
                                   threshold_distance=distance_threshold,
                                   threshold_string_match=string_match_threshold
@@ -1148,8 +1151,8 @@ class UrlCollection(object):
                  threshold_distance: int = 10,
                  threshold_string_match: float = 0.5,
                  impose_url: str = None):
-        self.logger = logging.getLogger(__name__)
-        self.logger.info("Collect urls {}".format(company_name))
+        self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        self.logger.debug("Collect urls {}".format(company_name))
 
         self.kvk_nr = kvk_nr
         self.company = company
@@ -1166,19 +1169,19 @@ class UrlCollection(object):
                                             "subdomain", "domain", "suffix", "ranking"])
 
         # remove space and put to lower for better comparison with the url
-        self.logger.info(
+        self.logger.debug(
             "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
         self.collect_web_sites()
 
-        self.logger.info("Get best match")
+        self.logger.debug("Get best match")
         if impose_url:
             # just select the url to impose
             self.web_df = self.web_df[self.web_df["url"] == impose_url].copy()
         elif self.web_df is not None:
             self.get_best_matching_web_site()
-            self.logger.info("Best Match".format(self.web_df.head(1)))
+            self.logger.debug("Best Match".format(self.web_df.head(1)))
         else:
-            self.logger.info("No website found for".format(self.company_name))
+            self.logger.debug("No website found for".format(self.company_name))
 
     def collect_web_sites(self):
         """
@@ -1220,7 +1223,7 @@ class UrlCollection(object):
             self.web_df.loc[i_web, :] = [web.url, distance, string_match,
                                          ext.subdomain, ext.domain, ext.suffix, 0]
 
-            logger.debug("   * {} - {}  - {}".format(web.url, ext.domain, distance))
+            self.logger.debug("   * {} - {}  - {}".format(web.url, ext.domain, distance))
 
         if min_distance is None:
             self.web_df = None
