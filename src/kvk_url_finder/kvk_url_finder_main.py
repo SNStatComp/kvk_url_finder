@@ -83,6 +83,8 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--no_write_log_to_file", action="store_false", dest="write_log_to_file",
                         help="Do not write the logging information to file")
     parser.add_argument("--log_file_base", default="log", help="Default name of the logging output")
+    parser.add_argument('--log_file_debug', help="Be very verbose to file", action="store_const",
+                        dest="log_level_file", const=logging.DEBUG)
     parser.add_argument('--log_file_verbose', help="Be verbose to file", action="store_const",
                         dest="log_level_file", const=logging.INFO, default=logging.INFO)
     parser.add_argument('--log_file_quiet', help="Be quiet: no output to file",
