@@ -14,7 +14,7 @@ from setuptools import setup
 # Add here console scripts and other entry points in ini-style format
 entry_points = """
 [console_scripts]
-kvk_url_finder = kvk_url_finder.kvk_url_finder:_run
+kvk_url_finder = kvk_url_finder.kvk_url_finder_main:_run
 # For example:
 # fibonacci = kvk_url_finder.skeleton:run
 """
