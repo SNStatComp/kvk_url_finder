@@ -241,7 +241,7 @@ def main(args_in):
         # with the global statement line we make sure to change the global variable at the top
 
         script_name = os.path.basename(sys.argv[0])
-        if sys.platform() == 'Windows':
+        if platform.system() == "Windows":
             script_name += ".exe"
         start_time = pd.to_datetime("now")
         message = "Start {script} (v: {version}) at {start_time}:\n{cmd}" \
