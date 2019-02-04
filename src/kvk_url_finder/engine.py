@@ -185,13 +185,14 @@ class KvKUrlParser(mp.Process):
                                           datefmt="%Y-%m-%d %H:%M:%S")
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
             logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
+            self.logger = create_logger(name=logger_name,
+                                        file_log_level=log_level_file,
+                                        log_file=log_file,
+                                        formatter=formatter)
+            self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
-            formatter = logging.Formatter("%(levelname)-5s : "
-                                          "%(message)s "
-                                          "(%(filename)s:%(lineno)s)",
-                                          datefmt="%Y-%m-%d %H:%M:%S")
-            log_file = log_file_base
-            logger_name = LOGGER_BASE_NAME
+            self.logger = logging.getLogger(LOGGER_BASE_NAME)
+            self.logger.info("Set up class logger for main {}".format(__name__))
 
         self.i_proc = i_proc
 
@@ -200,15 +201,6 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
 
-        if i_proc is not None:
-            self.logger = create_logger(name=logger_name,
-                                        file_log_level=log_level_file,
-                                        log_file=log_file,
-                                        formatter=formatter)
-            self.logger.info("Set up class logger for proc {}".format(i_proc))
-        else:
-            self.logger = logging.getLogger(logger_name)
-            self.logger.info("Set up class logger for main {}".format(__name__))
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
             # logger.disabled = True

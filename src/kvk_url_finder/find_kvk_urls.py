@@ -49,6 +49,7 @@ try:
 except ModuleNotFoundError:
     __version__ = "unknown"
 
+
 def _parse_the_command_line_arguments(args):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse the command line to set some options2
