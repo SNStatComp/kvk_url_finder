@@ -241,6 +241,8 @@ def main(args_in):
         # with the global statement line we make sure to change the global variable at the top
 
         script_name = os.path.basename(sys.argv[0])
+        if sys.platform() == 'Windows':
+            script_name += ".exe"
         start_time = pd.to_datetime("now")
         message = "Start {script} (v: {version}) at {start_time}:\n{cmd}" \
                   "".format(script=script_name, version=__version__,
@@ -318,7 +320,7 @@ def main(args_in):
                     # for multiprocessing on windows, we create a command line call to the
                     # utility with the proper ranges
                     cmd = list(["python"])
-                    cmd.append(sys.argv[0])
+                    cmd.append(script_name)
                     cmd.append(str(Path(sys.argv[1]).absolute()))
                     cmd.extend(["--kvk_start", str(kvk_range["start"])])
                     cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
