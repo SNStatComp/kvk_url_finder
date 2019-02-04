@@ -232,11 +232,11 @@ def main(args_in):
             log_level=args.log_level,
             progress_bar=args.progressbar
         )
-        logger.info("Enter run with python version {}".format(sys.base_prefix))
-        logger.info("ARGV_IN: {}".format(" ".join(args_in)))
+        logger.debug("Enter run with python version {}".format(sys.base_prefix))
+        logger.debug("ARGV_IN: {}".format(" ".join(args_in)))
         args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if
                     not None and not at.startswith("_")]
-        logger.info("ARGV: {}".format(" ".join(args_str)))
+        logger.debug("ARGV: {}".format(" ".join(args_str)))
 
         # with the global statement line we make sure to change the global variable at the top
 
@@ -316,7 +316,6 @@ def main(args_in):
             for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
 
                 if use_subprocess:
-                    python_script = sys.argv[0]
                     logger.info("Do not make object again for multiprocessing on windows")
                     # for multiprocessing on windows, we create a command line call to the
                     # utility with the proper ranges
@@ -367,7 +366,7 @@ def main(args_in):
                     jobs.append(kvk_sub_parser)
 
             if args.n_processes > 1:
-                if platform.system() == "Lines":
+                if platform.system() == "Linux":
                     # this will block the script until all jobs are done
                     for job in jobs:
                         job.join()
@@ -379,12 +378,12 @@ def main(args_in):
                             db.close()
                 else:
                     for ip, process in enumerate(jobs):
-                        logger.info("Waitig for proc {} : {}".format(ip, process.pid))
+                        logger.info("Waiting for process {} : {}".format(ip, process.pid))
                         try:
-                            # os.waitpid(process.pid, 0)
-                            logger.info("DONE: {} : {}".format(ip, process.pid))
+                            os.waitpid(process.pid, 0)
+                            logger.debug("DONE: {} : {}".format(ip, process.pid))
                         except ChildProcessError:
-                            logger.info("NoMore: {} : {}".format(ip, process.pid))
+                            logger.debug("NoMore: {} : {}".format(ip, process.pid))
 
             logger.info("Goodbye!")
 
