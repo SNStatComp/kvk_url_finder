@@ -515,7 +515,7 @@ class KvKUrlParser(mp.Process):
             pbar.close()
 
         duration = time.time() - start
-        logger.info(f"Done processing in {duration} seconds")
+        self.logger.info(f"Done processing in {duration} seconds")
         # this is not faster than save per record
         # with Timer("Updating tables") as _:
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
@@ -530,7 +530,7 @@ class KvKUrlParser(mp.Process):
         url: str
             url of the website to scrape
         """
-        logger.debug("Start scraping")
+        self.logger.debug("Start scraping")
 
     # @profile
     def read_csv_input_file(self,
@@ -572,11 +572,11 @@ class KvKUrlParser(mp.Process):
 
         if os.path.exists(cache_file):
             # add the type so we can recognise it is a data frame
-            logger.info("Reading from cache {}".format(cache_file))
+            self.logger.info("Reading from cache {}".format(cache_file))
             df: pd.DataFrame = pd.read_pickle(cache_file)
             df.reset_index(inplace=True)
         elif ".csv" in (file_ext, file_ext2):
-            logger.info("Reading from file {}".format(file_name))
+            self.logger.info("Reading from file {}".format(file_name))
             df = pd.read_csv(file_name,
                              header=None,
                              usecols=usecols,
@@ -584,12 +584,12 @@ class KvKUrlParser(mp.Process):
                              )
 
             if remove_spurious_urls:
-                logger.info("Removing spurious urls")
+                self.logger.info("Removing spurious urls")
                 df = self.remove_spurious_urls(df)
 
             df = self.clip_kvk_range(df, unique_key=unique_key, kvk_range=self.kvk_range_read)
 
-            logger.info("Writing data to cache {}".format(cache_file))
+            self.logger.info("Writing data to cache {}".format(cache_file))
             df.to_pickle(cache_file)
         else:
             raise AssertionError("Can only read h5 or csv files")
@@ -597,9 +597,9 @@ class KvKUrlParser(mp.Process):
         try:
             df.drop("index", axis=0, inplace=True)
         except KeyError:
-            logger.debug("No index to drop")
+            self.logger.debug("No index to drop")
         else:
-            logger.debug("Dropped index")
+            self.logger.debug("Dropped index")
 
         return df
 
@@ -619,7 +619,7 @@ class KvKUrlParser(mp.Process):
                                                remove_spurious_urls=True,
                                                unique_key=URL_KEY)
 
-        logger.info("Removing duplicated table entries")
+        self.logger.info("Removing duplicated table entries")
         self.remove_duplicated_url_entries()
 
     # @profile
@@ -637,7 +637,7 @@ class KvKUrlParser(mp.Process):
         n_before = dataframe.index.size
 
         if start is not None or stop is not None or self.kvk_selection_kvk_key is not None:
-            logger.info("Selecting kvk number from {} to {}".format(start, stop))
+            self.logger.info("Selecting kvk number from {} to {}".format(start, stop))
             idx = pd.IndexSlice
             df = dataframe.set_index([KVK_KEY, unique_key])
 
@@ -655,11 +655,11 @@ class KvKUrlParser(mp.Process):
             df = dataframe
 
         n_after = df.index.size
-        logger.debug("Kept {} out of {} records".format(n_after, n_before))
+        self.logger.debug("Kept {} out of {} records".format(n_after, n_before))
 
         # check if we have  any valid entries in the range
         if n_after == 0:
-            logger.info(dataframe.info())
+            self.logger.info(dataframe.info())
             raise ValueError("No records found in kvk range {} {} (kvk range: {} -- {})".format(
                 start, stop, dataframe[KVK_KEY].min(), dataframe[KVK_KEY].max()))
 
@@ -685,7 +685,7 @@ class KvKUrlParser(mp.Process):
                                                      unique_key=POSTAL_CODE_KEY)
         self.remove_duplicated_kvk_entries()
 
-        logger.debug("Done")
+        self.logger.debug("Done")
 
     # @profile
     def look_up_last_entry(self, n_skip_entries):
@@ -714,14 +714,14 @@ class KvKUrlParser(mp.Process):
             # take the last of this list with -1
             row_index = self.url_df.loc[self.url_df[KVK_KEY] == kvk_last].index[-1]
         except IndexError:
-            logger.debug("No last index found.  n_entries to skip to {}".format(n_skip_entries))
+            self.logger.debug("No last index found.  n_entries to skip to {}".format(n_skip_entries))
         else:
             # we have the last row index. This means that we can add this index to the n_entries
             # we have used now. Return this n_entries
             last_row = self.url_df.loc[row_index]
-            logger.debug("found: {}".format(last_row))
+            self.logger.debug("found: {}".format(last_row))
             n_skip_entries += row_index + 1
-            logger.debug("Updated n_entries to skip to {}".format(n_skip_entries))
+            self.logger.debug("Updated n_entries to skip to {}".format(n_skip_entries))
 
         return n_skip_entries
 
@@ -736,7 +736,7 @@ class KvKUrlParser(mp.Process):
         urls = urls[n_count < self.n_count_threshold]
         url_after = set(urls[URL_KEY].values)
         url_removed = url_before.difference(url_after)
-        logger.debug("Removed URLS:\n{}".format(url_removed))
+        self.logger.debug("Removed URLS:\n{}".format(url_removed))
 
         # turn the kvknumber/url combination into the index and remove the duplicates. This
         # means that per company each url only occurs one time
@@ -755,7 +755,7 @@ class KvKUrlParser(mp.Process):
         """
 
         nr = self.addresses_df.index.size
-        logger.info("Removing duplicated kvk entries")
+        self.logger.info("Removing duplicated kvk entries")
         query = self.Company.select()
         kvk_list = list()
         try:
@@ -777,7 +777,7 @@ class KvKUrlParser(mp.Process):
         try:
             self.addresses_df = self.addresses_df.set_index(KVK_KEY).drop(index=kvk_to_remove.index)
         except KeyError:
-            logger.debug("Nothing to drop")
+            self.logger.debug("Nothing to drop")
         else:
             self.addresses_df.reset_index(inplace=True)
 
@@ -792,8 +792,8 @@ class KvKUrlParser(mp.Process):
         # based on the data in the WebSite table create a data frame with all the kvk which
         # we have already included. These can be removed from the data we have just read
         nr = self.url_df.index.size
-        logger.info("Removing duplicated kvk/url combinies. Data read at start: {}".format(nr))
-        logger.debug("Getting all sql websides from database")
+        self.logger.info("Removing duplicated kvk/url combinies. Data read at start: {}".format(nr))
+        self.logger.debug("Getting all sql websides from database")
         kvk_list = list()
         url_list = list()
         name_list = list()
@@ -815,18 +815,18 @@ class KvKUrlParser(mp.Process):
         kvk_in_db.set_index([KVK_KEY, URL_KEY], drop=True, inplace=True)
 
         # drop all the kvk number which we already have loaded in the database
-        logger.debug("Dropping all duplicated web sides")
+        self.logger.debug("Dropping all duplicated web sides")
         kvk_to_remove = self.url_df.set_index([KVK_KEY, URL_KEY])
         kvk_to_remove = kvk_to_remove.reindex(kvk_in_db.index)
         kvk_to_remove = kvk_to_remove[~kvk_to_remove[NAME_KEY].isnull()]
         try:
             self.url_df = self.url_df.set_index([KVK_KEY, URL_KEY]).drop(index=kvk_to_remove.index)
         except KeyError:
-            logger.debug("Nothing to drop")
+            self.logger.debug("Nothing to drop")
         else:
             self.url_df.reset_index(inplace=True)
 
-        logger.debug("Getting all  companies in Company table")
+        self.logger.debug("Getting all  companies in Company table")
         kvk_list = list()
         name_list = list()
         for company in self.Company.select():
@@ -836,27 +836,27 @@ class KvKUrlParser(mp.Process):
                                        columns=[KVK_KEY, NAME_KEY])
         companies_in_db.set_index([KVK_KEY], drop=True, inplace=True)
 
-        logger.debug("Dropping all  duplicated companies")
+        self.logger.debug("Dropping all  duplicated companies")
         comp_df = self.url_df.set_index([KVK_KEY, URL_KEY])
         comp_df.drop(index=companies_in_db.index, level=0, inplace=True)
         self.url_df = comp_df.reset_index()
 
         nr = self.url_df.index.size
-        logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
+        self.logger.debug("Removed duplicated kvk/url combies. Data at end: {}".format(nr))
 
     # @profile
     def company_kvks_to_sql(self):
         """
         Write all the company kvk with name to the sql
         """
-        logger.info("Start writing to mysql data base")
+        self.logger.info("Start writing to mysql data base")
         if self.addresses_df.index.size == 0:
-            logger.debug("Empty addresses data frame. Nothing to write")
+            self.logger.debug("Empty addresses data frame. Nothing to write")
             return
 
         self.kvk_df = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
         record_list = list(self.kvk_df.to_dict(orient="index").values())
-        logger.info("Start writing table urls")
+        self.logger.info("Start writing table urls")
 
         n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
         wdg = PB_WIDGETS
@@ -868,7 +868,7 @@ class KvKUrlParser(mp.Process):
 
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
-                logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
+                self.logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
                 self.Company.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
@@ -877,17 +877,17 @@ class KvKUrlParser(mp.Process):
 
         if progress:
             progress.finish()
-        logger.debug("Done with company table")
+        self.logger.debug("Done with company table")
 
     # @profile
     def urls_per_kvk_to_sql(self):
         """
         Write all URL per kvk to the WebSite Table in sql
         """
-        logger.debug("Start writing the url to sql")
+        self.logger.debug("Start writing the url to sql")
 
         if self.url_df.index.size == 0:
-            logger.debug("Empty url data  from. Nothing to add to the sql database")
+            self.logger.debug("Empty url data  from. Nothing to add to the sql database")
             return
 
         # create selection of data columns
@@ -912,7 +912,7 @@ class KvKUrlParser(mp.Process):
         kvk_comp = set(kvk_comp_list)
         kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
 
-        logger.info(f"Found: {n_comp} companies")
+        self.logger.info(f"Found: {n_comp} companies")
         wdg = PB_WIDGETS
         if self.progressbar:
             wdg[-1] = progress_bar_message(0, n_comp)
@@ -925,7 +925,7 @@ class KvKUrlParser(mp.Process):
             kvk_nr = int(company.kvk_nummer)
             # we need to check if this kvk is in de address list  still
             if kvk_nr in kvk_not_in_addresses:
-                logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
+                self.logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
                 continue
 
             try:
@@ -940,7 +940,7 @@ class KvKUrlParser(mp.Process):
                 wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
                 progress.update(counter)
             if counter % MAX_SQL_CHUNK == 0:
-                logger.info(" Added {} / {}".format(counter, n_comp))
+                self.logger.info(" Added {} / {}".format(counter, n_comp))
         if progress:
             progress.finish()
 
@@ -952,11 +952,11 @@ class KvKUrlParser(mp.Process):
         # the kvk key is already visible via the company_id
         urls.drop([KVK_KEY], inplace=True, axis=1)
 
-        logger.info("Converting urls to dict. This make take some time...")
+        self.logger.info("Converting urls to dict. This make take some time...")
         url_list = list(urls.to_dict(orient="index").values())
 
         # turn the list of dictionaries into a sql table
-        logger.info("Start writing table urls")
+        self.logger.info("Start writing table urls")
         n_batch = int(len(url_list) / MAX_SQL_CHUNK) + 1
         if self.progressbar:
             wdg[-1] = progress_bar_message(0, n_batch)
@@ -965,7 +965,7 @@ class KvKUrlParser(mp.Process):
             progress = None
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
-                logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
+                self.logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
                 self.WebSite.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
@@ -973,7 +973,7 @@ class KvKUrlParser(mp.Process):
         if progress:
             progress.finish()
 
-        logger.debug("Done")
+        self.logger.debug("Done")
 
     # @profile
     def addresses_per_kvk_to_sql(self):
@@ -981,9 +981,9 @@ class KvKUrlParser(mp.Process):
         Write all address per kvk to the Addresses Table in sql
         """
 
-        logger.info("Start writing the addressees to the sql Addresses table")
+        self.logger.info("Start writing the addressees to the sql Addresses table")
         if self.addresses_df.index.size == 0:
-            logger.debug("Empty address data frame. Nothing to write")
+            self.logger.debug("Empty address data frame. Nothing to write")
             return
 
         # create selection of data columns
@@ -996,7 +996,7 @@ class KvKUrlParser(mp.Process):
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
-        logger.info("Adding companies to addresses table")
+        self.logger.info("Adding companies to addresses table")
         kvk_list = self.addresses_df[KVK_KEY].tolist()
         company_vs_kvk = self.Company.select()
         kvk_comp_list = list()
@@ -1019,7 +1019,7 @@ class KvKUrlParser(mp.Process):
         for counter, company in enumerate(company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
             if kvk_nr in kvk_not_in_addresses:
-                logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
+                self.logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
                 continue
 
             try:
@@ -1029,7 +1029,7 @@ class KvKUrlParser(mp.Process):
             company_list.extend([company] * n_url)
 
             if counter % MAX_SQL_CHUNK == 0:
-                logger.info(" Added {} / {}".format(counter, n_comp))
+                self.logger.info(" Added {} / {}".format(counter, n_comp))
 
             if progress:
                 wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
@@ -1043,11 +1043,11 @@ class KvKUrlParser(mp.Process):
         # the kvk key is already visible via the company_id
         df.drop([KVK_KEY], inplace=True, axis=1)
 
-        logger.info("Converting urls to dict. This make take some time...")
+        self.logger.info("Converting urls to dict. This make take some time...")
         address_list = list(df.to_dict(orient="index").values())
 
         # turn the list of dictionaries into a sql table
-        logger.info("Start writing table urls")
+        self.logger.info("Start writing table urls")
         n_batch = int(len(address_list) / MAX_SQL_CHUNK) + 1
         if self.progressbar:
             wdg = PB_WIDGETS
@@ -1057,7 +1057,7 @@ class KvKUrlParser(mp.Process):
             progress = None
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
-                logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
+                self.logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
                 self.Address.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
@@ -1228,7 +1228,7 @@ class UrlCollection(object):
         if min_distance is None:
             self.web_df = None
         elif index_string_match != index_distance:
-            logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
+            self.logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
                            "match {}: {}".format(index_distance,
                                                  self.web_df.loc[index_distance, "url"],
                                                  index_string_match,
