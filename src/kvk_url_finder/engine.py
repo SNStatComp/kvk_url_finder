@@ -207,7 +207,7 @@ class KvKUrlParser(mp.Process):
                                         formatter=formatter)
             self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
-            self.logger = logging.getLogger("kvk_url_finder")
+            self.logger = logging.getLogger(logger_name)
             self.logger.info("Set up class logger for main {}".format(__name__))
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement

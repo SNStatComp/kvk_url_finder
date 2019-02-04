@@ -324,8 +324,8 @@ def main(args_in):
                     cmd.extend(["--nosubprocess"])
                     cmd.extend(["--process_nr", str(i_proc)])
                     cmd.extend(["--write_log"])
-                    cmd.extend(["--log_file_base", "{}_sub{:02d}".format(args.log_file_base,
-                                                                         i_proc)])
+                    cmd.extend(["--log_file_base", "{}_{:02d}".format(args.log_file_base,
+                                                                      i_proc)])
                     logger.info(cmd)
                     process = subprocess.Popen(cmd, shell=False)
                     jobs.append(process)
