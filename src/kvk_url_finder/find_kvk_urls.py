@@ -240,7 +240,7 @@ def main(args_in):
 
         # with the global statement line we make sure to change the global variable at the top
 
-        script_name = os.path.basename(sys.argv[0])
+        script_name = Path(sys.argv[0]).stem
         if platform.system() == "Windows":
             script_name += ".exe"
 
