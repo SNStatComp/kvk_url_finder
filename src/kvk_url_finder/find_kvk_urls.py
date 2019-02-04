@@ -78,8 +78,10 @@ def _parse_the_command_line_arguments(args):
                                                  "a sql file already", action="store_true")
     parser.add_argument('--extend_database', help="Extend the data base in case we have generated"
                                                   "a sql file already", action="store_true")
-    parser.add_argument("--write_log_to_file", action="store_true",
+    parser.add_argument("--write_log_to_file", action="store_true", default=True,
                         help="Write the logging information to file")
+    parser.add_argument("--no_write_log_to_file", action="store_false", dest="write_log_to_file",
+                        help="Do not write the logging information to file")
     parser.add_argument("--log_file_base", default="log", help="Default name of the logging output")
     parser.add_argument('--log_file_verbose', help="Be verbose to file", action="store_const",
                         dest="log_level_file", const=logging.INFO, default=logging.INFO)
