@@ -386,6 +386,7 @@ def main(args_in):
                             logger.debug("NoMore: {} : {}".format(ip, process.pid))
 
             logger.info("Goodbye!")
+            logger.debug("Realy:-)")
 
 
 def _run():
