@@ -331,7 +331,7 @@ def main(args_in):
                     cmd.extend(["--write_log"])
                     cmd.extend(["--log_file_base", "{}_{:02d}".format(args.log_file_base,
                                                                       i_proc)])
-                    logger.info(cmd)
+                    logger.debug(cmd)
                     process = subprocess.Popen(cmd, shell=False)
                     jobs.append(process)
                 else:
