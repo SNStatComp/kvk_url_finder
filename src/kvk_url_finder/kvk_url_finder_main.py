@@ -367,7 +367,7 @@ def main(args_in):
                     jobs.append(kvk_sub_parser)
 
             if args.n_processes > 1:
-                if platform.system() == "Linux":
+                if not use_subprocess:
                     # this will block the script until all jobs are done
                     for job in jobs:
                         job.join()
