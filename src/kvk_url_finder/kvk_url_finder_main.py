@@ -240,7 +240,8 @@ def main(args_in):
 
         # with the global statement line we make sure to change the global variable at the top
 
-        script_name = Path(sys.argv[0]).stem
+        # the logger base name is the same as the module name
+        script_name = LOGGER_BASE_NAME
         if platform.system() == "Windows":
             script_name += ".exe"
 
