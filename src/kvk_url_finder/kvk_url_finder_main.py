@@ -82,11 +82,12 @@ def _parse_the_command_line_arguments(args):
                         help="Do not write the logging information to file")
     parser.add_argument("--log_file_base", default="log", help="Default name of the logging output")
     parser.add_argument('--log_file_debug', help="Be very verbose to file", action="store_const",
-                        dest="log_level_file", const=logging.DEBUG)
+                        dest="log_level_file", const=logging.DEBUG, default=logging.INFO)
     parser.add_argument('--log_file_verbose', help="Be verbose to file", action="store_const",
                         dest="log_level_file", const=logging.INFO, default=logging.INFO)
     parser.add_argument('--log_file_quiet', help="Be quiet: no output to file",
-                        action="store_const", dest="log_level_file", const=logging.WARNING)
+                        default=logging.INFO, action="store_const", dest="log_level_file",
+                        const=logging.WARNING)
     parser.add_argument("--update_sql_tables", action="store_true",
                         help="Reread the csv file with urls/addresses and update the tables ")
     parser.add_argument("--force_process", action="store_true",
