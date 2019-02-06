@@ -496,6 +496,7 @@ class KvKUrlParser(mp.Process):
             self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
 
             try:
+                # match the url with the name of the company
                 company_url_match = \
                     CompanyUrlMatch(company,
                                     imposed_urls=self.impose_url_for_kvk,
@@ -507,6 +508,8 @@ class KvKUrlParser(mp.Process):
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
+
+            scrape_url = ScrapeCompany(company)
 
             if pbar:
                 pbar.update()
@@ -714,7 +717,8 @@ class KvKUrlParser(mp.Process):
             # take the last of this list with -1
             row_index = self.url_df.loc[self.url_df[KVK_KEY] == kvk_last].index[-1]
         except IndexError:
-            self.logger.debug("No last index found.  n_entries to skip to {}".format(n_skip_entries))
+            self.logger.debug(
+                "No last index found.  n_entries to skip to {}".format(n_skip_entries))
         else:
             # we have the last row index. This means that we can add this index to the n_entries
             # we have used now. Return this n_entries
@@ -1071,11 +1075,10 @@ class ScrapeCompany(object):
     Scrape this url
     """
 
-    def __init__(self, url: str):
+    def __init__(self, url: str, postcodes: list):
         self.url = url
-        self.logger = logging.getLogger(__name__)
-
-        self.logger.info("Start scrapnig {}".format(self.url))
+        self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        self.logger.info("Start scraping {}".format(self.url))
 
 
 class CompanyUrlMatch(object):
@@ -1128,6 +1131,8 @@ class CompanyUrlMatch(object):
             web_match.url = web_df_best["url"].values[0]
             web_match.ranking = web_df_best["ranking"].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
+
+            scrape_url = ScrapeCompany(web_match.url, postcodes)
 
             # update all the properties
             if self.save:
@@ -1229,10 +1234,10 @@ class UrlCollection(object):
             self.web_df = None
         elif index_string_match != index_distance:
             self.logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
-                           "match {}: {}".format(index_distance,
-                                                 self.web_df.loc[index_distance, "url"],
-                                                 index_string_match,
-                                                 self.web_df.loc[index_string_match, "url"]))
+                                "match {}: {}".format(index_distance,
+                                                      self.web_df.loc[index_distance, "url"],
+                                                      index_string_match,
+                                                      self.web_df.loc[index_string_match, "url"]))
 
     def get_best_matching_web_site(self):
         """
