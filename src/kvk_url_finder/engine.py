@@ -17,6 +17,8 @@ from cbs_utils.misc import (create_logger)
 from kvk_url_finder.models import *
 from kvk_url_finder import LOGGER_BASE_NAME
 
+from scrapy.crawler import CrawlerProcess
+
 try:
     from kvk_url_finder import __version__
 except ModuleNotFoundError:
@@ -145,6 +147,8 @@ class KvKUrlParser(mp.Process):
     def __init__(self,
                  database_name=None,
                  database_type=None,
+                 user=None,
+                 password=None,
                  cache_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
@@ -259,11 +263,15 @@ class KvKUrlParser(mp.Process):
 
         self.kvk_ranges = None
 
-        self.database = init_database(database_name, database_type=database_type)
+        self.database = init_database(database_name, database_type=database_type,
+                                      user=user, password=password)
         tables = init_models(self.database, self.reset_database)
         self.Company = tables[0]
         self.Address = tables[1]
         self.WebSite = tables[2]
+
+        # start the crawler process
+        self.crawler_process = CrawlerProcess()
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -1082,6 +1090,9 @@ class ScrapeCompany(object):
 
 
 class CompanyUrlMatch(object):
+    """
+    Take the company record as input and find the best matching url
+    """
 
     def __init__(self, company, imposed_urls: dict = None,
                  distance_threshold: int = 10,
@@ -1103,6 +1114,7 @@ class CompanyUrlMatch(object):
         # impose a url
         self.impose_url = imposed_urls.get(self.kvk_nr)
 
+        # first collect all the urls and obtain the match properties
         self.logger.debug("Get Url collection....")
         self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
                                   threshold_distance=distance_threshold,
@@ -1112,10 +1124,6 @@ class CompanyUrlMatch(object):
 
     def find_match_for_company(self):
 
-        postcodes = list()
-        for address in self.company.address:
-            self.logger.debug("Found postcode {}".format(address.postcode))
-            postcodes.append(address.postcode)
 
         # only select the close matches
         if self.urls.web_df is not None:
@@ -1165,18 +1173,34 @@ class UrlCollection(object):
         self.company_websites = self.company.websites
         self.company_name_small = clean_name(self.company_name)
 
+        self.url_candidates = list()
+
+        self.postcodes = list()
+        for address in self.company.address:
+            self.logger.debug("Found postcode {}".format(address.postcode))
+            self.postcodes.append(address.postcode)
+
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
 
         number_of_websites = len(self.company_websites)
         self.web_df = pd.DataFrame(index=range(number_of_websites),
-                                   columns=["url", "distance", "string_match",
-                                            "subdomain", "domain", "suffix", "ranking"])
+                                   columns=["url",
+                                            "distance",
+                                            "string_match",
+                                            "has_postcode",
+                                            "has_kvk_nr",
+                                            "subdomain",
+                                            "domain",
+                                            "suffix",
+                                            "ranking"])
 
         # remove space and put to lower for better comparison with the url
         self.logger.debug(
             "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
         self.collect_web_sites()
+
+        self.scrape_the_urls()
 
         self.logger.debug("Get best match")
         if impose_url:
@@ -1196,39 +1220,40 @@ class UrlCollection(object):
         max_sequence_match = None
         index_string_match = index_distance = None
         for i_web, web in enumerate(self.company_websites):
-            ext = tldextract.extract(web.url)
+            # analyse the url
+            url = web.url
 
-            # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl,
-            # the sub domain is ramlehapotheek, which is closer to the company name the the
-            # domain leef. Therefore pick the minimum
-            subdomain_dist = Levenshtein.distance(ext.subdomain, self.company_name_small)
-            domain_dist = Levenshtein.distance(ext.domain, self.company_name_small)
-            distance = min(subdomain_dist, domain_dist)
-            web.levenshtein = distance
+            url_candidates.append(url)
 
-            # also we are going to match the sequences. The match range between 0 (no match) and 1
-            # (full match)
-            subdomain_match = difflib.SequenceMatcher(None, ext.subdomain,
-                                                      self.company_name_small).ratio()
-            domain_match = difflib.SequenceMatcher(None, ext.domain,
-                                                   self.company_name_small).ratio()
-            string_match = max(subdomain_match, domain_match)
-            web.string_match = string_match
+            # get the url from the database
+            match = UrlMatch(url, self.company_name_small)
 
+            # store the matching values back into the database
             web.best_match = False
+            web.string_match = match.string_match
+            web.levenshtein = match.distance
 
-            if min_distance is None or distance < min_distance:
+            if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
-                min_distance = distance
+                min_distance = match.distance
 
-            if max_sequence_match is None or string_match > max_sequence_match:
+            if max_sequence_match is None or match.string_match > max_sequence_match:
                 index_string_match = i_web
-                max_sequence_match = string_match
+                max_sequence_match = match.string_match
 
-            self.web_df.loc[i_web, :] = [web.url, distance, string_match,
-                                         ext.subdomain, ext.domain, ext.suffix, 0]
+            self.web_df.loc[i_web, :] = [url,                   # url
+                                         match.distance,        # levenstein distance
+                                         match.string_match,    # string match
+                                         None,                  # the web site has the postcode
+                                         None,                  # the web site has the kvk
+                                         match.ext.subdomain,   # subdomain of the url
+                                         match.ext.domain,      # domain of the url
+                                         match.ext.suffix,      # suffix of the url
+                                         0]                     # matching score used for order
 
-            self.logger.debug("   * {} - {}  - {}".format(web.url, ext.domain, distance))
+            self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
+
+        # now scrape all the url candidates to see if the postal code is present
 
         if min_distance is None:
             self.web_df = None
@@ -1238,6 +1263,13 @@ class UrlCollection(object):
                                                       self.web_df.loc[index_distance, "url"],
                                                       index_string_match,
                                                       self.web_df.loc[index_string_match, "url"]))
+
+    def scrape_the_urls(self):
+        """
+        We have a list of web site and a list of post codes. Launch the web crawler to get
+        # all the postal
+        """
+        self.logger.info("Start scraping all the urls")
 
     def get_best_matching_web_site(self):
         """
@@ -1281,3 +1313,46 @@ class UrlCollection(object):
         self.web_df.sort_values(["ranking", "distance", "string_match"],
                                 ascending=[False, True, False],
                                 inplace=True)
+
+
+class UrlMatch(object):
+    """
+    Class do perform all operation to match a url
+    """
+
+    def __init__(self, url, company_name):
+
+        self.company_name = company_name
+        self.ext = tldextract.extract(url)
+
+        self.distance = None
+        self.string_match = None
+        self.string_match = None
+
+        self.get_levenstein_distance()
+        self.get_string_match()
+
+    def get_levenstein_distance(self):
+        """
+        Get the levenstein distance of the company name
+        """
+
+        # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl,
+        # the sub domain is ramlehapotheek, which is closer to the company name the the
+        # domain leef. Therefore pick the minimum
+        subdomain_dist = Levenshtein.distance(self.ext.subdomain, self.company_name)
+        domain_dist = Levenshtein.distance(self.ext.domain, self.company_name)
+        self.distance = min(subdomain_dist, domain_dist)
+
+    def get_string_match(self):
+        """
+        Get the string match. Th match is given by a float value between 0 (no match and 1 (fully
+        matched)
+        """
+        subdomain_match = difflib.SequenceMatcher(None, self.ext.subdomain,
+                                                  self.company_name).ratio()
+        domain_match = difflib.SequenceMatcher(None, self.ext.domain,
+                                               self.company_name).ratio()
+        self.string_match = max(subdomain_match, domain_match)
+
+

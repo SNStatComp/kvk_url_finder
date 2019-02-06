@@ -25,6 +25,7 @@ not to profiling
 """
 
 import argparse
+import getpass
 import logging
 import logging.config
 import os
@@ -49,6 +50,20 @@ except ModuleNotFoundError:
 
 
 def _parse_the_command_line_arguments(args):
+
+    def check_positive(value):
+        """ local function to test if an argument is larger than zero"""
+        ivalue = int(value)
+        if ivalue <= 0:
+            raise argparse.ArgumentTypeError("{} is an invalid positive int value".format(value))
+        return ivalue
+
+    def check_not_negative(value):
+        """ local function to test if an argument is larger than zero"""
+        ivalue = int(value)
+        if ivalue < 0:
+            raise argparse.ArgumentTypeError("{} is an invalid negative int value".format(value))
+        return ivalue
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse the command line to set some options2
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -105,13 +120,17 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--kvk_stop", type=int,
                         help="Stop processing at this kvk number. This overrules the setting in"
                              "the yaml file if given")
-    parser.add_argument("--n_processes", type=int, help="Number of processes to run", default=1,
-                        choices=range(1, MAX_PROCESSES))
-    parser.add_argument("--process_nr", type=int, help="Impose the default process number",
-                        default=0)
+    parser.add_argument("--n_processes", type=check_positive, help="Number of processes to run",
+                        default=1)
+    parser.add_argument("--process_nr", type=check_not_negative,
+                        help="Impose the default process number", default=0)
     parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
                         help="Type of database to use. If not given, select from the settings file "
                              "or take postgres")
+    parser.add_argument("--user", action="store",
+                        help="Username of the postgres database. By default use current user")
+    parser.add_argument("--password", action="store",
+                        help="Password of the postgres database")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -263,8 +282,12 @@ def main(args_in):
         make_directory(cache_directory)
         make_directory(output_directory)
 
-        # connect to the sqlite database
+        if args.user is not None:
+            user = args.user
+        else:
+            user = getpass.getuser()
 
+        # connect to the sqlite or postgres database
         if database_type == "sqlite":
             # only for sqlite the database is a real file
             database_name = Path(output_directory) / database_name
@@ -297,7 +320,9 @@ def main(args_in):
             kvk_range_read=kvk_range_read,
             maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
-            log_level_file=args.log_level_file)
+            log_level_file=args.log_level_file,
+            password=args.password,
+            user=user)
         # in case the database did not exist yet at the start or in case the --update option is
         # given, update the sql data base from the input files
         if args.update_sql_tables:
@@ -355,6 +380,8 @@ def main(args_in):
                         log_file_base=args.log_file_base,
                         log_level_file=args.log_level_file,
                         singlebar=args.singlebar,
+                        password=args.password,
+                        user=user,
                     )
 
                     if args.n_processes > 1:

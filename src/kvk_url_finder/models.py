@@ -24,11 +24,13 @@ PRAGMAS = {
 DATABASE_TYPES = ("sqlite", "postgres")
 
 
-def init_database(database_name: Path, database_type="postgres"):
+def init_database(database_name: Path,
+                  database_type="postgres", user="postgres",
+                  password="vliet123", host="localhost", port=5432):
     assert database_type in DATABASE_TYPES
     if database_type == "postgres":
         db = PooledPostgresqlExtDatabase(
-            database_name, user="postgres", host="localhost", port=5432, password="vliet123",
+            database_name, user=user, host=host, port=port, password=password,
             max_connections=MAX_PROCESSES, stale_timeout=300)
     elif database_type == "sqlite":
         db = pw.SqliteDatabase(str(database_name), pragmas=PRAGMAS)
