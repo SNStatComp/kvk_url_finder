@@ -517,7 +517,7 @@ class KvKUrlParser(mp.Process):
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
 
-            scrape_url = ScrapeCompany(company)
+            # scrape_url = ScrapeCompany(company)
 
             if pbar:
                 pbar.update()
@@ -1140,7 +1140,7 @@ class CompanyUrlMatch(object):
             web_match.ranking = web_df_best["ranking"].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
 
-            scrape_url = ScrapeCompany(web_match.url, postcodes)
+            # scrape_url = ScrapeCompany(web_match.url, postcodes)
 
             # update all the properties
             if self.save:
@@ -1219,6 +1219,7 @@ class UrlCollection(object):
         min_distance = None
         max_sequence_match = None
         index_string_match = index_distance = None
+        url_candidates = list()
         for i_web, web in enumerate(self.company_websites):
             # analyse the url
             url = web.url

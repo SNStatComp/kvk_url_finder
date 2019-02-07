@@ -285,7 +285,7 @@ def main(args_in):
         if args.user is not None:
             user = args.user
         else:
-            user = getpass.getuser()
+            user = getpass.getuser().lower()
 
         # connect to the sqlite or postgres database
         if database_type == "sqlite":
