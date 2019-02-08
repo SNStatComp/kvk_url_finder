@@ -394,6 +394,33 @@ class KvKUrlParser(mp.Process):
 
         self.kvk_selection = df[self.kvk_selection_kvk_key].dropna().astype(int)
 
+    def export_db(self, file_name):
+
+        export_file = Path(file_name)
+        if export_file.suffix in (".xls", ".xlsx"):
+            with pd.ExcelWriter(file_name) as writer:
+                for cnt, table in enumerate([self.Company, self.Address, self.WebSite]):
+                    query = table.select()
+                    df = pd.DataFrame(list(query.dicts()))
+                    try:
+                        df.set_index(KVK_KEY, inplace=True)
+                    except KeyError:
+                        pass
+                    sheetname = table.__name__
+                    self.logger.info(f"Appending sheet {sheetname}")
+                    df.to_excel(writer, sheet_name=sheetname)
+        elif export_file.suffix in (".csv"):
+            for cnt, table in enumerate([self.Company, self.Address, self.WebSite]):
+                this_name = export_file.stem + "_" + table.__name__.lower() + ".csv"
+                query = table.select()
+                df = pd.DataFrame(list(query.dicts()))
+                try:
+                    df.set_index(KVK_KEY, inplace=True)
+                except KeyError:
+                    pass
+                self.logger.info(f"Writing to {this_name}")
+                df.to_csv(this_name)
+
     def merge_data_base_kvks(self):
         """
         Merge the data base kvks.

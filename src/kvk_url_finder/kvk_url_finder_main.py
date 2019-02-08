@@ -131,6 +131,8 @@ def _parse_the_command_line_arguments(args):
                         help="Username of the postgres database. By default use current user")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
+    parser.add_argument("--dumpdb", action="store",
+                        help="Filename to dump the database to")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -323,6 +325,12 @@ def main(args_in):
             log_level_file=args.log_level_file,
             password=args.password,
             user=user)
+
+        if args.dumpdb:
+            logger.info("Dumping database to {}".format(args.dumpdb))
+            kvk_parser.export_db(args.dumpdb)
+            sys.exit(0)
+
         # in case the database did not exist yet at the start or in case the --update option is
         # given, update the sql data base from the input files
         if args.update_sql_tables:
