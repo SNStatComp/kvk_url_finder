@@ -15,9 +15,12 @@ from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger)
 from kvk_url_finder.models import *
+from kvk_url_finder.spiders import CompanySpider
 from kvk_url_finder import LOGGER_BASE_NAME
 
 from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
+
 
 try:
     from kvk_url_finder import __version__
@@ -271,7 +274,7 @@ class KvKUrlParser(mp.Process):
         self.WebSite = tables[2]
 
         # start the crawler process
-        self.crawler_process = CrawlerProcess()
+        self.crawler_process = CrawlerProcess(get_project_settings())
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -510,14 +513,14 @@ class KvKUrlParser(mp.Process):
                                     imposed_urls=self.impose_url_for_kvk,
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
-                                    i_proc=self.i_proc
+                                    i_proc=self.i_proc,
+                                    crawler_process=self.crawler_process
                                     )
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
 
-            scrape_url = ScrapeCompany(company)
 
             if pbar:
                 pbar.update()
@@ -1098,12 +1101,16 @@ class CompanyUrlMatch(object):
                  distance_threshold: int = 10,
                  string_match_threshold: float = 0.5,
                  save: bool = True,
-                 i_proc=0):
+                 i_proc=0,
+                 crawler_process=None
+                 ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Company match in debug mode")
         self.save = save
         self.i_proc = i_proc
+
+        self.crawler_process = crawler_process
 
         self.kvk_nr = company.kvk_nummer
         self.company_name: str = company.naam
@@ -1124,7 +1131,6 @@ class CompanyUrlMatch(object):
 
     def find_match_for_company(self):
 
-
         # only select the close matches
         if self.urls.web_df is not None:
 
@@ -1140,7 +1146,7 @@ class CompanyUrlMatch(object):
             web_match.ranking = web_df_best["ranking"].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
 
-            scrape_url = ScrapeCompany(web_match.url, postcodes)
+            scrape_url = self.crawler_process(CompanySpider, urls=web_match.url)
 
             # update all the properties
             if self.save:
@@ -1270,6 +1276,8 @@ class UrlCollection(object):
         # all the postal
         """
         self.logger.info("Start scraping all the urls")
+
+        self.crawler_process.crawl(CompanySpider, urls=company_url_match)
 
     def get_best_matching_web_site(self):
         """
