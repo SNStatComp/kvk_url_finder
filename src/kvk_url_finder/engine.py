@@ -7,6 +7,8 @@ import re
 import sys
 import time
 
+import multiprocessing as mp
+
 import Levenshtein
 import pandas as pd
 import progressbar as pb
@@ -18,7 +20,8 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger)
 from kvk_url_finder import LOGGER_BASE_NAME
 from kvk_url_finder.models import *
-from kvk_url_finder.spiders import *
+from kvk_url_finder.scrapy_crawler import CrawlerWorker
+from kvk_url_finder.spiders import CompanySpider
 
 try:
     from kvk_url_finder import __version__
@@ -542,8 +545,6 @@ class KvKUrlParser(mp.Process):
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
 
-            # scrape_url = ScrapeCompany(company)
-
             if pbar:
                 pbar.update()
 
@@ -557,16 +558,6 @@ class KvKUrlParser(mp.Process):
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
 
-    def scrape_url(self, url):
-        """
-        Scrape the contents of the url
-
-        Parameters
-        ----------
-        url: str
-            url of the website to scrape
-        """
-        self.logger.debug("Start scraping")
 
     # @profile
     def read_csv_input_file(self,
@@ -1103,18 +1094,6 @@ class KvKUrlParser(mp.Process):
             progress.finish()
 
 
-class ScrapeCompany(object):
-    """
-    Scrape this url
-    """
-
-    def __init__(self, url: str, postcodes: list):
-        self.url = url
-        self.postcodes = postcodes
-        self.logger = logging.getLogger(LOGGER_BASE_NAME)
-        self.logger.info("Start scraping {}".format(self.url))
-
-
 class CompanyUrlMatch(object):
     """
     Take the company record as input and find the best matching url
@@ -1281,8 +1260,6 @@ class UrlCollection(object):
 
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
 
-        # now scrape all the url candidates to see if the postal code is present
-
         if min_distance is None:
             self.web_df = None
         elif index_string_match != index_distance:
@@ -1300,8 +1277,22 @@ class UrlCollection(object):
         self.logger.info("Start scraping all the urls")
         self.logger.debug(self.web_df)
         self.logger.debug(self.postcodes)
-        #self.scraper_process.crawl(ScrapeCompany)
-        #self.scraper_process.start()
+
+        results_q = mp.Queue()
+        url_list = self.web_df["url"].tolist()
+        reg_exp = "|".join(self.postcodes)
+        crawler = CrawlerWorker(CompanySpider(urls=url_list,
+                                              reg_exp="\d{4}\s{0,1}\w{2}"),
+                                result_queue=results_q)
+        self.logger.debug("Start scraping urls {}".format(url_list))
+        crawler.start()
+        crawler.join()
+
+        if results_q:
+            for item in results_q.get():
+                self.logger.info("Scraped {}".format(item))
+        else:
+            self.logger.info("Found nothing")
 
     def get_best_matching_web_site(self):
         """

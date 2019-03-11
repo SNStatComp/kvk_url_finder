@@ -13,7 +13,6 @@ class CrawlerWorker(mp.Process):
     """
     name = "crawlerworker"
 
-
     def __init__(self, spider, result_queue):
         mp.Process.__init__(self)
         self.result_queue = result_queue
@@ -22,7 +21,7 @@ class CrawlerWorker(mp.Process):
         self.logger = logging.getLogger(self.name)
 
         settings = get_project_settings()
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.WARNING)
         self.logger.debug("Create CrawlerProcess with settings {}".format(settings))
         self.crawler = CrawlerProcess(settings)
 
