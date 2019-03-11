@@ -11,13 +11,14 @@ import Levenshtein
 import pandas as pd
 import progressbar as pb
 import tldextract
+from scrapy.utils.project import get_project_settings
+from scrapy.utils.log import configure_logging
 from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger)
-from kvk_url_finder.models import *
 from kvk_url_finder import LOGGER_BASE_NAME
-
-from scrapy.crawler import CrawlerProcess
+from kvk_url_finder.models import *
+from kvk_url_finder.spiders import *
 
 try:
     from kvk_url_finder import __version__
@@ -269,9 +270,6 @@ class KvKUrlParser(mp.Process):
         self.Company = tables[0]
         self.Address = tables[1]
         self.WebSite = tables[2]
-
-        # start the crawler process
-        self.crawler_process = CrawlerProcess()
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -537,7 +535,7 @@ class KvKUrlParser(mp.Process):
                                     imposed_urls=self.impose_url_for_kvk,
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
-                                    i_proc=self.i_proc
+                                    i_proc=self.i_proc,
                                     )
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
@@ -1112,6 +1110,7 @@ class ScrapeCompany(object):
 
     def __init__(self, url: str, postcodes: list):
         self.url = url
+        self.postcodes = postcodes
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.info("Start scraping {}".format(self.url))
 
@@ -1121,11 +1120,14 @@ class CompanyUrlMatch(object):
     Take the company record as input and find the best matching url
     """
 
-    def __init__(self, company, imposed_urls: dict = None,
+    def __init__(self,
+                 company,
+                 imposed_urls: dict = None,
                  distance_threshold: int = 10,
                  string_match_threshold: float = 0.5,
                  save: bool = True,
-                 i_proc=0):
+                 i_proc=0,
+                 ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Company match in debug mode")
@@ -1150,9 +1152,10 @@ class CompanyUrlMatch(object):
         self.find_match_for_company()
 
     def find_match_for_company(self):
-
-
-        # only select the close matches
+        """
+        Get the best matching url based on the already calculated levensteihn distance and string
+        match
+        """
         if self.urls.web_df is not None:
 
             # the first row in the data frame is the best matching web site
@@ -1167,8 +1170,6 @@ class CompanyUrlMatch(object):
             web_match.ranking = web_df_best["ranking"].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
 
-            # scrape_url = ScrapeCompany(web_match.url, postcodes)
-
             # update all the properties
             if self.save:
                 for web in self.company.websites:
@@ -1182,7 +1183,7 @@ class CompanyUrlMatch(object):
 
 class UrlCollection(object):
     """
-    Analyses all url
+    Analyses all url of one single company
     """
 
     def __init__(self, company,
@@ -1246,12 +1247,11 @@ class UrlCollection(object):
         min_distance = None
         max_sequence_match = None
         index_string_match = index_distance = None
-        url_candidates = list()
         for i_web, web in enumerate(self.company_websites):
             # analyse the url
             url = web.url
 
-            url_candidates.append(url)
+            self.url_candidates.append(url)
 
             # get the url from the database
             match = UrlMatch(url, self.company_name_small)
@@ -1269,15 +1269,15 @@ class UrlCollection(object):
                 index_string_match = i_web
                 max_sequence_match = match.string_match
 
-            self.web_df.loc[i_web, :] = [url,                   # url
-                                         match.distance,        # levenstein distance
-                                         match.string_match,    # string match
-                                         None,                  # the web site has the postcode
-                                         None,                  # the web site has the kvk
-                                         match.ext.subdomain,   # subdomain of the url
-                                         match.ext.domain,      # domain of the url
-                                         match.ext.suffix,      # suffix of the url
-                                         0]                     # matching score used for order
+            self.web_df.loc[i_web, :] = [url,  # url
+                                         match.distance,  # levenstein distance
+                                         match.string_match,  # string match
+                                         None,  # the web site has the postcode
+                                         None,  # the web site has the kvk
+                                         match.ext.subdomain,  # subdomain of the url
+                                         match.ext.domain,  # domain of the url
+                                         match.ext.suffix,  # suffix of the url
+                                         0]  # matching score used for order
 
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
 
@@ -1298,6 +1298,10 @@ class UrlCollection(object):
         # all the postal
         """
         self.logger.info("Start scraping all the urls")
+        self.logger.debug(self.web_df)
+        self.logger.debug(self.postcodes)
+        #self.scraper_process.crawl(ScrapeCompany)
+        #self.scraper_process.start()
 
     def get_best_matching_web_site(self):
         """
@@ -1349,7 +1353,6 @@ class UrlMatch(object):
     """
 
     def __init__(self, url, company_name):
-
         self.company_name = company_name
         self.ext = tldextract.extract(url)
 
@@ -1382,5 +1385,3 @@ class UrlMatch(object):
         domain_match = difflib.SequenceMatcher(None, self.ext.domain,
                                                self.company_name).ratio()
         self.string_match = max(subdomain_match, domain_match)
-
-
