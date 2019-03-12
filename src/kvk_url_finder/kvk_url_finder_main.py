@@ -39,7 +39,7 @@ import pandas as pd
 import yaml
 
 from cbs_utils.misc import (create_logger, Chdir, make_directory)
-from kvk_url_finder import LOGGER_BASE_NAME
+from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
 
@@ -47,6 +47,7 @@ try:
     from kvk_url_finder import __version__
 except ModuleNotFoundError:
     __version__ = "unknown"
+
 
 
 def _parse_the_command_line_arguments(args):
@@ -197,7 +198,6 @@ def main(args_in):
 
     general = settings["general"]
     working_directory = general["working_directory"][platform.system()]
-    cache_directory = general["cache_directory"]
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
     if args.database_type is not None:
@@ -281,7 +281,7 @@ def main(args_in):
             logger.setLevel(logging.INFO)
 
         # make the directories in case they do not exist yet
-        make_directory(cache_directory)
+        make_directory(CACHE_DIRECTORY)
         make_directory(output_directory)
 
         if args.user is not None:
@@ -304,7 +304,6 @@ def main(args_in):
         kvk_parser = KvKUrlParser(
             database_name=database_name,
             database_type=database_type,
-            cache_directory=cache_directory,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             n_url_count_threshold=n_url_count_threshold,
@@ -375,7 +374,6 @@ def main(args_in):
                     kvk_sub_parser = KvKUrlParser(
                         database_name=database_name,
                         database_type=database_type,
-                        cache_directory=cache_directory,
                         progressbar=args.progressbar,
                         kvk_range_process=kvk_range,
                         maximum_entries=maximum_entries,

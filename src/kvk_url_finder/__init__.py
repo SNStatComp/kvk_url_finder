@@ -9,3 +9,4 @@ except DistributionNotFound:
     __version__ = 'unknown'
 
 LOGGER_BASE_NAME = __name__
+CACHE_DIRECTORY = "cache"

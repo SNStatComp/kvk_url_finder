@@ -6,6 +6,10 @@ from scrapy.signals import item_passed
 from scrapy.utils.project import get_project_settings
 from scrapy.xlib.pydispatch import dispatcher
 
+from scrapy.utils.log import configure_logging
+
+configure_logging(install_root_handler=False)
+
 
 class CrawlerWorker(mp.Process):
     """
@@ -31,7 +35,7 @@ class CrawlerWorker(mp.Process):
         self.items.append(item)
 
     def run(self):
-        self.logger.info("Start here with {}".format(self.spider.urls))
+        #self.logger.info("Start here with {}".format(self.spider.urls))
         self.crawler.crawl(self.spider, urls=self.spider.urls)
         self.crawler.start()
         self.crawler.stop()

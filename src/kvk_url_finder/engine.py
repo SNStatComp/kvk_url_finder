@@ -7,21 +7,18 @@ import re
 import sys
 import time
 
-import multiprocessing as mp
-
 import Levenshtein
 import pandas as pd
 import progressbar as pb
 import tldextract
-from scrapy.utils.project import get_project_settings
-from scrapy.utils.log import configure_logging
 from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger)
-from kvk_url_finder import LOGGER_BASE_NAME
+from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
 from kvk_url_finder.scrapy_crawler import CrawlerWorker
 from kvk_url_finder.spiders import CompanySpider
+from kvk_url_finder.utils import UrlAnalyse, standard_zipcode
 
 try:
     from kvk_url_finder import __version__
@@ -48,6 +45,7 @@ __license__ = "mit"
 
 CACHE_TYPES = ["msg_pack", "hdf", "sql", "csv", "pkl"]
 COMPRESSION_TYPES = [None, "zlib", "blosc"]
+SCRAPERS = ["bs4", "scrapy"]
 
 MAX_SQL_CHUNK = 500
 
@@ -153,7 +151,6 @@ class KvKUrlParser(mp.Process):
                  database_type=None,
                  user=None,
                  password=None,
-                 cache_directory=".",
                  address_input_file_name=None,
                  url_input_file_name=None,
                  kvk_selection_input_file_name=None,
@@ -228,8 +225,6 @@ class KvKUrlParser(mp.Process):
         self.kvk_selection_kvk_key = kvk_selection_kvk_key
         self.kvk_selection_kvk_sub_key = kvk_selection_kvk_sub_key
         self.kvk_selection = None
-
-        self.cache_directory = Path(cache_directory)
 
         self.impose_url_for_kvk = impose_url_for_kvk
 
@@ -558,7 +553,6 @@ class KvKUrlParser(mp.Process):
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
 
-
     # @profile
     def read_csv_input_file(self,
                             file_name: str,
@@ -595,7 +589,7 @@ class KvKUrlParser(mp.Process):
         file_base2, file_ext2 = os.path.splitext(file_base)
 
         # build the cache file including the cache_directory
-        cache_file = self.cache_directory / (file_base2 + ".pkl")
+        cache_file = Path(CACHE_DIRECTORY) / (file_base2 + ".pkl")
 
         if os.path.exists(cache_file):
             # add the type so we can recognise it is a data frame
@@ -1145,6 +1139,7 @@ class CompanyUrlMatch(object):
             web_match_index = web_df_best.index.values[0]
             web_match = self.urls.company_websites[web_match_index]
             web_match.best_match = True
+            web_match.has_postcode = web_df_best["has_postcode"].values[0]
             web_match.url = web_df_best["url"].values[0]
             web_match.ranking = web_df_best["ranking"].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
@@ -1170,9 +1165,13 @@ class UrlCollection(object):
                  kvk_nr: int,
                  threshold_distance: int = 10,
                  threshold_string_match: float = 0.5,
-                 impose_url: str = None):
+                 impose_url: str = None,
+                 scraper="bs4",
+                 ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
+
+        assert scraper in SCRAPERS
 
         self.kvk_nr = kvk_nr
         self.company = company
@@ -1185,7 +1184,7 @@ class UrlCollection(object):
         self.postcodes = list()
         for address in self.company.address:
             self.logger.debug("Found postcode {}".format(address.postcode))
-            self.postcodes.append(address.postcode)
+            self.postcodes.append(re.sub("\s", "", address.postcode).upper())
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
@@ -1193,6 +1192,7 @@ class UrlCollection(object):
         number_of_websites = len(self.company_websites)
         self.web_df = pd.DataFrame(index=range(number_of_websites),
                                    columns=["url",
+                                            "exists",
                                             "distance",
                                             "string_match",
                                             "has_postcode",
@@ -1207,7 +1207,12 @@ class UrlCollection(object):
             "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
         self.collect_web_sites()
 
-        self.scrape_the_urls()
+        if scraper == "scrapy":
+            self.scrape_the_urls_scrapy()
+        elif scraper == "bs4":
+            self.scrape_the_urls_bs()
+        else:
+            raise ValueError(f"scraper should be one of these: {SCRAPERS}")
 
         self.logger.debug("Get best match")
         if impose_url:
@@ -1239,6 +1244,8 @@ class UrlCollection(object):
             web.best_match = False
             web.string_match = match.string_match
             web.levenshtein = match.distance
+            web.has_postcode = False
+            web.has_kvk_nr = False
 
             if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
@@ -1249,10 +1256,11 @@ class UrlCollection(object):
                 max_sequence_match = match.string_match
 
             self.web_df.loc[i_web, :] = [url,  # url
+                                         True,         # url bestaat
                                          match.distance,  # levenstein distance
                                          match.string_match,  # string match
-                                         None,  # the web site has the postcode
-                                         None,  # the web site has the kvk
+                                         False,  # the web site has the postcode
+                                         False,  # the web site has the kvk
                                          match.ext.subdomain,  # subdomain of the url
                                          match.ext.domain,  # domain of the url
                                          match.ext.suffix,  # suffix of the url
@@ -1269,28 +1277,63 @@ class UrlCollection(object):
                                                       index_string_match,
                                                       self.web_df.loc[index_string_match, "url"]))
 
-    def scrape_the_urls(self):
+    def scrape_the_urls_bs(self):
+        """
+        Do the web scraping with beautiful soup
+        """
+
+        for index, row in self.web_df.iterrows():
+            url = row["url"]
+            url_analyse = UrlAnalyse(url)
+
+            if not url_analyse.exists:
+                self.logger.debug(f"url '{url}'' does not exist")
+                self.web_df.loc[index, "exists"] = False
+                continue
+
+            self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
+            self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
+
+            if url_analyse.zip_codes and \
+                    set(self.postcodes).intersection(standard_zipcode(url_analyse.zip_codes)):
+                self.web_df.loc[index, "has_postcode"] = True
+
+            if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
+                self.web_df.loc[index, "has_kvk_nummer"] = True
+
+        self.logger.debug("Done")
+
+    def scrape_the_urls_scrapy(self):
         """
         We have a list of web site and a list of post codes. Launch the web crawler to get
         # all the postal
         """
         self.logger.info("Start scraping all the urls")
-        self.logger.debug(self.web_df)
+        self.logger.debug(self.web_df.info())
         self.logger.debug(self.postcodes)
 
         results_q = mp.Queue()
         url_list = self.web_df["url"].tolist()
-        reg_exp = "|".join(self.postcodes)
-        crawler = CrawlerWorker(CompanySpider(urls=url_list,
-                                              reg_exp="\d{4}\s{0,1}\w{2}"),
+        crawler = CrawlerWorker(CompanySpider(urls=url_list),
                                 result_queue=results_q)
         self.logger.debug("Start scraping urls {}".format(url_list))
         crawler.start()
         crawler.join()
 
+        self.logger.debug("Done scraping")
+
         if results_q:
             for item in results_q.get():
                 self.logger.info("Scraped {}".format(item))
+                if set(self.postcodes).intersection(set(item["postcodes"])):
+                    self.logger.info("Found a postcode {} at the website {}"
+                                     "".format(item["postcodes"], item["url"]))
+                    mask = self.web_df[self.web_df["url"] == item["url"]]
+                    self.web_df.loc[mask, "has_postcode"] = True
+                if self.kvk_nr in set(item["kvknummers"]):
+                    self.logger.info("Found a kvk number {} at the website")
+                    mask = self.web_df[self.web_df["url"] == item["url"]]
+                    self.web_df.loc[mask, "has_kvk_nr"] = True
         else:
             self.logger.info("Found nothing")
 
@@ -1299,11 +1342,23 @@ class UrlCollection(object):
         From all the web sites stored in the data frame web_df, get the best match
         """
 
+        # only select the web site which exist
+        mask = self.web_df["exists"]
+
         if self.threshold_distance is not None:
             # select all the web sites with a minimum distance or one higher
-            mask = (self.web_df["distance"] - self.web_df[
+            m1 = (self.web_df["distance"] - self.web_df[
                 "distance"].min()) <= self.threshold_distance
-            self.web_df = self.web_df[mask].copy()
+        else:
+            m1 = mask
+
+        m2 = self.web_df["has_postcode"]
+        m3 = self.web_df["has_kvk_nr"]
+
+        mask = mask & m1 & (m2 | m3)
+
+        # make a copy of the valid web sides
+        self.web_df = self.web_df[mask].copy()
 
         if self.threshold_string_match is not None:
             df = self.web_df[self.web_df["string_match"] >= self.threshold_string_match].copy()
@@ -1328,14 +1383,13 @@ class UrlCollection(object):
             self.web_df["ranking"] = self.web_df.apply(
                 lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
                 axis=1)
-        for suffix, score in [("com", 3), ("nl", 2), ("org", 1), ("eu", 1)]:
+        for suffix, score in [("com", 3), ("nl", 3), ("org", 1), ("eu", 1)]:
             self.web_df["ranking"] = self.web_df.apply(
                 lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
 
         # sort first on the ranking, then on the distance
-        self.web_df.sort_values(["ranking", "distance", "string_match"],
-                                ascending=[False, True, False],
-                                inplace=True)
+        self.web_df["ranking"] += self.web_df["has_postcode"]
+        self.web_df["ranking"] += self.web_df["has_kvk_nr"]
 
 
 class UrlMatch(object):

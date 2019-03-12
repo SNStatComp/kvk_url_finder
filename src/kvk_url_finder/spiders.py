@@ -27,16 +27,16 @@ class Page(scrapy.Item):
 
 class CompanySpider(scrapy.Spider):
     name = "company_spider"
-    rules = (
-        Rule(LinkExtractor(allow=(),
-                           restrict_css=('.pageNextPrev')),
-             callback="parse",
-             follow=True),
-    )
+    #rules = (
+    #    Rule(LinkExtractor(allow=(),
+    #                       restrict_css=('.pageNextPrev')),
+    #         callback="parse",
+    #         follow=True),
+    #)
 
-    custom_settings = {
-        "DEPTH_LIMIT": 10
-    }
+    #custom_settings = {
+    #    "DEPTH_LIMIT": 1
+    #}
 
     def __init__(self, **kw):
 
@@ -44,6 +44,7 @@ class CompanySpider(scrapy.Spider):
 
         self.urls = kw.get('urls')
         self.regexp = kw.get('regexp', [])
+        self.follow_links = kw.get('follow_links', False)
 
         if not isinstance(self.urls, list):
             self.urls = [self.urls]
@@ -74,7 +75,8 @@ class CompanySpider(scrapy.Spider):
         """
         page = self._get_item(response)
         r = [page]
-        r.extend(self._extract_requests(response))
+        if self.follow_links:
+            r.extend(self._extract_requests(response))
         return r
 
     def _get_item(self, response):

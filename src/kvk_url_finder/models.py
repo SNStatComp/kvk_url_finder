@@ -72,6 +72,8 @@ def init_models(db, reset_tables=False):
         levenshtein = pw.IntegerField(default=-1)
         string_match = pw.FloatField(default=-1)
         best_match = pw.BooleanField(default=True)
+        has_postcode = pw.BooleanField(default=False)
+        has_kvk_nr = pw.BooleanField(default=False)
         ranking = pw.IntegerField(default=-1)
         bestaat = pw.BooleanField(default=False)
 
