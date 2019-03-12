@@ -4,6 +4,7 @@ general:
     Linux: /home/eelco/Projects/url_research
     Windows: /P/Projects/something_els
   cache_directory: cache
+  store_html_to_cache: true
   output_directory: .
   database_name: kvk_db
   database_type: postgres  # sqlite

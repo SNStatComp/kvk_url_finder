@@ -1306,66 +1306,6 @@ class UrlCollection(object):
                                                       index_string_match,
                                                       self.web_df.loc[index_string_match, "url"]))
 
-    def scrape_the_urls_bs(self):
-        """
-        Do the web scraping with beautiful soup
-        """
-
-        for index, row in self.web_df.iterrows():
-            url = row["url"]
-            url_analyse = UrlAnalyse(url)
-
-            if not url_analyse.exists:
-                self.logger.debug(f"url '{url}'' does not exist")
-                self.web_df.loc[index, "exists"] = False
-                continue
-
-            self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
-            self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
-
-            if url_analyse.zip_codes and \
-                    set(self.postcodes).intersection(standard_zipcode(url_analyse.zip_codes)):
-                self.web_df.loc[index, "has_postcode"] = True
-
-            if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
-                self.web_df.loc[index, "has_kvk_nummer"] = True
-
-        self.logger.debug("Done")
-
-    def scrape_the_urls_scrapy(self):
-        """
-        We have a list of web site and a list of post codes. Launch the web crawler to get
-        # all the postal
-        """
-        self.logger.info("Start scraping all the urls")
-        self.logger.debug(self.web_df.info())
-        self.logger.debug(self.postcodes)
-
-        results_q = mp.Queue()
-        url_list = self.web_df["url"].tolist()
-        crawler = CrawlerWorker(CompanySpider(urls=url_list),
-                                result_queue=results_q)
-        self.logger.debug("Start scraping urls {}".format(url_list))
-        crawler.start()
-        crawler.join()
-
-        self.logger.debug("Done scraping")
-
-        if results_q:
-            for item in results_q.get():
-                self.logger.info("Scraped {}".format(item))
-                if set(self.postcodes).intersection(set(item["postcodes"])):
-                    self.logger.info("Found a postcode {} at the website {}"
-                                     "".format(item["postcodes"], item["url"]))
-                    mask = self.web_df[self.web_df["url"] == item["url"]]
-                    self.web_df.loc[mask, "has_postcode"] = True
-                if self.kvk_nr in set(item["kvknummers"]):
-                    self.logger.info("Found a kvk number {} at the website")
-                    mask = self.web_df[self.web_df["url"] == item["url"]]
-                    self.web_df.loc[mask, "has_kvk_nr"] = True
-        else:
-            self.logger.info("Found nothing")
-
     def get_best_matching_web_site(self):
         """
         From all the web sites stored in the data frame web_df, get the best match
