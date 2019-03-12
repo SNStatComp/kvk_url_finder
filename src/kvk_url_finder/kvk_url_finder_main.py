@@ -377,6 +377,7 @@ def main(args_in):
                     kvk_sub_parser = KvKUrlParser(
                         database_name=database_name,
                         database_type=database_type,
+                        store_html_to_cache=store_html_to_cache,
                         progressbar=args.progressbar,
                         kvk_range_process=kvk_range,
                         maximum_entries=maximum_entries,

@@ -1240,8 +1240,6 @@ class UrlCollection(object):
             url = web.url
             web.getest = True
 
-            self.url_candidates.append(url)
-
             url_analyse = UrlAnalyse(url, store_page_to_cache=self.store_html_to_cache)
 
             if not url_analyse.exists:
@@ -1250,18 +1248,24 @@ class UrlCollection(object):
                 web.bestaat = False
                 continue
 
+            web.ranking = 0
+
             self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
             self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
 
             if url_analyse.zip_codes and \
                     self.postcodes.intersection(standard_zipcode(url_analyse.zip_codes)):
+                self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
+                web.ranking += 1
             else:
                 has_postcode = False
 
             if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
                 self.web_df.loc[i_web, "has_kvk_nummer"] = True
+                self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
+                web.ranking += 1
             else:
                 has_kvk_nummer = False
 
@@ -1293,7 +1297,7 @@ class UrlCollection(object):
                                          match.ext.subdomain,   # subdomain of the url
                                          match.ext.domain,      # domain of the url
                                          match.ext.suffix,      # suffix of the url
-                                         0]  # matching score used for order
+                                         web.ranking]  # matching score used for order
 
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
 
@@ -1324,7 +1328,10 @@ class UrlCollection(object):
         m2 = self.web_df["has_postcode"]
         m3 = self.web_df["has_kvk_nr"]
 
-        mask = mask & m1 & (m2 | m3)
+        # we mask al the excisting web page and keep all pages which are either with
+        # a certain string distance (m1) or in case it has either the post code or kvk
+        # number we also keep it
+        mask = mask & (m1 | m2 | m3)
 
         # make a copy of the valid web sides
         self.web_df = self.web_df[mask].copy()
@@ -1352,13 +1359,9 @@ class UrlCollection(object):
             self.web_df["ranking"] = self.web_df.apply(
                 lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
                 axis=1)
-        for suffix, score in [("com", 3), ("nl", 3), ("org", 1), ("eu", 1)]:
+        for suffix, score in [("com", 2), ("nl", 3), ("org", 1), ("eu", 1)]:
             self.web_df["ranking"] = self.web_df.apply(
                 lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
-
-        # sort first on the ranking, then on the distance
-        self.web_df["ranking"] += self.web_df["has_postcode"]
-        self.web_df["ranking"] += self.web_df["has_kvk_nr"]
 
 
 class UrlStringMatch(object):

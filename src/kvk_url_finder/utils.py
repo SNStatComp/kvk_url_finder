@@ -71,16 +71,19 @@ class UrlAnalyse(object):
     def make_soup(self):
         """ Analyse a page using bs4"""
 
-        if self.store_page_to_cache:
-            page = get_page_from_url(self.url)
+        try:
+            if self.store_page_to_cache:
+                page = get_page_from_url(self.url)
+            else:
+                page = requests.get(self.url)
+        except requests.exceptions.ConnectionError as err:
+            self.logger.warning(err)
         else:
-            page = requests.get(self.url)
-
-        if page.status_code != 200:
-            self.logger.warning(f"Page not found: {self.url}")
-        else:
-            self.exists = True
-            self.soup = BeautifulSoup(page.text, 'lxml')
+            if page.status_code != 200:
+                self.logger.warning(f"Page not found: {self.url}")
+            else:
+                self.exists = True
+                self.soup = BeautifulSoup(page.text, 'lxml')
 
     def get_patterns(self, pattern):
 
