@@ -1184,7 +1184,7 @@ class UrlCollection(object):
         self.postcodes = list()
         for address in self.company.address:
             self.logger.debug("Found postcode {}".format(address.postcode))
-            self.postcodes.append(re.sub("\s", "", address.postcode).upper())
+            self.postcodes.append(standard_zipcode(address.postcode))
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
@@ -1206,13 +1206,6 @@ class UrlCollection(object):
         self.logger.debug(
             "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
         self.collect_web_sites()
-
-        if scraper == "scrapy":
-            self.scrape_the_urls_scrapy()
-        elif scraper == "bs4":
-            self.scrape_the_urls_bs()
-        else:
-            raise ValueError(f"scraper should be one of these: {SCRAPERS}")
 
         self.logger.debug("Get best match")
         if impose_url:
@@ -1237,15 +1230,39 @@ class UrlCollection(object):
 
             self.url_candidates.append(url)
 
+            url_analyse = UrlAnalyse(url)
+
+            if not url_analyse.exists:
+                self.logger.debug(f"url '{url}'' does not exist")
+                self.web_df.loc[i_web, "exists"] = False
+                web.bestaat = False
+                continue
+
+            self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
+            self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
+
+            if url_analyse.zip_codes and \
+                    set(self.postcodes).intersection(standard_zipcode(url_analyse.zip_codes)):
+                has_postcode = True
+            else:
+                has_postcode = False
+
+            if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
+                self.web_df.loc[i_web, "has_kvk_nummer"] = True
+                has_kvk_nummer = True
+            else:
+                has_kvk_nummer = False
+
             # get the url from the database
-            match = UrlMatch(url, self.company_name_small)
+            match = UrlStringMatch(url, self.company_name_small)
 
             # store the matching values back into the database
             web.best_match = False
             web.string_match = match.string_match
             web.levenshtein = match.distance
-            web.has_postcode = False
-            web.has_kvk_nr = False
+            web.has_postcode = has_postcode
+            web.has_kvk_nr = has_kvk_nummer
+            web.bestaat = True
 
             if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
@@ -1256,14 +1273,14 @@ class UrlCollection(object):
                 max_sequence_match = match.string_match
 
             self.web_df.loc[i_web, :] = [url,  # url
-                                         True,         # url bestaat
-                                         match.distance,  # levenstein distance
-                                         match.string_match,  # string match
-                                         False,  # the web site has the postcode
-                                         False,  # the web site has the kvk
-                                         match.ext.subdomain,  # subdomain of the url
-                                         match.ext.domain,  # domain of the url
-                                         match.ext.suffix,  # suffix of the url
+                                         True,                  # url bestaat
+                                         match.distance,        # levenstein distance
+                                         match.string_match,    # string match
+                                         has_postcode,          # the web site has the postcode
+                                         has_kvk_nummer,        # the web site has the kvk
+                                         match.ext.subdomain,   # subdomain of the url
+                                         match.ext.domain,      # domain of the url
+                                         match.ext.suffix,      # suffix of the url
                                          0]  # matching score used for order
 
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
@@ -1392,7 +1409,7 @@ class UrlCollection(object):
         self.web_df["ranking"] += self.web_df["has_kvk_nr"]
 
 
-class UrlMatch(object):
+class UrlStringMatch(object):
     """
     Class do perform all operation to match a url
     """
