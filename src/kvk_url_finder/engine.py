@@ -1184,7 +1184,10 @@ class UrlCollection(object):
         self.postcodes = list()
         for address in self.company.address:
             self.logger.debug("Found postcode {}".format(address.postcode))
-            self.postcodes.append(standard_zipcode(address.postcode))
+            self.postcodes.append(address.postcode)
+
+        if self.postcodes:
+            self.postcodes = standard_zipcode(self.postcodes)
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
@@ -1242,7 +1245,7 @@ class UrlCollection(object):
             self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
 
             if url_analyse.zip_codes and \
-                    set(self.postcodes).intersection(standard_zipcode(url_analyse.zip_codes)):
+                    self.postcodes.intersection(standard_zipcode(url_analyse.zip_codes)):
                 has_postcode = True
             else:
                 has_postcode = False
