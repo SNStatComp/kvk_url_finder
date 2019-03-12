@@ -200,6 +200,7 @@ def main(args_in):
     working_directory = general["working_directory"][platform.system()]
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
+    store_html_to_cache = general.get("store_html_to_cache", False)
     if args.database_type is not None:
         database_type = args.database_type
     else:
@@ -304,6 +305,7 @@ def main(args_in):
         kvk_parser = KvKUrlParser(
             database_name=database_name,
             database_type=database_type,
+            store_html_to_cache=store_html_to_cache,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             n_url_count_threshold=n_url_count_threshold,
@@ -323,7 +325,8 @@ def main(args_in):
             log_file_base=args.log_file_base,
             log_level_file=args.log_level_file,
             password=args.password,
-            user=user)
+            user=user
+        )
 
         if args.dumpdb:
             logger.info("Dumping database to {}".format(args.dumpdb))

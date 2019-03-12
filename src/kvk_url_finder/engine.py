@@ -149,6 +149,7 @@ class KvKUrlParser(mp.Process):
     def __init__(self,
                  database_name=None,
                  database_type=None,
+                 store_html_to_cache=False,
                  user=None,
                  password=None,
                  address_input_file_name=None,
@@ -203,6 +204,7 @@ class KvKUrlParser(mp.Process):
         self.logger.debug("With debug on?")
 
         self.i_proc = i_proc
+        self.store_html_to_cache = store_html_to_cache
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
@@ -534,6 +536,7 @@ class KvKUrlParser(mp.Process):
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
                                     i_proc=self.i_proc,
+                                    store_html_to_cache=self.store_html_to_cache
                                     )
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
@@ -1100,6 +1103,7 @@ class CompanyUrlMatch(object):
                  string_match_threshold: float = 0.5,
                  save: bool = True,
                  i_proc=0,
+                 store_html_to_cache: bool = False,
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1120,7 +1124,8 @@ class CompanyUrlMatch(object):
         self.logger.debug("Get Url collection....")
         self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
                                   threshold_distance=distance_threshold,
-                                  threshold_string_match=string_match_threshold
+                                  threshold_string_match=string_match_threshold,
+                                  store_html_to_cache=store_html_to_cache,
                                   )
         self.find_match_for_company()
 
@@ -1167,11 +1172,14 @@ class UrlCollection(object):
                  threshold_string_match: float = 0.5,
                  impose_url: str = None,
                  scraper="bs4",
+                 store_html_to_cache=False,
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
 
         assert scraper in SCRAPERS
+
+        self.store_html_to_cache = store_html_to_cache
 
         self.kvk_nr = kvk_nr
         self.company = company
@@ -1230,10 +1238,11 @@ class UrlCollection(object):
         for i_web, web in enumerate(self.company_websites):
             # analyse the url
             url = web.url
+            web.getest = True
 
             self.url_candidates.append(url)
 
-            url_analyse = UrlAnalyse(url)
+            url_analyse = UrlAnalyse(url, store_page_to_cache=self.store_html_to_cache)
 
             if not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
