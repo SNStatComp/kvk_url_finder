@@ -1,3 +1,4 @@
+import math
 import datetime
 import difflib
 import logging
@@ -16,7 +17,7 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import UrlAnalyse, standard_zipcode
+from kvk_url_finder.utils import UrlAnalyse, standard_zipcode, is_zipcode
 
 try:
     from kvk_url_finder import __version__
@@ -1189,8 +1190,11 @@ class UrlCollection(object):
 
         self.postcodes = list()
         for address in self.company.address:
-            self.logger.debug("Found postcode {}".format(address.postcode))
-            self.postcodes.append(address.postcode)
+            if is_zipcode(address.postcode):
+                self.logger.debug("Found postcode {}".format(address.postcode))
+                self.postcodes.append(address.postcode)
+            else:
+                self.logger.debug("No valid postcode {}".format(address.postcode))
 
         if self.postcodes:
             self.postcodes = standard_zipcode(self.postcodes)

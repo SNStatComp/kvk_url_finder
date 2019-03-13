@@ -11,6 +11,11 @@ ZIPCODE_REGEXP = "(\d{4}\s{0,1}[a-zA-Z]{2})"
 ZIPCODE_REGEXPC = re.compile(ZIPCODE_REGEXP)
 
 
+def is_zipcode(zipcode, zip_regexp=r"\d{4}\s{0,1}[a-zA-Z]\d{2}"):
+    """ check if zipcode has a proper zip code format as 1234AZ"""
+    return bool(re.match(zip_regexp, zipcode))
+
+
 def standard_zipcode(zip_codes):
     """
     Make a clean list of zip codes
@@ -30,23 +35,30 @@ def cache_to_disk(func):
             with open(cache, 'rb') as f:
                 return pickle.load(f)
         except IOError:
-            result = func(*args)
-            with open(cache, 'wb') as f:
-                pickle.dump(result, f)
+            try:
+                result = func(*args)
+            except requests.exceptions.ConnectionError as err:
+                raise
+            else:
+                with open(cache, 'wb') as f:
+                    pickle.dump(result, f)
             return result
 
     return wrapper
 
 
 @cache_to_disk
-def get_page_from_url(url):
-    page = requests.get(url)
+def get_page_from_url(url, timeout=1.0):
+    try:
+        page = requests.get(url, timeout=timeout)
+    except requests.exceptions.ConnectionError as err:
+        page = None
     return page
 
 
 class UrlAnalyse(object):
 
-    def __init__(self, url, store_page_to_cache=True):
+    def __init__(self, url, store_page_to_cache=True, timeout=1.0):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
 
@@ -55,6 +67,8 @@ class UrlAnalyse(object):
             self.url = 'http://{:s}/'.format(url)
         else:
             self.url = url
+
+        self.timeout = timeout
 
         self.exists = False
 
@@ -73,9 +87,11 @@ class UrlAnalyse(object):
 
         try:
             if self.store_page_to_cache:
-                page = get_page_from_url(self.url)
+                self.logger.debug("Get (cached) page: {}".format(self.url))
+                page = get_page_from_url(self.url, timeout=self.timeout)
             else:
-                page = requests.get(self.url)
+                self.logger.debug("Get page: {}".format(self.url))
+                page = requests.get(self.url, timeout=self.timeout)
         except requests.exceptions.ConnectionError as err:
             self.logger.warning(err)
         else:
