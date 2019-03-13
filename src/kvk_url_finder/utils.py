@@ -1,6 +1,7 @@
 import logging
 import re
 import requests
+from requests.exceptions import (ConnectionError, ReadTimeout)
 from bs4 import BeautifulSoup
 from kvk_url_finder import LOGGER_BASE_NAME
 from cbs_utils.misc import get_page_from_url
@@ -46,7 +47,7 @@ class UrlAnalyse(object):
             else:
                 self.logger.debug("Get page: {}".format(self.url))
                 page = requests.get(self.url, timeout=self.timeout)
-        except requests.exceptions.ConnectionError as err:
+        except (ConnectionError, ReadTimeout) as err:
             self.logger.warning(err)
         else:
             if page is None or page.status_code != 200:

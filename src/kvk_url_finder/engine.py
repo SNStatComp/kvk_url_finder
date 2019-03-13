@@ -1196,8 +1196,7 @@ class UrlCollection(object):
             else:
                 self.logger.debug("No valid postcode {}".format(address.postcode))
 
-        if self.postcodes:
-            self.postcodes = set([standard_postcode(pc) for pc in self.postcodes])
+        self.postcodes = set([standard_postcode(pc) for pc in self.postcodes])
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
@@ -1256,7 +1255,8 @@ class UrlCollection(object):
             self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
 
             if url_analyse.zip_codes and \
-                    self.postcodes.intersection(standard_zipcode(url_analyse.zip_codes)):
+                    self.postcodes.intersection(set([standard_postcode(pc) for pc in
+                                                     url_analyse.zip_codes])):
                 self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
                 web.ranking += 1
