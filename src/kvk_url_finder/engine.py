@@ -16,8 +16,6 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.scrapy_crawler import CrawlerWorker
-from kvk_url_finder.spiders import CompanySpider
 from kvk_url_finder.utils import UrlAnalyse, standard_zipcode
 
 try:
