@@ -14,10 +14,10 @@ import progressbar as pb
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger)
+from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import UrlAnalyse, standard_zipcode, is_zipcode
+from kvk_url_finder.utils import UrlAnalyse
 
 try:
     from kvk_url_finder import __version__
@@ -1190,14 +1190,14 @@ class UrlCollection(object):
 
         self.postcodes = list()
         for address in self.company.address:
-            if is_zipcode(address.postcode):
+            if is_postcode(address.postcode):
                 self.logger.debug("Found postcode {}".format(address.postcode))
                 self.postcodes.append(address.postcode)
             else:
                 self.logger.debug("No valid postcode {}".format(address.postcode))
 
         if self.postcodes:
-            self.postcodes = standard_zipcode(self.postcodes)
+            self.postcodes = set([standard_postcode(pc) for pc in self.postcodes])
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match

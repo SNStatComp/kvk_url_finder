@@ -1,59 +1,13 @@
 import logging
 import re
-from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
-import pickle
-from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
+from kvk_url_finder import LOGGER_BASE_NAME
+from cbs_utils.misc import get_page_from_url
 
 # regular expressions
 ZIPCODE_REGEXP = "(\d{4}\s{0,1}[a-zA-Z]{2})"
 ZIPCODE_REGEXPC = re.compile(ZIPCODE_REGEXP)
-
-
-def is_zipcode(zipcode, zip_regexp=r"\d{4}\s{0,1}[a-zA-Z]\d{2}"):
-    """ check if zipcode has a proper zip code format as 1234AZ"""
-    return bool(re.match(zip_regexp, zipcode))
-
-
-def standard_zipcode(zip_codes):
-    """
-    Make a clean list of zip codes
-    :param zip_codes: string list with zip codes
-    :return:  list with cleaned zip codes
-    """
-    zips = [re.sub(r"\s+", "", zc).upper() for zc in zip_codes]
-    return set(zips)
-
-
-def cache_to_disk(func):
-    def wrapper(*args):
-        cache_file = '{}{}.pkl'.format(func.__name__, args).replace('/', '_')
-        cache = Path(CACHE_DIRECTORY) / cache_file
-
-        try:
-            with open(cache, 'rb') as f:
-                return pickle.load(f)
-        except IOError:
-            try:
-                result = func(*args)
-            except requests.exceptions.ConnectionError as err:
-                raise
-            else:
-                with open(cache, 'wb') as f:
-                    pickle.dump(result, f)
-            return result
-
-    return wrapper
-
-
-@cache_to_disk
-def get_page_from_url(url, timeout=1.0):
-    try:
-        page = requests.get(url, timeout=timeout)
-    except requests.exceptions.ConnectionError as err:
-        page = None
-    return page
 
 
 class UrlAnalyse(object):
@@ -95,7 +49,7 @@ class UrlAnalyse(object):
         except requests.exceptions.ConnectionError as err:
             self.logger.warning(err)
         else:
-            if page.status_code != 200:
+            if page is None or page.status_code != 200:
                 self.logger.warning(f"Page not found: {self.url}")
             else:
                 self.exists = True
