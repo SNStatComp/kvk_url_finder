@@ -15,6 +15,27 @@ LEVENSHTEIN_KEY = "levenshtein"
 STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
+
+EXISTS_KEY = "exists"
+DISTANCE_KEY = "distance"
+HAS_POSTCODE_KEY = "has_postcode"
+HAS_KVK_NR = "has_kvk_nr"
+SUBDOMAIN_KEY = "subdomain"
+DOMAIN_KEY = "domain"
+SUFFIX_KEY = "suffix"
+
+WEB_DF_COLS = [URL_KEY,
+               EXISTS_KEY,
+               DISTANCE_KEY,
+               STRING_MATCH_KEY,
+               HAS_POSTCODE_KEY,
+               HAS_KVK_NR,
+               SUBDOMAIN_KEY,
+               DOMAIN_KEY,
+               SUFFIX_KEY,
+               RANKING_KEY
+               ]
+
 PRAGMAS = {
     "journal_mode": "wal",
     "foreingn_keys": 1,
@@ -54,8 +75,9 @@ def init_models(db, reset_tables=False):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
         url = pw.CharField(null=True)
-        process_nr = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
-        process_time = pw.DateTimeField(null=True)  # the process time
+        ranking = pw.IntegerField(default=-1)
+        core_id = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
+        datetime = pw.DateTimeField(null=True)  # the process time
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
