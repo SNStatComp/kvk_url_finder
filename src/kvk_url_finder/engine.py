@@ -1143,9 +1143,9 @@ class CompanyUrlMatch(object):
             web_match_index = web_df_best.index.values[0]
             web_match = self.urls.company_websites[web_match_index]
             web_match.best_match = True
-            web_match.has_postcode = web_df_best["has_postcode"].values[0]
-            web_match.url = web_df_best["url"].values[0]
-            web_match.ranking = web_df_best["ranking"].values[0]
+            web_match.has_postcode = web_df_best[HAS_POSTCODE_KEY].values[0]
+            web_match.url = web_df_best[URL_KEY].values[0]
+            web_match.ranking = web_df_best[RANKING_KEY].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
 
             # update all the properties
@@ -1186,8 +1186,6 @@ class UrlCollection(object):
         self.company_websites = self.company.websites
         self.company_name_small = clean_name(self.company_name)
 
-        self.url_candidates = list()
-
         self.postcodes = list()
         for address in self.company.address:
             if is_postcode(address.postcode):
@@ -1196,6 +1194,7 @@ class UrlCollection(object):
             else:
                 self.logger.debug("No valid postcode {}".format(address.postcode))
 
+        # always turn the list in a set so that the postcodes are unique
         self.postcodes = set([standard_postcode(pc) for pc in self.postcodes])
 
         self.threshold_distance = threshold_distance
@@ -1203,26 +1202,19 @@ class UrlCollection(object):
 
         number_of_websites = len(self.company_websites)
         self.web_df = pd.DataFrame(index=range(number_of_websites),
-                                   columns=["url",
-                                            "exists",
-                                            "distance",
-                                            "string_match",
-                                            "has_postcode",
-                                            "has_kvk_nr",
-                                            "subdomain",
-                                            "domain",
-                                            "suffix",
-                                            "ranking"])
+                                   columns=WEB_DF_COLS)
 
         # remove space and put to lower for better comparison with the url
         self.logger.debug(
-            "Checking {}: {} ({})".format(self.kvk_nr, self.company_name, self.company_name_small))
+            "Checking {}: {} ({})".format(self.kvk_nr, self.company_name,
+                                          self.company_name_small))
         self.collect_web_sites()
 
         self.logger.debug("Get best match")
         if impose_url:
             # just select the url to impose
-            self.web_df = self.web_df[self.web_df["url"] == impose_url].copy()
+            self.logger.debug(f"Imposing {impose_url}")
+            self.web_df = self.web_df[self.web_df[URL_KEY] == impose_url].copy()
         elif self.web_df is not None:
             self.get_best_matching_web_site()
             self.logger.debug("Best Match".format(self.web_df.head(1)))
@@ -1245,7 +1237,7 @@ class UrlCollection(object):
 
             if not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
-                self.web_df.loc[i_web, "exists"] = False
+                self.web_df.loc[i_web, EXISTS_KEY] = False
                 web.bestaat = False
                 continue
 
@@ -1264,7 +1256,7 @@ class UrlCollection(object):
                 has_postcode = False
 
             if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
-                self.web_df.loc[i_web, "has_kvk_nr"] = True
+                self.web_df.loc[i_web, HAS_KVK_NR] = True
                 self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
                 web.ranking += 1
@@ -1273,6 +1265,12 @@ class UrlCollection(object):
 
             # get the url from the database
             match = UrlStringMatch(url, self.company_name_small)
+
+            if match.string_match <= self.threshold_distance:
+                web.ranking += 1
+
+            if match.distance > self.threshold_distance:
+                web.ranking += 1
 
             # store the matching values back into the database
             web.best_match = False
@@ -1290,7 +1288,7 @@ class UrlCollection(object):
                 index_string_match = i_web
                 max_sequence_match = match.string_match
 
-            self.web_df.loc[i_web, :] = [url,  # url
+            self.web_df.loc[i_web, :] = [url,                   # url
                                          True,                  # url bestaat
                                          match.distance,        # levenstein distance
                                          match.string_match,    # string match
@@ -1301,16 +1299,20 @@ class UrlCollection(object):
                                          match.ext.suffix,      # suffix of the url
                                          web.ranking]  # matching score used for order
 
-            self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain, match.distance))
+            self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain,
+                                                          match.distance))
 
         if min_distance is None:
             self.web_df = None
         elif index_string_match != index_distance:
-            self.logger.warning("Found minimal distance for {}: {}\nwhich differs from best string "
-                                "match {}: {}".format(index_distance,
-                                                      self.web_df.loc[index_distance, "url"],
-                                                      index_string_match,
-                                                      self.web_df.loc[index_string_match, "url"]))
+            self.logger.warning(
+                "Found minimal distance for {}: {}\nwhich differs from "
+                "best string match {}: {}".format(index_distance,
+                                                  self.web_df.loc[index_distance,
+                                                                  URL_KEY],
+                                                  index_string_match,
+                                                  self.web_df.loc[index_string_match,
+                                                                  URL_KEY]))
 
     def get_best_matching_web_site(self):
         """
@@ -1318,35 +1320,32 @@ class UrlCollection(object):
         """
 
         # only select the web site which exist
-        mask = self.web_df["exists"]
+        mask = self.web_df[EXISTS_KEY]
 
+        # create mask for web name distance
         if self.threshold_distance is not None:
             # select all the web sites with a minimum distance or one higher
-            m1 = (self.web_df["distance"] - self.web_df[
-                "distance"].min()) <= self.threshold_distance
+            m1 = (self.web_df[DISTANCE_KEY] - self.web_df[
+                DISTANCE_KEY].min()) <= self.threshold_distance
         else:
             m1 = mask
 
-        m2 = self.web_df["has_postcode"]
-        m3 = self.web_df["has_kvk_nr"]
+        # create mask for web string match
+        if self.threshold_string_match is not None:
+            m2 = self.web_df[STRING_MATCH_KEY] >= self.threshold_string_match
+        else:
+            m2 = mask
 
-        # we mask al the excisting web page and keep all pages which are either with
+        m3 = self.web_df[HAS_POSTCODE_KEY]
+        m4 = self.web_df[HAS_KVK_NR]
+
+        # we mask al the existing web page and keep all pages which are either with
         # a certain string distance (m1) or in case it has either the post code or kvk
         # number we also keep it
-        mask = mask & (m1 | m2 | m3)
+        mask = mask & (m1 | m2 | m3 | m4)
 
         # make a copy of the valid web sides
         self.web_df = self.web_df[mask].copy()
-
-        if self.threshold_string_match is not None:
-            df = self.web_df[self.web_df["string_match"] >= self.threshold_string_match].copy()
-            if df.empty:
-                # the filter with the string match threshold give an empty data frame. Just take the
-                # best match
-                df = self.web_df.sort_values(["string_match"], ascending=False)
-                self.web_df = df.copy().head(1)
-            else:
-                self.web_df = df
 
         def rate_it(column_name, ranking, value="www", score=1):
             """
@@ -1358,12 +1357,15 @@ class UrlCollection(object):
         # loop over the subdomains and add the score in case we have a web site with this
         # sub domain. Do the same after that for the prefixes
         for subdomain, score in [("www", 1), ("", 1), ("https", 1), ("http", 1)]:
-            self.web_df["ranking"] = self.web_df.apply(
+            self.web_df[RANKING_KEY] = self.web_df.apply(
                 lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
                 axis=1)
-        for suffix, score in [("com", 2), ("nl", 3), ("org", 1), ("eu", 1)]:
-            self.web_df["ranking"] = self.web_df.apply(
+        for suffix, score in [("com", 1), ("nl", 2), ("org", 1), ("eu", 1)]:
+            self.web_df[RANKING_KEY] = self.web_df.apply(
                 lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
+
+        self.web_df.sort_values(RANKING_KEY, inplace=True, ascending=False)
+        self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
 
 
 class UrlStringMatch(object):
