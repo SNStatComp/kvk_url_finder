@@ -1,5 +1,6 @@
 import math
 import datetime
+import pytz
 import difflib
 import logging
 import multiprocessing as mp
@@ -291,7 +292,7 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.Company.select(self.Company.kvk_nummer, self.Company.process_nr)
+        query = (self.Company.select(self.Company.kvk_nummer, self.Company.core_id)
                  .order_by(self.Company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
@@ -306,7 +307,7 @@ class KvKUrlParser(mp.Process):
                 # skip because is outside range
                 continue
             number_in_range += 1
-            if not self.force_process and q.process_nr >= 0:
+            if not self.force_process and q.core_id >= 0:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
             # we can processes this record, so add it to the list
@@ -495,7 +496,7 @@ class KvKUrlParser(mp.Process):
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
-        maximum_queries = [q.process_nr >= 0 and not self.force_process for q in query].count(False)
+        maximum_queries = [q.core_id >= 0 and not self.force_process for q in query].count(False)
         self.logger.info("Maximum queries obtained from selection as {}".format(maximum_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(maximum_queries,
@@ -519,7 +520,7 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            if company.process_nr >= 0 and not self.force_process:
+            if company.core_id >= 0 and not self.force_process:
                 self.logger.debug("Company {} ({}) already processed. Skipping"
                                   "".format(company.kvk_nummer, company.naam))
                 continue
@@ -1153,8 +1154,9 @@ class CompanyUrlMatch(object):
                 for web in self.company.websites:
                     web.save()
             self.company.url = web_match.url
-            self.company.process_nr = self.i_proc
-            self.company.process_time = datetime.datetime.now()
+            self.company.core_id = self.i_proc
+            self.company.ranking = web_match.ranking
+            self.company.process_time = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
             if self.save:
                 self.company.save()
 
