@@ -1260,7 +1260,7 @@ class UrlCollection(object):
                 has_postcode = False
 
             if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
-                self.web_df.loc[i_web, "has_kvk_nummer"] = True
+                self.web_df.loc[i_web, "has_kvk_nr"] = True
                 self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
                 web.ranking += 1
