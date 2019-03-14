@@ -18,7 +18,7 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import UrlAnalyse
+from kvk_url_finder.utils import UrlAnalyse, UrlDynAnalyse
 
 try:
     from kvk_url_finder import __version__
@@ -1235,6 +1235,7 @@ class UrlCollection(object):
             url = web.url
             web.getest = True
 
+            # connect to the url and analyse the contents of a static page
             url_analyse = UrlAnalyse(url, store_page_to_cache=self.store_html_to_cache)
 
             if not url_analyse.exists:
@@ -1253,7 +1254,7 @@ class UrlCollection(object):
                                                      url_analyse.zip_codes])):
                 self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
-                web.ranking += 1
+                web.ranking += 2
             else:
                 has_postcode = False
 
@@ -1261,7 +1262,7 @@ class UrlCollection(object):
                 self.web_df.loc[i_web, HAS_KVK_NR] = True
                 self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
-                web.ranking += 1
+                web.ranking += 2
             else:
                 has_kvk_nummer = False
 
@@ -1366,7 +1367,8 @@ class UrlCollection(object):
             self.web_df[RANKING_KEY] = self.web_df.apply(
                 lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
 
-        self.web_df.sort_values(RANKING_KEY, inplace=True, ascending=False)
+        self.web_df.sort_values([RANKING_KEY,HAS_POSTCODE_KEY, HAS_KVK_NR], inplace=True,
+                                ascending=[False, False, False])
         self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
 
 
