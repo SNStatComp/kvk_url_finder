@@ -1126,6 +1126,7 @@ class CompanyUrlMatch(object):
                                   threshold_distance=distance_threshold,
                                   threshold_string_match=string_match_threshold,
                                   store_html_to_cache=store_html_to_cache,
+                                  save=self.save
                                   )
         self.find_match_for_company()
 
@@ -1174,9 +1175,12 @@ class UrlCollection(object):
                  impose_url: str = None,
                  scraper="bs4",
                  store_html_to_cache=False,
+                 save=False
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
+
+        self.save = save
 
         assert scraper in SCRAPERS
 
@@ -1234,6 +1238,7 @@ class UrlCollection(object):
             # analyse the url
             url = web.url
             web.getest = True
+            web.naam = self.company_name
 
             # connect to the url and analyse the contents of a static page
             url_analyse = UrlAnalyse(url, store_page_to_cache=self.store_html_to_cache)
@@ -1244,7 +1249,7 @@ class UrlCollection(object):
                 web.bestaat = False
                 continue
 
-            web.ranking = 0
+            ranking = 0
 
             self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
             self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
@@ -1254,7 +1259,7 @@ class UrlCollection(object):
                                                      url_analyse.zip_codes])):
                 self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
-                web.ranking += 2
+                ranking += 3
             else:
                 has_postcode = False
 
@@ -1262,7 +1267,7 @@ class UrlCollection(object):
                 self.web_df.loc[i_web, HAS_KVK_NR] = True
                 self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
-                web.ranking += 2
+                ranking += 3
             else:
                 has_kvk_nummer = False
 
@@ -1270,10 +1275,17 @@ class UrlCollection(object):
             match = UrlStringMatch(url, self.company_name_small)
 
             if match.string_match >= self.threshold_string_match:
-                web.ranking += 1
+                ranking += 1
 
             if match.distance <= self.threshold_distance:
-                web.ranking += 1
+                ranking += 1
+
+            if match.ext.suffix in ("com", "org"):
+                ranking += 1
+            elif match.ext.suffix == "nl":
+                ranking += 2
+
+            web.ranking = ranking
 
             # store the matching values back into the database
             web.best_match = False
@@ -1282,6 +1294,9 @@ class UrlCollection(object):
             web.has_postcode = has_postcode
             web.has_kvk_nr = has_kvk_nummer
             web.bestaat = True
+
+            if self.save:
+                web.save()
 
             if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
@@ -1350,25 +1365,8 @@ class UrlCollection(object):
         # make a copy of the valid web sides
         self.web_df = self.web_df[mask].copy()
 
-        def rate_it(column_name, ranking, value="www", score=1):
-            """
-            In case the column 'column_name' has a value equal to 'value' add the 'score
-            to the current 'ranking' and return the result
-            """
-            return ranking + score if column_name == value else ranking
-
-        # loop over the subdomains and add the score in case we have a web site with this
-        # sub domain. Do the same after that for the prefixes
-        for subdomain, score in [("www", 1), ("", 1), ("https", 1), ("http", 1)]:
-            self.web_df[RANKING_KEY] = self.web_df.apply(
-                lambda x: rate_it(x.subdomain, x.ranking, value=subdomain, score=score),
-                axis=1)
-        for suffix, score in [("com", 1), ("nl", 2), ("org", 1), ("eu", 1)]:
-            self.web_df[RANKING_KEY] = self.web_df.apply(
-                lambda x: rate_it(x.suffix, x.ranking, value=suffix, score=score), axis=1)
-
-        self.web_df.sort_values([RANKING_KEY,HAS_POSTCODE_KEY, HAS_KVK_NR], inplace=True,
-                                ascending=[False, False, False])
+        self.web_df.sort_values([RANKING_KEY, DISTANCE_KEY, STRING_MATCH_KEY], inplace=True,
+                                ascending=[False, False, True])
         self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
 
 
