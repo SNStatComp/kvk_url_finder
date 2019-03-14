@@ -1,13 +1,13 @@
 general:
   working_directory:
     # depending if we are working under linux or windows you can set the base working directory
-    Linux: /home/eelco/Projects/url_research
+    Linux: .
     Windows: /P/Projects/something_els
   cache_directory: cache
   store_html_to_cache: true
   output_directory: .
   database_name: kvk_db
-  database_type: postgres  # sqlite
+  database_type: postgres # sqlite
 databases:
   addresses:
     # the initial data base with  the postal codes, addresses + kvk numberw
@@ -31,7 +31,7 @@ databases:
       url: 4
   kvk_selection_data_base:
     # the abr database which we use to make a selection of kvk numbers to read and process
-    apply_selection: false
+    apply_selection: true
     file_name: Cbspersoon_Regio47url.xlsx
     kvk_nummer: NhrVestKvkNummer
     kvk_sub_nummer: CpVestigingsNummer
@@ -44,16 +44,16 @@ process_settings:
   kvk_range_read:
     # give the first and last kvk number you want to  read from the input csv file to turn into
     # the sql file. If not given, all the number as read
-    start:  1000040
-    stop:   1030000
+    start:  # 1000040
+    stop:   # 1030000
   kvk_range_process:
     # once a kvk range has been written to sql, process the kvk numbers by checking the url
     # the range to process can be limitted here. If empty, all the kvk nunber are processed
-    start:  # 24255704 # 24255434 # 24255704  # 34074187
-    stop: # 34074187
+    start: 24137476
+    stop:   
   # max entries can be used to stop processing after a fixed number of kvk's
-  maximum_entries:  # 1
-  threshold_distance: 5
+  maximum_entries: 1
+  threshold_distance: 10
   threshold_string_match: 0.5
   impose_url_for_kvk:
     # all the url that fail to give the correct match can here be impose

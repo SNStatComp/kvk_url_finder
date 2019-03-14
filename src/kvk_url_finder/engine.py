@@ -1268,10 +1268,10 @@ class UrlCollection(object):
             # get the url from the database
             match = UrlStringMatch(url, self.company_name_small)
 
-            if match.string_match <= self.threshold_distance:
+            if match.string_match >= self.threshold_string_match:
                 web.ranking += 1
 
-            if match.distance > self.threshold_distance:
+            if match.distance <= self.threshold_distance:
                 web.ranking += 1
 
             # store the matching values back into the database
