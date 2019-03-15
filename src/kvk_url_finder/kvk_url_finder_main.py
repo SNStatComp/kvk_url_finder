@@ -49,7 +49,6 @@ except ModuleNotFoundError:
     __version__ = "unknown"
 
 
-
 def _parse_the_command_line_arguments(args):
 
     def check_positive(value):
@@ -92,7 +91,7 @@ def _parse_the_command_line_arguments(args):
                                                  "a sql file already", action="store_true")
     parser.add_argument('--extend_database', help="Extend the data base in case we have generated"
                                                   "a sql file already", action="store_true")
-    parser.add_argument("--write_log_to_file", action="store_true", default=True,
+    parser.add_argument("--write_log_to_file", action="store_true", default=False,
                         help="Write the logging information to file")
     parser.add_argument("--no_write_log_to_file", action="store_false", dest="write_log_to_file",
                         help="Do not write the logging information to file")
@@ -244,7 +243,7 @@ def main(args_in):
     else:
         use_subprocess = False
 
-    # create the KvKUrl object, but first move to the workding directory, so everything we do
+    # create the KvKUrl object, but first move to the working directory, so everything we do
     # is with respect to this directory
     with Chdir(working_directory) as _:
 

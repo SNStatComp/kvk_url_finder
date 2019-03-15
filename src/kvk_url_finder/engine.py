@@ -1241,13 +1241,15 @@ class UrlCollection(object):
             web.naam = self.company_name
 
             # connect to the url and analyse the contents of a static page
+            self.logger.debug("Start Url Search : {}".format(url))
             url_analyse = UrlSearchStrings(url,
                                            search_strings={
-                                               POSTAL_CODE_KEY: r"\d{4}\s{0}[a-z][A-Z]",
-                                               KVK_KEY: r"\d{7,8}"
+                                               POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
+                                               KVK_KEY: r"(\d{7,8})"
                                            },
                                            store_page_to_cache=self.store_html_to_cache
                                            )
+            self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
             if not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
@@ -1262,7 +1264,7 @@ class UrlCollection(object):
             kvk_lijst = url_analyse.matches[KVK_KEY]
             kvk_set = set([int(k) for k in kvk_lijst])
 
-            for key, matches in url_analyse.matches.item():
+            for key, matches in url_analyse.matches.items():
                 self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
             if self.postcodes.intersection(postcode_set):
