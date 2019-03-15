@@ -18,7 +18,7 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import UrlAnalyse, UrlDynAnalyse
+from cbs_utils.web_scraping import UrlSearchStrings
 
 try:
     from kvk_url_finder import __version__
@@ -1241,7 +1241,13 @@ class UrlCollection(object):
             web.naam = self.company_name
 
             # connect to the url and analyse the contents of a static page
-            url_analyse = UrlAnalyse(url, store_page_to_cache=self.store_html_to_cache)
+            url_analyse = UrlSearchStrings(url,
+                                           search_strings={
+                                               POSTAL_CODE_KEY: r"\d{4}\s{0}[a-z][A-Z]",
+                                               KVK_KEY: r"\d{7,8}"
+                                           },
+                                           store_page_to_cache=self.store_html_to_cache
+                                           )
 
             if not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
@@ -1251,19 +1257,22 @@ class UrlCollection(object):
 
             ranking = 0
 
-            self.logger.debug("Found zip {} for {}".format(url_analyse.zip_codes, url))
-            self.logger.debug("Found kvk {} for {}".format(url_analyse.kvk_numbers, url))
+            postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
+            postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
+            kvk_lijst = url_analyse.matches[KVK_KEY]
+            kvk_set = set([int(k) for k in kvk_lijst])
 
-            if url_analyse.zip_codes and \
-                    self.postcodes.intersection(set([standard_postcode(pc) for pc in
-                                                     url_analyse.zip_codes])):
+            for key, matches in url_analyse.matches.item():
+                self.logger.debug("Found {}:{} in {}".format(key, matches, url))
+
+            if self.postcodes.intersection(postcode_set):
                 self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
                 ranking += 3
             else:
                 has_postcode = False
 
-            if url_analyse.kvk_numbers and self.kvk_nr in [int(k) for k in url_analyse.kvk_numbers]:
+            if self.kvk_nr in kvk_set:
                 self.web_df.loc[i_web, HAS_KVK_NR] = True
                 self.logger.debug("Found matching kvknummer code. Adding to ranking")
                 has_kvk_nummer = True
@@ -1306,15 +1315,15 @@ class UrlCollection(object):
                 index_string_match = i_web
                 max_sequence_match = match.string_match
 
-            self.web_df.loc[i_web, :] = [url,                   # url
-                                         True,                  # url bestaat
-                                         match.distance,        # levenstein distance
-                                         match.string_match,    # string match
-                                         has_postcode,          # the web site has the postcode
-                                         has_kvk_nummer,        # the web site has the kvk
-                                         match.ext.subdomain,   # subdomain of the url
-                                         match.ext.domain,      # domain of the url
-                                         match.ext.suffix,      # suffix of the url
+            self.web_df.loc[i_web, :] = [url,  # url
+                                         True,  # url bestaat
+                                         match.distance,  # levenstein distance
+                                         match.string_match,  # string match
+                                         has_postcode,  # the web site has the postcode
+                                         has_kvk_nummer,  # the web site has the kvk
+                                         match.ext.subdomain,  # subdomain of the url
+                                         match.ext.domain,  # domain of the url
+                                         match.ext.suffix,  # suffix of the url
                                          web.ranking]  # matching score used for order
 
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain,
