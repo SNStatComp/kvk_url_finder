@@ -1251,6 +1251,8 @@ class UrlCollection(object):
                                            )
             self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
+            self.logger.debug(url_analyse)
+
             if not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
                 self.web_df.loc[i_web, EXISTS_KEY] = False
