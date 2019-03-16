@@ -456,6 +456,7 @@ class KvKUrlParser(mp.Process):
         self.addresses_df = pd.concat([self.addresses_df, new_kvk_name], axis=0, sort=True)
         self.addresses_df.sort_index(inplace=True)
         self.addresses_df.reset_index(inplace=True)
+        self.addresses_df.drop(["index"], axis=1, inplace=True)
 
         n_after = self.addresses_df.index.size
         self.logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
@@ -975,7 +976,7 @@ class KvKUrlParser(mp.Process):
         urls.dropna(axis=0, inplace=True)
 
         # the kvk key is already visible via the company_id
-        urls.drop([KVK_KEY], inplace=True, axis=1)
+        # urls.drop([KVK_KEY], inplace=True, axis=1)
 
         self.logger.info("Converting urls to dict. This make take some time...")
         url_list = list(urls.to_dict(orient="index").values())
@@ -1066,7 +1067,7 @@ class KvKUrlParser(mp.Process):
         df[COMPANY_KEY] = company_list
 
         # the kvk key is already visible via the company_id
-        df.drop([KVK_KEY], inplace=True, axis=1)
+        # df.drop([KVK_KEY], inplace=True, axis=1)
 
         self.logger.info("Converting urls to dict. This make take some time...")
         address_list = list(df.to_dict(orient="index").values())

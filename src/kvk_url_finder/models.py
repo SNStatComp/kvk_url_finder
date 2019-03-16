@@ -81,6 +81,7 @@ def init_models(db, reset_tables=False):
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
+        kvk_nummer = pw.IntegerField(default=-1)
         naam = pw.CharField(null=True)
         plaats = pw.CharField(null=True)
         postcode = pw.CharField(null=True)
@@ -88,6 +89,7 @@ def init_models(db, reset_tables=False):
 
     class WebSite(BaseModel):
         company = pw.ForeignKeyField(Company, backref="websites")
+        kvk_nummer = pw.IntegerField(default=-1)
         url = pw.CharField(null=False)
         naam = pw.CharField(null=False)
         getest = pw.BooleanField(default=False)
