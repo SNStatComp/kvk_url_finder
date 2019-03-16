@@ -150,7 +150,7 @@ def setup_logging(write_log_to_file=False,
     # Initialise the logging system
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    if write_log_to_file:
+    if write_log_to_file or progress_bar:
         # http://stackoverflow.com/questions/29087297/
         # is-there-a-way-to-change-the-filemode-for-a-logger-object-that-is-not-configured
         # sys.stderr = open(log_file_base + ".err", 'w')

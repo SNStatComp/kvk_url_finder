@@ -928,7 +928,7 @@ class KvKUrlParser(mp.Process):
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        company_vs_kvk = self.Company.select()
+        company_vs_kvk = self.Company.select().order_by(self.Company.kvk_nummer)
         n_comp = company_vs_kvk.count()
 
         kvk_comp_list = list()
