@@ -260,6 +260,9 @@ class KvKUrlParser(mp.Process):
         self.addresses_df: pd.DataFrame = None
         self.kvk_df: pd.DataFrame = None
 
+        self.company_vs_kvk = None
+        self.n_company = None
+
         self.number_of_processes = number_of_processes
 
         self.kvk_ranges = None
@@ -929,25 +932,29 @@ class KvKUrlParser(mp.Process):
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        company_vs_kvk = self.Company.select().order_by(self.Company.kvk_nummer)
-        n_comp = company_vs_kvk.count()
+        self.company_vs_kvk = self.Company.select().order_by(self.Company.kvk_nummer)
+        self.n_company = self.company_vs_kvk.count()
 
         kvk_comp_list = list()
-        for company in company_vs_kvk:
+        for company in self.company_vs_kvk:
             kvk_comp_list.append(int(company.kvk_nummer))
         kvk_comp = set(kvk_comp_list)
         kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
 
-        self.logger.info(f"Found: {n_comp} companies")
+        # in case the is one kvk not in the address data base, something is wrong,
+        # as we took care of that in the merge_database routine
+        assert not kvk_not_in_addresses
+
+        self.logger.info(f"Found: {self.n_company} companies")
         wdg = PB_WIDGETS
         if self.progressbar:
-            wdg[-1] = progress_bar_message(0, n_comp)
-            progress = pb.ProgressBar(widgets=wdg, maxval=n_comp, fd=sys.stdout).start()
+            wdg[-1] = progress_bar_message(0, self.n_company)
+            progress = pb.ProgressBar(widgets=wdg, maxval=self.n_company, fd=sys.stdout).start()
         else:
             progress = None
 
         company_list = list()
-        for counter, company in enumerate(company_vs_kvk):
+        for counter, company in enumerate(self.company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
             # we need to check if this kvk is in de address list  still
             if kvk_nr in kvk_not_in_addresses:
@@ -963,10 +970,10 @@ class KvKUrlParser(mp.Process):
             company_list.extend([company] * n_url)
 
             if progress:
-                wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
+                wdg[-1] = progress_bar_message(counter, self.n_company, kvk_nr, company.naam)
                 progress.update(counter)
             if counter % MAX_SQL_CHUNK == 0:
-                self.logger.info(" Added {} / {}".format(counter, n_comp))
+                self.logger.info(" Added {} / {}".format(counter, self.n_company))
         if progress:
             progress.finish()
 
@@ -1018,72 +1025,54 @@ class KvKUrlParser(mp.Process):
         df = self.addresses_df[columns].copy()
         df.sort_values([KVK_KEY], inplace=True)
         # count the number of urls per kvk
-        n_url_per_kvk = df.groupby(KVK_KEY)[KVK_KEY].count()
 
-        # add a company key to all url and then make a reference to all companies from the Company
-        # table
-        self.logger.info("Adding companies to addresses table")
-        kvk_list = self.addresses_df[KVK_KEY].tolist()
-        company_vs_kvk = self.Company.select()
-        kvk_comp_list = list()
-        for company in company_vs_kvk:
-            kvk_comp_list.append(int(company.kvk_nummer))
-        kvk_comp = set(kvk_comp_list)
-        kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
-
-        idx = pd.IndexSlice
-        n_comp = company_vs_kvk.count()
-        wdg = None
+        n_postcode_per_kvk = df.groupby(KVK_KEY)[KVK_KEY].count()
+        self.logger.info(f"Found: {self.n_company} companies")
+        wdg = PB_WIDGETS
         if self.progressbar:
-            wdg = PB_WIDGETS
-            wdg[-1] = progress_bar_message(0, n_comp)
-            progress = pb.ProgressBar(widgets=wdg, maxval=n_comp, fd=sys.stdout).start()
+            wdg[-1] = progress_bar_message(0, self.n_company)
+            progress = pb.ProgressBar(widgets=wdg, maxval=self.n_company, fd=sys.stdout).start()
         else:
             progress = None
 
         company_list = list()
-        for counter, company in enumerate(company_vs_kvk):
+        for counter, company in enumerate(self.company_vs_kvk):
             kvk_nr = int(company.kvk_nummer)
-            if kvk_nr in kvk_not_in_addresses:
-                self.logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
-                continue
+            # we need to check if this kvk is in de address list  still
 
             try:
-                n_url = n_url_per_kvk.loc[kvk_nr]
+                n_postcode = n_postcode_per_kvk.loc[kvk_nr]
             except KeyError:
                 continue
-            company_list.extend([company] * n_url)
 
-            if counter % MAX_SQL_CHUNK == 0:
-                self.logger.info(" Added {} / {}".format(counter, n_comp))
+            # add the company number of url time to the list
+            company_list.extend([company] * n_postcode)
 
             if progress:
-                wdg[-1] = progress_bar_message(counter, n_comp, kvk_nr, company.naam)
+                wdg[-1] = progress_bar_message(counter, self.n_company, kvk_nr, company.naam)
                 progress.update(counter)
-
+            if counter % MAX_SQL_CHUNK == 0:
+                self.logger.info(" Added {} / {}".format(counter, self.n_company))
         if progress:
             progress.finish()
 
         df[COMPANY_KEY] = company_list
 
-        # the kvk key is already visible via the company_id
-        # df.drop([KVK_KEY], inplace=True, axis=1)
-
-        self.logger.info("Converting urls to dict. This make take some time...")
+        self.logger.info("Converting addresses to dict. This make take some time...")
         address_list = list(df.to_dict(orient="index").values())
 
         # turn the list of dictionaries into a sql table
-        self.logger.info("Start writing table urls")
+        self.logger.info("Start writing table addresses")
         n_batch = int(len(address_list) / MAX_SQL_CHUNK) + 1
         if self.progressbar:
             wdg = PB_WIDGETS
-            wdg[-1] = progress_bar_message(0, n_comp)
+            wdg[-1] = progress_bar_message(0, self.n_company)
             progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
         else:
             progress = None
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
-                self.logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
+                self.logger.info("Address chunk nr {}/{}".format(cnt + 1, n_batch))
                 self.Address.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
@@ -1158,7 +1147,7 @@ class CompanyUrlMatch(object):
             self.company.url = web_match.url
             self.company.core_id = self.i_proc
             self.company.ranking = web_match.ranking
-            self.company.process_time = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
+            self.company.datetime = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
             if self.save:
                 self.company.save()
 
