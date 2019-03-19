@@ -204,7 +204,10 @@ def main(args_in):
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
     # this allows us to use the Pint conversion where MB or GB can be recognised. One flaw: in
     # Pint 1GB = 1000 MB = 1000000 kB. Normally this should be 1024 and 1024 * 1024, etc
-    max_cache_dir_size = Q_(max_cache_dir_size_str).to("B").magnitude
+    if max_cache_dir_size_str is not None:
+        max_cache_dir_size = Q_(max_cache_dir_size_str).to("B").magnitude
+    else:
+        max_cache_dir_size = None
 
     if args.database_type is not None:
         database_type = args.database_type
