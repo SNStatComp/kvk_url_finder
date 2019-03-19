@@ -21,4 +21,4 @@ tqdm
 progressbar2
 pint
 yamlloader
-
+line_profiler
