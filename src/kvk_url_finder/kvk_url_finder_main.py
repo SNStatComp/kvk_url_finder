@@ -38,7 +38,8 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from cbs_utils.misc import (create_logger, Chdir, make_directory)
+from cbs_utils.misc import (create_logger, Chdir, make_directory, merge_loggers)
+from cbs_utils import Q_
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.engine import KvKUrlParser
 from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
@@ -181,7 +182,7 @@ def setup_logging(write_log_to_file=False,
 
     # with this call we merge the settings of our logger with the logger in the cbs_utils logger
     # so we can control the output
-    # merge_loggers(_logger, "cbs_utils")
+    merge_loggers(_logger, "cbs_utils")
     # merge_loggers(_logger, "kvk_url_finder.engine")
 
     return _logger
@@ -200,6 +201,11 @@ def main(args_in):
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
     store_html_to_cache = general.get("store_html_to_cache", False)
+    max_cache_dir_size_str = general.get("max_cache_dir_size", None)
+    # this allows us to use the Pint conversion where MB or GB can be recognised. One flaw: in
+    # Pint 1GB = 1000 MB = 1000000 kB. Normally this should be 1024 and 1024 * 1024, etc
+    max_cache_dir_size = Q_(max_cache_dir_size_str).to("B").magnitude
+
     if args.database_type is not None:
         database_type = args.database_type
     else:
@@ -305,6 +311,7 @@ def main(args_in):
             database_name=database_name,
             database_type=database_type,
             store_html_to_cache=store_html_to_cache,
+            max_cache_dir_size=max_cache_dir_size,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             n_url_count_threshold=n_url_count_threshold,
@@ -376,6 +383,7 @@ def main(args_in):
                     kvk_sub_parser = KvKUrlParser(
                         database_name=database_name,
                         database_type=database_type,
+                        max_cache_dir_size=max_cache_dir_size,
                         store_html_to_cache=store_html_to_cache,
                         progressbar=args.progressbar,
                         kvk_range_process=kvk_range,

@@ -150,6 +150,7 @@ class KvKUrlParser(mp.Process):
                  database_name=None,
                  database_type=None,
                  store_html_to_cache=False,
+                 max_cache_dir_size=None,
                  user=None,
                  password=None,
                  address_input_file_name=None,
@@ -205,6 +206,7 @@ class KvKUrlParser(mp.Process):
 
         self.i_proc = i_proc
         self.store_html_to_cache = store_html_to_cache
+        self.max_cache_dir_size = max_cache_dir_size
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
@@ -540,7 +542,8 @@ class KvKUrlParser(mp.Process):
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
                                     i_proc=self.i_proc,
-                                    store_html_to_cache=self.store_html_to_cache
+                                    store_html_to_cache=self.store_html_to_cache,
+                                    max_cache_dir_size=self.max_cache_dir_size
                                     )
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
@@ -1094,6 +1097,7 @@ class CompanyUrlMatch(object):
                  save: bool = True,
                  i_proc=0,
                  store_html_to_cache: bool = False,
+                 max_cache_dir_size: int = None
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1116,6 +1120,7 @@ class CompanyUrlMatch(object):
                                   threshold_distance=distance_threshold,
                                   threshold_string_match=string_match_threshold,
                                   store_html_to_cache=store_html_to_cache,
+                                  max_cache_dir_size=max_cache_dir_size,
                                   save=self.save
                                   )
         self.find_match_for_company()
@@ -1165,6 +1170,7 @@ class UrlCollection(object):
                  impose_url: str = None,
                  scraper="bs4",
                  store_html_to_cache=False,
+                 max_cache_dir_size=None,
                  save=False
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1175,6 +1181,7 @@ class UrlCollection(object):
         assert scraper in SCRAPERS
 
         self.store_html_to_cache = store_html_to_cache
+        self.max_cache_dir_size = max_cache_dir_size
 
         self.kvk_nr = kvk_nr
         self.company = company
@@ -1237,7 +1244,8 @@ class UrlCollection(object):
                                                POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
                                                KVK_KEY: r"(\d{7,8})"
                                            },
-                                           store_page_to_cache=self.store_html_to_cache
+                                           store_page_to_cache=self.store_html_to_cache,
+                                           max_cache_dir_size=self.max_cache_dir_size
                                            )
             self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
