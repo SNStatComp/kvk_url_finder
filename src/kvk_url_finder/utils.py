@@ -1,16 +1,17 @@
 import logging
 import os
 import re
-from urllib.parse import urljoin
 
-import requests
-from bs4 import BeautifulSoup
-from requests.exceptions import (ConnectionError, ReadTimeout)
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-
-from cbs_utils.misc import get_page_from_url
 from kvk_url_finder import LOGGER_BASE_NAME
+logger = logging.getLevelName(LOGGER_BASE_NAME)
+
+try:
+    from selenium import webdriver
+except ModuleNotFoundError:
+    # we are not using it now anyway
+    pass
+else:
+    from selenium.webdriver.chrome.options import Options
 
 chrome_driver = os.environ.get("CHROMEDRIVER")
 options = Options()
