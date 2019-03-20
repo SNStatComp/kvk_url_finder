@@ -153,6 +153,7 @@ class KvKUrlParser(mp.Process):
                  max_cache_dir_size=None,
                  user=None,
                  password=None,
+                 hostname=None,
                  address_input_file_name=None,
                  url_input_file_name=None,
                  kvk_selection_input_file_name=None,
@@ -270,7 +271,7 @@ class KvKUrlParser(mp.Process):
         self.kvk_ranges = None
 
         self.database = init_database(database_name, database_type=database_type,
-                                      user=user, password=password)
+                                      user=user, password=password, host=hostname)
         tables = init_models(self.database, self.reset_database)
         self.Company = tables[0]
         self.Address = tables[1]

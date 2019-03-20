@@ -132,6 +132,8 @@ def _parse_the_command_line_arguments(args):
                         help="Username of the postgres database. By default use current user")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
+    parser.add_argument("--hostname", action="store",
+                        help="Name of the host. Leave empty on th cluster. Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
 
@@ -333,6 +335,7 @@ def main(args_in):
             maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
             log_level_file=args.log_level_file,
+            hostname=args.hostname,
             password=args.password,
             user=user
         )
