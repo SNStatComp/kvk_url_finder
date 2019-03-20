@@ -150,6 +150,7 @@ class KvKUrlParser(mp.Process):
                  database_name=None,
                  database_type=None,
                  store_html_to_cache=False,
+                 internet_scraping=True,
                  max_cache_dir_size=None,
                  user=None,
                  password=None,
@@ -208,6 +209,7 @@ class KvKUrlParser(mp.Process):
         self.i_proc = i_proc
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
+        self.internet_scraping = internet_scraping
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
@@ -544,7 +546,8 @@ class KvKUrlParser(mp.Process):
                                     string_match_threshold=self.threshold_string_match,
                                     i_proc=self.i_proc,
                                     store_html_to_cache=self.store_html_to_cache,
-                                    max_cache_dir_size=self.max_cache_dir_size
+                                    max_cache_dir_size=self.max_cache_dir_size,
+                                    internet_scraping=self.internet_scraping,
                                     )
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
@@ -1098,7 +1101,8 @@ class CompanyUrlMatch(object):
                  save: bool = True,
                  i_proc=0,
                  store_html_to_cache: bool = False,
-                 max_cache_dir_size: int = None
+                 max_cache_dir_size: int = None,
+                 internet_scraping: bool = True,
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1122,6 +1126,7 @@ class CompanyUrlMatch(object):
                                   threshold_string_match=string_match_threshold,
                                   store_html_to_cache=store_html_to_cache,
                                   max_cache_dir_size=max_cache_dir_size,
+                                  internet_scraping=internet_scraping,
                                   save=self.save
                                   )
         self.find_match_for_company()
@@ -1172,6 +1177,7 @@ class UrlCollection(object):
                  scraper="bs4",
                  store_html_to_cache=False,
                  max_cache_dir_size=None,
+                 internet_scraping: bool = True,
                  save=False
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1183,6 +1189,7 @@ class UrlCollection(object):
 
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
+        self.internet_scraping = internet_scraping
 
         self.kvk_nr = kvk_nr
         self.company = company
@@ -1235,38 +1242,44 @@ class UrlCollection(object):
         for i_web, web in enumerate(self.company_websites):
             # analyse the url
             url = web.url
-            web.getest = True
             web.naam = self.company_name
 
             # connect to the url and analyse the contents of a static page
-            self.logger.debug("Start Url Search : {}".format(url))
-            url_analyse = UrlSearchStrings(url,
-                                           search_strings={
-                                               POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
-                                               KVK_KEY: r"(\d{7,8})"
-                                           },
-                                           store_page_to_cache=self.store_html_to_cache,
-                                           max_cache_dir_size=self.max_cache_dir_size
-                                           )
-            self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
+            if self.internet_scraping:
+                self.logger.debug("Start Url Search : {}".format(url))
+                web.getest = True
+                url_analyse = UrlSearchStrings(url,
+                                               search_strings={
+                                                   POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
+                                                   KVK_KEY: r"(\d{7,8})"
+                                               },
+                                               store_page_to_cache=self.store_html_to_cache,
+                                               max_cache_dir_size=self.max_cache_dir_size
+                                               )
+                self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
-            self.logger.debug(url_analyse)
+                self.logger.debug(url_analyse)
 
-            if not url_analyse.exists:
-                self.logger.debug(f"url '{url}'' does not exist")
-                self.web_df.loc[i_web, EXISTS_KEY] = False
-                web.bestaat = False
-                continue
+                if not url_analyse.exists:
+                    self.logger.debug(f"url '{url}'' does not exist")
+                    self.web_df.loc[i_web, EXISTS_KEY] = False
+                    web.bestaat = False
+                    continue
+
+                for key, matches in url_analyse.matches.items():
+                    self.logger.debug("Found {}:{} in {}".format(key, matches, url))
+
+                postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
+                kvk_lijst = url_analyse.matches[KVK_KEY]
+            else:
+                self.logger.debug("Skipping Url Search : {}".format(url))
+                # if we did not scrape the internet, set the postcode_lijst eepty
+                postcode_lijst = list()
+                kvk_lijst = list()
 
             ranking = 0
-
-            postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
             postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-            kvk_lijst = url_analyse.matches[KVK_KEY]
             kvk_set = set([int(k) for k in kvk_lijst])
-
-            for key, matches in url_analyse.matches.items():
-                self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
             if self.postcodes.intersection(postcode_set):
                 self.logger.debug("Found matching post code. Adding to ranking")

@@ -42,7 +42,7 @@ from cbs_utils.misc import (create_logger, Chdir, make_directory, merge_loggers)
 from cbs_utils import Q_
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.engine import KvKUrlParser
-from kvk_url_finder.models import (MAX_PROCESSES, DATABASE_TYPES)
+from kvk_url_finder.models import DATABASE_TYPES
 
 try:
     from kvk_url_finder import __version__
@@ -203,6 +203,7 @@ def main(args_in):
     output_directory = general["output_directory"]
     database_name = general.get("database_name", "kvk_db")
     store_html_to_cache = general.get("store_html_to_cache", False)
+    internet_scraping = general.get("internet_scraping", True)
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
     # this allows us to use the Pint conversion where MB or GB can be recognised. One flaw: in
     # Pint 1GB = 1000 MB = 1000000 kB. Normally this should be 1024 and 1024 * 1024, etc
@@ -316,7 +317,6 @@ def main(args_in):
             database_name=database_name,
             database_type=database_type,
             store_html_to_cache=store_html_to_cache,
-            max_cache_dir_size=max_cache_dir_size,
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             n_url_count_threshold=n_url_count_threshold,
@@ -390,6 +390,7 @@ def main(args_in):
                         database_name=database_name,
                         database_type=database_type,
                         max_cache_dir_size=max_cache_dir_size,
+                        internet_scraping=internet_scraping,
                         store_html_to_cache=store_html_to_cache,
                         progressbar=args.progressbar,
                         kvk_range_process=kvk_range,
