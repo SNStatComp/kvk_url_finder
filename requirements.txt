@@ -15,7 +15,7 @@ peewee
 line_profiler
 yamlloader
 python-levenshtein
-bs4
+beautifulsoup4
 tldextract
 tqdm
 progressbar2
