@@ -1246,11 +1246,12 @@ class UrlCollection(object):
             # analyse the url
             url = web.url
             web.naam = self.company_name
+            web.bestaat = False
+            web.getest = False
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
                 self.logger.debug("Start Url Search : {}".format(url))
-                web.getest = True
                 url_analyse = UrlSearchStrings(url,
                                                search_strings={
                                                    POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
@@ -1260,15 +1261,17 @@ class UrlCollection(object):
                                                max_cache_dir_size=self.max_cache_dir_size
                                                )
                 self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
+                web.getest = True
 
                 self.logger.debug(url_analyse)
 
                 if not url_analyse.exists:
                     self.logger.debug(f"url '{url}'' does not exist")
                     self.web_df.loc[i_web, EXISTS_KEY] = False
-                    web.bestaat = False
                     continue
 
+                # if we are here, the web side is tested and exists
+                web.bestaat = True
                 for key, matches in url_analyse.matches.items():
                     self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
@@ -1321,7 +1324,6 @@ class UrlCollection(object):
             web.levenshtein = match.distance
             web.has_postcode = has_postcode
             web.has_kvk_nr = has_kvk_nummer
-            web.bestaat = True
 
             if self.save:
                 web.save()
@@ -1412,7 +1414,7 @@ class UrlStringMatch(object):
         self.string_match = None
 
         self.get_levenstein_distance()
-        self.get_string_match()
+        self.match = self.get_string_match()
 
     def get_levenstein_distance(self):
         """

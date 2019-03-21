@@ -196,7 +196,7 @@ def main(args_in):
     # with the global statement line we make sure to change the global variable at the top
     # when settin gup the logger
     with open(args.configuration_file, "r") as stream:
-        settings = yaml.load(stream=stream)
+        settings = yaml.load(stream=stream, Loader=yaml.FullLoader)
 
     general = settings["general"]
     working_directory = general["working_directory"][platform.system()]
