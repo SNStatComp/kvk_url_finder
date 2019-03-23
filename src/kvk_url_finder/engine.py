@@ -155,6 +155,7 @@ class KvKUrlParser(mp.Process):
                  max_cache_dir_size=None,
                  user=None,
                  password=None,
+                 hostname=None,
                  address_input_file_name=None,
                  url_input_file_name=None,
                  kvk_selection_input_file_name=None,
@@ -274,7 +275,7 @@ class KvKUrlParser(mp.Process):
         self.kvk_ranges = None
 
         self.database = init_database(database_name, database_type=database_type,
-                                      user=user, password=password)
+                                      user=user, password=password, host=hostname)
         tables = init_models(self.database, self.reset_database)
         self.UrlNL = tables[0]
         self.Company = tables[1]
@@ -467,7 +468,10 @@ class KvKUrlParser(mp.Process):
         self.addresses_df = pd.concat([self.addresses_df, new_kvk_name], axis=0, sort=True)
         self.addresses_df.sort_index(inplace=True)
         self.addresses_df.reset_index(inplace=True)
-        self.addresses_df.drop(["index"], axis=1, inplace=True)
+        try:
+            self.addresses_df.drop(["index"], axis=1, inplace=True)
+        except KeyError as err:
+            self.logger.info(err)
 
         n_after = self.addresses_df.index.size
         self.logger.info("Added {} kvk from url list to addresses".format(n_after - n_before))
