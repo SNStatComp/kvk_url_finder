@@ -151,6 +151,7 @@ class KvKUrlParser(mp.Process):
                  database_type=None,
                  store_html_to_cache=False,
                  internet_scraping=True,
+                 search_urls=False,
                  max_cache_dir_size=None,
                  user=None,
                  password=None,
@@ -209,6 +210,7 @@ class KvKUrlParser(mp.Process):
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
         self.internet_scraping = internet_scraping
+        self.search_urls = search_urls
 
         self.address_keys = address_keys
         self.kvk_url_keys = kvk_url_keys
@@ -274,9 +276,10 @@ class KvKUrlParser(mp.Process):
         self.database = init_database(database_name, database_type=database_type,
                                       user=user, password=password)
         tables = init_models(self.database, self.reset_database)
-        self.Company = tables[0]
-        self.Address = tables[1]
-        self.WebSite = tables[2]
+        self.UrlNL = tables[0]
+        self.Company = tables[1]
+        self.Address = tables[2]
+        self.WebSite = tables[3]
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -292,6 +295,7 @@ class KvKUrlParser(mp.Process):
         self.merge_data_base_kvks()
 
         self.company_kvks_to_sql()
+        self.url_nl_to_sql()
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
 
@@ -535,6 +539,9 @@ class KvKUrlParser(mp.Process):
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
             self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
+
+            if self.search_urls:
+                self.logger.info("Start a URL search for this company first")
 
             try:
                 # match the url with the name of the company
@@ -890,6 +897,8 @@ class KvKUrlParser(mp.Process):
             return
 
         self.kvk_df = self.addresses_df[[KVK_KEY, NAME_KEY]].drop_duplicates([KVK_KEY])
+        self.kvk_df.loc[:, URLNL_KEY] = None
+
         record_list = list(self.kvk_df.to_dict(orient="index").values())
         self.logger.info("Start writing table urls")
 
@@ -913,6 +922,100 @@ class KvKUrlParser(mp.Process):
         if progress:
             progress.finish()
         self.logger.debug("Done with company table")
+
+    def url_nl_to_sql(self):
+        """
+        Write all the unique urls to the sql
+        """
+        self.logger.info("Start writing UrlNL to mysql data base")
+        if self.url_df.index.size == 0:
+            self.logger.debug("Empty urls data frame. Nothing to write")
+            return
+
+        urls = self.url_df[[URL_KEY, KVK_KEY]].copy()
+        urls.loc[:, BESTAAT_KEY] = False
+        urls.loc[:, SUBDOMAIN_KEY] = None
+        urls.loc[:, DOMAIN_KEY] = None
+        urls.loc[:, SUFFIX_KEY] = None
+        urls.loc[:, ECOMMERCE] = False
+
+        urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
+        # count the number of kvks per url
+        n_kvk_per_url = urls.groupby(URL_KEY)[URL_KEY].count()
+
+        # add a company key to all url and then make a reference to all companies from the Company
+        # table
+        kvk_list = self.addresses_df[KVK_KEY].tolist()
+        self.company_vs_kvk = self.Company.select().order_by(self.Company.kvk_nummer)
+        self.n_company = self.company_vs_kvk.count()
+
+        kvk_comp_list = list()
+        for company in self.company_vs_kvk:
+            kvk_comp_list.append(int(company.kvk_nummer))
+        kvk_comp = set(kvk_comp_list)
+        kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
+
+        wdg = PB_WIDGETS
+        if self.progressbar:
+            wdg[-1] = progress_bar_message(0, self.n_company)
+            progress = pb.ProgressBar(widgets=wdg, maxval=self.n_company, fd=sys.stdout).start()
+        else:
+            progress = None
+
+        company_list = list()
+        for counter, company in enumerate(self.company_vs_kvk):
+            kvk_nr = int(company.kvk_nummer)
+            # we need to check if this kvk is in de address list  still
+            if kvk_nr in kvk_not_in_addresses:
+                self.logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
+                continue
+
+            try:
+                n_url = n_kvk_per_url.loc[kvk_nr]
+            except KeyError:
+                continue
+
+            # add the company number of url time to the list
+            company_list.extend([company] * n_url)
+
+            if progress:
+                wdg[-1] = progress_bar_message(counter, self.n_company, kvk_nr, company.naam)
+                progress.update(counter)
+            if counter % MAX_SQL_CHUNK == 0:
+                self.logger.info(" Added {} / {}".format(counter, self.n_company))
+        if progress:
+            progress.finish()
+
+        urls[COMPANY_KEY] = company_list
+
+        # in case there is a None at a row, remove it (as there is not company found)
+        urls.dropna(axis=0, inplace=True)
+
+        record_list = list(urls.to_dict(orient="index").values())
+        self.logger.info("Start writing table urls")
+
+        n_batch = int(len(record_list) / MAX_SQL_CHUNK) + 1
+        wdg = PB_WIDGETS
+        if self.progressbar:
+            wdg[-1] = progress_bar_message(0, n_batch)
+            progress = pb.ProgressBar(widgets=wdg, maxval=n_batch, fd=sys.stdout).start()
+        else:
+            progress = None
+
+        with self.database.atomic():
+            for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
+                self.logger.info("UrlNL chunk nr {}/{}".format(cnt + 1, n_batch))
+                self.UrlNL.insert_many(batch).execute()
+                if progress:
+                    wdg[-1] = progress_bar_message(cnt, n_batch)
+                    progress.update(cnt)
+                    sys.stdout.flush()
+
+        if progress:
+            progress.finish()
+        self.logger.debug("Done with company table")
+
+    # @profile
 
     # @profile
     def urls_per_kvk_to_sql(self):
@@ -947,7 +1050,7 @@ class KvKUrlParser(mp.Process):
         kvk_comp = set(kvk_comp_list)
         kvk_not_in_addresses = set(kvk_list).difference(kvk_comp)
 
-        # in case the is one kvk not in the address data base, something is wrong,
+        # in case there is one kvk not in the address data base, something is wrong,
         # as we took care of that in the merge_database routine
         assert not kvk_not_in_addresses
 
