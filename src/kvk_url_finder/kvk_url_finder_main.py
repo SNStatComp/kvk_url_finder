@@ -204,6 +204,7 @@ def main(args_in):
     database_name = general.get("database_name", "kvk_db")
     store_html_to_cache = general.get("store_html_to_cache", False)
     internet_scraping = general.get("internet_scraping", True)
+    search_urls = general.get("search_urls", False)
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
     # this allows us to use the Pint conversion where MB or GB can be recognised. One flaw: in
     # Pint 1GB = 1000 MB = 1000000 kB. Normally this should be 1024 and 1024 * 1024, etc
@@ -390,6 +391,7 @@ def main(args_in):
                         database_name=database_name,
                         database_type=database_type,
                         max_cache_dir_size=max_cache_dir_size,
+                        search_urls=search_urls,
                         internet_scraping=internet_scraping,
                         store_html_to_cache=store_html_to_cache,
                         progressbar=args.progressbar,
@@ -439,7 +441,7 @@ def main(args_in):
                             logger.debug("NoMore: {} : {}".format(ip, process.pid))
 
             logger.info("Goodbye!")
-            logger.debug("Realy:-)")
+            logger.debug("Really:-)")
 
 
 def _run():

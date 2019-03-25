@@ -6,6 +6,7 @@ from playhouse.pool import (PooledPostgresqlExtDatabase)
 KVK_KEY = "kvk_nummer"
 NAME_KEY = "naam"
 URL_KEY = "url"
+URLNL_KEY = "url_nl"
 ADDRESS_KEY = "straat"
 POSTAL_CODE_KEY = "postcode"
 CITY_KEY = "plaats"
@@ -16,10 +17,12 @@ STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
 
+BESTAAT_KEY = "bestaat"
 EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
 HAS_POSTCODE_KEY = "has_postcode"
 HAS_KVK_NR = "has_kvk_nr"
+ECOMMERCE = "ecommerce"
 SUBDOMAIN_KEY = "subdomain"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
@@ -70,11 +73,21 @@ def init_models(db, reset_tables=False):
             database = db
             only_save_dirty = True
 
+    class UrlNL(BaseModel):
+        url = pw.CharField(primary_key=True)
+        bestaat = pw.BooleanField(default=False)
+        subdomain = pw.CharField(null=True)
+        domain = pw.CharField(null=True)
+        suffix = pw.CharField(null=True)
+        kvk_nummer = pw.IntegerField(default=-1)
+        ecommerce = pw.BooleanField(default=False)
+
     # this class describes the format of the sql data base
     class Company(BaseModel):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
         url = pw.CharField(null=True)
+        url_nl = pw.ForeignKeyField(UrlNL, backref="company", null=True)
         ranking = pw.IntegerField(default=-1)
         core_id = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
         datetime = pw.DateTimeField(null=True)  # the process time
@@ -101,7 +114,7 @@ def init_models(db, reset_tables=False):
         ranking = pw.IntegerField(default=-1)
         bestaat = pw.BooleanField(default=False)
 
-    tables = (Company, Address, WebSite)
+    tables = (UrlNL, Company, Address, WebSite)
 
     if db.is_closed():
         db.connect()
