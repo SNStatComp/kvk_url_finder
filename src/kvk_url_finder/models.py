@@ -18,6 +18,7 @@ STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
 
+GETEST_KEY = "getest"
 BESTAAT_KEY = "bestaat"
 EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
@@ -75,26 +76,31 @@ def init_models(db, reset_tables=False):
             database = db
             only_save_dirty = True
 
-    class UrlNL(BaseModel):
-        url = pw.CharField(primary_key=True)
-        bestaat = pw.BooleanField(default=False)
-        datetime = pw.DateTimeField(null=True)  # the process time
-        subdomain = pw.CharField(null=True)
-        domain = pw.CharField(null=True)
-        suffix = pw.CharField(null=True)
-        kvk_nummer = pw.IntegerField(default=-1)
-        btw_nummer = pw.IntegerField(default=-1)
-        category = pw.IntegerField(default=-1)
-
     # this class describes the format of the sql data base
     class Company(BaseModel):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
-        url = pw.CharField(null=True)
-        url_nl = pw.ForeignKeyField(UrlNL, backref="company", null=True)
         ranking = pw.IntegerField(default=-1)
         core_id = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
         datetime = pw.DateTimeField(null=True)  # the process time
+
+    class UrlNL(BaseModel):
+        """
+        Tabel met unieke url's. Een URL kan nul of hooguit 1 kvk nummer hebben, omdat hooguit 1 bedrijf eigenaar
+        van een url kan zijn. Dit is het verschil met de WebSite tabel, waarbij iedere url meerdere kvk's kan hebben
+        omdat dat alleen de kvk zijn die op de site voorkomen, maar niet perse de eigenaars van de site
+        """
+        url = pw.CharField(null=True)
+        getest = pw.BooleanField(default=False)
+        bestaat = pw.BooleanField(default=False)
+        kvk_nummer = pw.IntegerField(default=-1)
+        btw_nummer = pw.IntegerField(default=-1)
+        datetime = pw.DateTimeField(null=True)  # the process time
+        subdomain = pw.CharField(null=True)
+        domain = pw.CharField(null=True)
+        suffix = pw.CharField(null=True)
+        category = pw.IntegerField(default=-1)
+        ecommerce = pw.IntegerField(default=-1)
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
