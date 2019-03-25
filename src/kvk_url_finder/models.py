@@ -92,11 +92,13 @@ def init_models(db, reset_tables=False):
 
     class UrlNL(BaseModel):
         """
-        Tabel met unieke url's. Een URL kan nul of hooguit 1 kvk nummer hebben, omdat hooguit 1 bedrijf eigenaar
-        van een url kan zijn. Dit is het verschil met de WebSite tabel, waarbij iedere url meerdere kvk's kan hebben
-        omdat dat alleen de kvk zijn die op de site voorkomen, maar niet perse de eigenaars van de site
+        Tabel met unieke url's. Een URL kan nul of hooguit 1 kvk nummer hebben, omdat hooguit 1
+        bedrijf eigenaar van een url kan zijn. Dit is het verschil met de WebSite tabel, waarbij
+        iedere url meerdere kvk's kan hebben omdat dat alleen de kvk zijn die op de site voorkomen,
+        maar niet perse de eigenaars van de site.
         """
-        url = pw.CharField(null=True)
+        # maak url unique, maar gebruik geen primary key voor de url. Dat is minder efficient
+        url = pw.CharField(null=True, unique=True)
         bestaat = pw.BooleanField(default=False)
         kvk_nummer = pw.IntegerField(default=-1)
         btw_nummer = pw.IntegerField(default=-1)
