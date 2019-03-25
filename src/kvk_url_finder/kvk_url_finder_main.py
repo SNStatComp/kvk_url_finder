@@ -34,6 +34,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import datetime
+import dateutil
+import pytz
+import pytimeparse
 
 import pandas as pd
 import yaml
@@ -133,7 +137,8 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
     parser.add_argument("--hostname", action="store",
-                        help="Name of the host. Leave empty on th cluster. Or set localhost at your own machine")
+                        help="Name of the host. Leave empty on th cluster. "
+                             "Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
 
@@ -206,6 +211,14 @@ def main(args_in):
     internet_scraping = general.get("internet_scraping", True)
     search_urls = general.get("search_urls", False)
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
+    older_time_str = general.get("older_time", None)
+    if older_time_str:
+        # use pytimeparse to allow general string notition of delta time, 1 h, 3 days, etc
+        older_time_in_secs = pytimeparse.parse(older_time_str)
+        older_time = datetime.timedelta(seconds=older_time_in_secs)
+    else:
+        older_time = None
+
     # this allows us to use the Pint conversion where MB or GB can be recognised. One flaw: in
     # Pint 1GB = 1000 MB = 1000000 kB. Normally this should be 1024 and 1024 * 1024, etc
     if max_cache_dir_size_str is not None:
@@ -338,7 +351,8 @@ def main(args_in):
             log_level_file=args.log_level_file,
             hostname=args.hostname,
             password=args.password,
-            user=user
+            user=user,
+            older_time=older_time
         )
 
         if args.dumpdb:
@@ -408,6 +422,8 @@ def main(args_in):
                         singlebar=args.singlebar,
                         password=args.password,
                         user=user,
+                        hostname=args.hostname,
+                        older_time=older_time
                     )
 
                     if args.n_processes > 1:

@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 
 import peewee as pw
 from playhouse.pool import (PooledPostgresqlExtDatabase)
@@ -50,12 +51,16 @@ PRAGMAS = {
 }
 DATABASE_TYPES = ("sqlite", "postgres")
 
+logger = logging.getLogger(__name__)
+
 
 def init_database(database_name: Path,
                   database_type="postgres", user="postgres",
                   password=None, host="localhost", port=5432):
     assert database_type in DATABASE_TYPES
     if database_type == "postgres":
+        logger.debug(f"Opening postgres database {database_name}\n"
+                     f"user={user}; host={host} port={port}")
         db = PooledPostgresqlExtDatabase(
             database_name, user=user, host=host, port=port, password=password,
             max_connections=MAX_PROCESSES, stale_timeout=300)
@@ -91,7 +96,6 @@ def init_models(db, reset_tables=False):
         omdat dat alleen de kvk zijn die op de site voorkomen, maar niet perse de eigenaars van de site
         """
         url = pw.CharField(null=True)
-        getest = pw.BooleanField(default=False)
         bestaat = pw.BooleanField(default=False)
         kvk_nummer = pw.IntegerField(default=-1)
         btw_nummer = pw.IntegerField(default=-1)

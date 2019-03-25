@@ -1,4 +1,3 @@
-import math
 import datetime
 import pytz
 import difflib
@@ -181,6 +180,7 @@ class KvKUrlParser(mp.Process):
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
+                 older_time: datetime.timedelta = None
                  ):
 
         # launch the process
@@ -217,6 +217,7 @@ class KvKUrlParser(mp.Process):
         self.kvk_url_keys = kvk_url_keys
 
         self.save = save
+        self.older_time = older_time
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -278,9 +279,9 @@ class KvKUrlParser(mp.Process):
                                       user=user, password=password, host=hostname)
         tables = init_models(self.database, self.reset_database)
         self.UrlNL = tables[0]
-        self.Company = tables[1]
-        self.Address = tables[2]
-        self.WebSite = tables[3]
+        self.company = tables[1]
+        self.address = tables[2]
+        self.website = tables[3]
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -304,8 +305,8 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.Company.select(self.Company.kvk_nummer, self.Company.core_id)
-                 .order_by(self.Company.kvk_nummer))
+        query = (self.company.select(self.company.kvk_nummer, self.company.core_id)
+                 .order_by(self.company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -371,7 +372,7 @@ class KvKUrlParser(mp.Process):
 
         outfile = Path(outfile_base + "_merged" + outfile_ext)
 
-        query = self.Company.select()
+        query = self.company.select()
         df_sql = pd.DataFrame(list(query.dicts()))
         df_sql.set_index(KVK_KEY, inplace=True)
 
@@ -409,7 +410,7 @@ class KvKUrlParser(mp.Process):
         export_file = Path(file_name)
         if export_file.suffix in (".xls", ".xlsx"):
             with pd.ExcelWriter(file_name) as writer:
-                for cnt, table in enumerate([self.Company, self.Address, self.WebSite]):
+                for cnt, table in enumerate([self.company, self.address, self.website]):
                     query = table.select()
                     df = pd.DataFrame(list(query.dicts()))
                     try:
@@ -420,7 +421,7 @@ class KvKUrlParser(mp.Process):
                     self.logger.info(f"Appending sheet {sheetname}")
                     df.to_excel(writer, sheet_name=sheetname)
         elif export_file.suffix in (".csv"):
-            for cnt, table in enumerate([self.Company, self.Address, self.WebSite]):
+            for cnt, table in enumerate([self.company, self.address, self.website]):
                 this_name = export_file.stem + "_" + table.__name__.lower() + ".csv"
                 query = table.select()
                 df = pd.DataFrame(list(query.dicts()))
@@ -489,25 +490,25 @@ class KvKUrlParser(mp.Process):
         if start is not None or stop is not None:
             if start is None:
                 self.logger.info("Make query from start until stop {}".format(stop))
-                query = (self.Company
-                         .select().where(self.Company.kvk_nummer <= stop)
-                         .prefetch(self.WebSite, self.Address))
+                query = (self.company
+                         .select().where(self.company.kvk_nummer <= stop)
+                         .prefetch(self.website, self.address))
             elif stop is None:
                 self.logger.info("Make query from start {} until end".format(start))
-                query = (self.Company
-                         .select().where(self.Company.kvk_nummer >= start)
-                         .prefetch(self.WebSite, self.Address))
+                query = (self.company
+                         .select().where(self.company.kvk_nummer >= start)
+                         .prefetch(self.website, self.address))
             else:
                 self.logger.info("Make query from start {} until stop {}".format(start, stop))
-                query = (self.Company
+                query = (self.company
                          .select()
-                         .where(self.Company.kvk_nummer.between(start, stop))
-                         .prefetch(self.WebSite, self.Address))
+                         .where(self.company.kvk_nummer.between(start, stop))
+                         .prefetch(self.website, self.address))
                 self.logger.info("Done!")
         else:
             self.logger.info("Make query without selecting in the kvk range")
-            query = (self.Company.select()
-                     .prefetch(self.WebSite, self.Address))
+            query = (self.company.select()
+                     .prefetch(self.website, self.address))
 
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
@@ -558,7 +559,10 @@ class KvKUrlParser(mp.Process):
                                     store_html_to_cache=self.store_html_to_cache,
                                     max_cache_dir_size=self.max_cache_dir_size,
                                     internet_scraping=self.internet_scraping,
+                                    url_nl=self.UrlNL,
+                                    older_time=self.older_time
                                     )
+
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
@@ -750,7 +754,7 @@ class KvKUrlParser(mp.Process):
         we wrote to the data base. This means that we can increase n. This is taken care of here
         """
         # get the last kvk number of the website list
-        last_website = self.WebSite.select().order_by(self.WebSite.company_id.desc()).get()
+        last_website = self.website.select().order_by(self.website.company_id.desc()).get()
         kvk_last = int(last_website.company.kvk_nummer)
 
         try:
@@ -802,7 +806,7 @@ class KvKUrlParser(mp.Process):
 
         nr = self.addresses_df.index.size
         self.logger.info("Removing duplicated kvk entries")
-        query = self.Company.select()
+        query = self.company.select()
         kvk_list = list()
         try:
             for company in query:
@@ -843,9 +847,9 @@ class KvKUrlParser(mp.Process):
         kvk_list = list()
         url_list = list()
         name_list = list()
-        query = (self.Company
+        query = (self.company
                  .select()
-                 .prefetch(self.WebSite)
+                 .prefetch(self.website)
                  )
         for cnt, company in enumerate(query):
             kvk_nr = company.kvk_nummer
@@ -875,7 +879,7 @@ class KvKUrlParser(mp.Process):
         self.logger.debug("Getting all  companies in Company table")
         kvk_list = list()
         name_list = list()
-        for company in self.Company.select():
+        for company in self.company.select():
             kvk_list.append(int(company.kvk_nummer))
             name_list.append(company.naam)
         companies_in_db = pd.DataFrame(data=list(zip(kvk_list, name_list)),
@@ -917,7 +921,7 @@ class KvKUrlParser(mp.Process):
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(record_list, MAX_SQL_CHUNK)):
                 self.logger.info("Company chunk nr {}/{}".format(cnt + 1, n_batch))
-                self.Company.insert_many(batch).execute()
+                self.company.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
@@ -937,7 +941,6 @@ class KvKUrlParser(mp.Process):
             return
 
         urls: pd.DataFrame = self.url_df[[URL_KEY, KVK_KEY]].copy()
-        urls.loc[:, GETEST_KEY] = False
         urls.loc[:, BESTAAT_KEY] = False
         urls.loc[:, BTW_KEY] = -1
         urls.loc[:, KVK_KEY] = -1
@@ -1001,7 +1004,7 @@ class KvKUrlParser(mp.Process):
         # add a company key to all url and then make a reference to all companies from the Company
         # table
         kvk_list = self.addresses_df[KVK_KEY].tolist()
-        self.company_vs_kvk = self.Company.select().order_by(self.Company.kvk_nummer)
+        self.company_vs_kvk = self.company.select().order_by(self.company.kvk_nummer)
         self.n_company = self.company_vs_kvk.count()
 
         kvk_comp_list = list()
@@ -1068,7 +1071,7 @@ class KvKUrlParser(mp.Process):
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(url_list, MAX_SQL_CHUNK)):
                 self.logger.info("URL chunk nr {}/{}".format(cnt + 1, n_batch))
-                self.WebSite.insert_many(batch).execute()
+                self.website.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
@@ -1142,7 +1145,7 @@ class KvKUrlParser(mp.Process):
         with self.database.atomic():
             for cnt, batch in enumerate(pw.chunked(address_list, MAX_SQL_CHUNK)):
                 self.logger.info("Address chunk nr {}/{}".format(cnt + 1, n_batch))
-                self.Address.insert_many(batch).execute()
+                self.address.insert_many(batch).execute()
                 if progress:
                     wdg[-1] = progress_bar_message(cnt, n_batch)
                     progress.update(cnt)
@@ -1165,12 +1168,16 @@ class CompanyUrlMatch(object):
                  store_html_to_cache: bool = False,
                  max_cache_dir_size: int = None,
                  internet_scraping: bool = True,
+                 url_nl=None,
+                 older_time: datetime.timedelta = None
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Company match in debug mode")
         self.save = save
         self.i_proc = i_proc
+        self.url_nl = url_nl
+        self.older_time = older_time
 
         self.kvk_nr = company.kvk_nummer
         self.company_name: str = company.naam
@@ -1189,7 +1196,9 @@ class CompanyUrlMatch(object):
                                   store_html_to_cache=store_html_to_cache,
                                   max_cache_dir_size=max_cache_dir_size,
                                   internet_scraping=internet_scraping,
-                                  save=self.save
+                                  save=self.save,
+                                  url_nl=self.url_nl,
+                                  older_time=self.older_time,
                                   )
         self.find_match_for_company()
 
@@ -1220,7 +1229,7 @@ class CompanyUrlMatch(object):
             self.company.url = web_match.url
             self.company.core_id = self.i_proc
             self.company.ranking = web_match.ranking
-            self.company.datetime = datetime.datetime.now(pytz.timezone("Europe/Amsterdam"))
+            self.company.datetime = datetime.datetime.now()
             if self.save:
                 self.company.save()
 
@@ -1230,7 +1239,8 @@ class UrlCollection(object):
     Analyses all url of one single company
     """
 
-    def __init__(self, company,
+    def __init__(self,
+                 company,
                  company_name: str,
                  kvk_nr: int,
                  threshold_distance: int = 10,
@@ -1240,12 +1250,16 @@ class UrlCollection(object):
                  store_html_to_cache=False,
                  max_cache_dir_size=None,
                  internet_scraping: bool = True,
-                 save=False
+                 save: bool = False,
+                 url_nl: bool = None,
+                 older_time: datetime.timedelta = None,
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
 
         self.save = save
+        self.url_nl = url_nl
+        self.older_time = older_time
 
         assert scraper in SCRAPERS
 
@@ -1302,8 +1316,37 @@ class UrlCollection(object):
         max_sequence_match = None
         index_string_match = index_distance = None
         for i_web, web in enumerate(self.company_websites):
-            # analyse the url
+            # get the url first from the websites table which list all the urls belonging to
+            # one kvk search
             url = web.url
+
+            # now also get the url from the unique url_nl table, with only one url
+            try:
+                url_nl = self.url_nl.get(self.url_nl.url == url)
+            except self.url_nl.DoesNotExist:
+                url_nl = None
+                logger.debug("not found in UrlNL in table {} ".format(url))
+            else:
+                logger.debug("found in UrlNL in table {} ".format(url_nl.url))
+
+            now = datetime.datetime.now()
+            if url_nl:
+                processing_time = url_nl.datetime
+                logger.debug("processing time {} ".format(processing_time))
+                if processing_time and self.older_time:
+                    delta_time = now - processing_time
+                    logger.debug(f"Processed with delta time {delta_time}")
+                    if delta_time < self.older_time:
+                        logger.debug(f"Less than {self.older_time}. Skipping")
+                        continue
+                    else:
+                        logger.debug(f"File was processed more than {self.older_time} ago. Do it")
+
+                else:
+                    # we are not skipping this file and we have a url_nl reference. Store the
+                    # current processing time
+                    url_nl.datetime = now
+
             web.naam = self.company_name
             web.bestaat = False
             web.getest = False
@@ -1386,6 +1429,8 @@ class UrlCollection(object):
 
             if self.save:
                 web.save()
+                if url_nl:
+                    url_nl.save()
 
             if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
