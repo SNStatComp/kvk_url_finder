@@ -76,11 +76,13 @@ def init_models(db, reset_tables=False):
     class UrlNL(BaseModel):
         url = pw.CharField(primary_key=True)
         bestaat = pw.BooleanField(default=False)
+        datetime = pw.DateTimeField(null=True)  # the process time
         subdomain = pw.CharField(null=True)
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
         kvk_nummer = pw.IntegerField(default=-1)
-        ecommerce = pw.BooleanField(default=False)
+        btw_nummer = pw.IntegerField(default=-1)
+        category = pw.IntegerField(default=-1)
 
     # this class describes the format of the sql data base
     class Company(BaseModel):
