@@ -180,7 +180,8 @@ class KvKUrlParser(mp.Process):
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
-                 older_time: datetime.timedelta = None
+                 older_time: datetime.timedelta = None,
+                 timezone: pytz.timezone = 'Europe/Amsterdam'
                  ):
 
         # launch the process
@@ -218,6 +219,7 @@ class KvKUrlParser(mp.Process):
 
         self.save = save
         self.older_time = older_time
+        self.timezone = timezone
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -277,6 +279,7 @@ class KvKUrlParser(mp.Process):
 
         self.database = init_database(database_name, database_type=database_type,
                                       user=user, password=password, host=hostname)
+        self.database.execute_sql("SET TIME ZONE '{}'".format(self.timezone))
         tables = init_models(self.database, self.reset_database)
         self.UrlNL = tables[0]
         self.company = tables[1]
@@ -560,7 +563,8 @@ class KvKUrlParser(mp.Process):
                                     max_cache_dir_size=self.max_cache_dir_size,
                                     internet_scraping=self.internet_scraping,
                                     url_nl=self.UrlNL,
-                                    older_time=self.older_time
+                                    older_time=self.older_time,
+                                    timezone=self.timezone
                                     )
 
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
@@ -1169,7 +1173,8 @@ class CompanyUrlMatch(object):
                  max_cache_dir_size: int = None,
                  internet_scraping: bool = True,
                  url_nl=None,
-                 older_time: datetime.timedelta = None
+                 older_time: datetime.timedelta = None,
+                 timezone=None
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1178,6 +1183,7 @@ class CompanyUrlMatch(object):
         self.i_proc = i_proc
         self.url_nl = url_nl
         self.older_time = older_time
+        self.timezone = timezone
 
         self.kvk_nr = company.kvk_nummer
         self.company_name: str = company.naam
@@ -1229,7 +1235,7 @@ class CompanyUrlMatch(object):
             self.company.url = web_match.url
             self.company.core_id = self.i_proc
             self.company.ranking = web_match.ranking
-            self.company.datetime = datetime.datetime.now()
+            self.company.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
             if self.save:
                 self.company.save()
 

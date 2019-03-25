@@ -3,6 +3,7 @@ import logging
 
 import peewee as pw
 from playhouse.pool import (PooledPostgresqlExtDatabase)
+from playhouse.postgres_ext import DateTimeTZField
 
 KVK_KEY = "kvk_nummer"
 BTW_KEY = "btw_nummer"
@@ -87,7 +88,7 @@ def init_models(db, reset_tables=False):
         naam = pw.CharField(null=True)
         ranking = pw.IntegerField(default=-1)
         core_id = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
-        datetime = pw.DateTimeField(null=True)  # the process time
+        datetime = DateTimeTZField(null=True)  # the process time
 
     class UrlNL(BaseModel):
         """
@@ -99,7 +100,7 @@ def init_models(db, reset_tables=False):
         bestaat = pw.BooleanField(default=False)
         kvk_nummer = pw.IntegerField(default=-1)
         btw_nummer = pw.IntegerField(default=-1)
-        datetime = pw.DateTimeField(null=True)  # the process time
+        datetime = DateTimeTZField(null=True)  # the process time
         subdomain = pw.CharField(null=True)
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
