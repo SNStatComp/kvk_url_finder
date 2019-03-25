@@ -936,7 +936,8 @@ class KvKUrlParser(mp.Process):
             self.logger.debug("Empty urls data frame. Nothing to write")
             return
 
-        urls = self.url_df[[URL_KEY, KVK_KEY]].copy()
+        urls: pd.DataFrame = self.url_df[[URL_KEY, KVK_KEY]].copy()
+        urls.loc[:, BTW_KEY] = False
         urls.loc[:, BESTAAT_KEY] = False
         urls.loc[:, SUBDOMAIN_KEY] = None
         urls.loc[:, DOMAIN_KEY] = None
@@ -946,6 +947,9 @@ class KvKUrlParser(mp.Process):
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
         # count the number of kvks per url
         n_kvk_per_url = urls.groupby(URL_KEY)[URL_KEY].count()
+
+        urls.drop_duplicates([URL_KEY], inplace=True)
+        n_urls = urls.index.size
 
         # add a company key to all url and then make a reference to all companies from the Company
         # table
@@ -961,32 +965,23 @@ class KvKUrlParser(mp.Process):
 
         wdg = PB_WIDGETS
         if self.progressbar:
-            wdg[-1] = progress_bar_message(0, self.n_company)
+            wdg[-1] = progress_bar_message(0, n_urls)
             progress = pb.ProgressBar(widgets=wdg, maxval=self.n_company, fd=sys.stdout).start()
         else:
             progress = None
 
         company_list = list()
-        for counter, company in enumerate(self.company_vs_kvk):
-            kvk_nr = int(company.kvk_nummer)
-            # we need to check if this kvk is in de address list  still
-            if kvk_nr in kvk_not_in_addresses:
-                self.logger.debug(f"Skipping kvk {kvk_nr} as it is not in the addresses")
-                continue
+        for counter, (url, row) in enumerate(urls.iterrows()):
+            kvk_nr = int(row[KVK_KEY])
 
-            try:
-                n_url = n_kvk_per_url.loc[kvk_nr]
-            except KeyError:
-                continue
-
-            # add the company number of url time to the list
-            company_list.extend([company] * n_url)
+            company = self.Company.select(self.Company.kvk_nummer == kvk_nr)
+            company_list.append(company)
 
             if progress:
                 wdg[-1] = progress_bar_message(counter, self.n_company, kvk_nr, company.naam)
                 progress.update(counter)
             if counter % MAX_SQL_CHUNK == 0:
-                self.logger.info(" Added {} / {}".format(counter, self.n_company))
+                self.logger.info(" Added {} / {}".format(counter, n_urls))
         if progress:
             progress.finish()
 
@@ -995,6 +990,7 @@ class KvKUrlParser(mp.Process):
         # in case there is a None at a row, remove it (as there is not company found)
         urls.dropna(axis=0, inplace=True)
 
+        self.logger.info("Convert url dataframe to to list of dicts. This may take some time... ")
         record_list = list(urls.to_dict(orient="index").values())
         self.logger.info("Start writing table urls")
 

@@ -4,6 +4,7 @@ import peewee as pw
 from playhouse.pool import (PooledPostgresqlExtDatabase)
 
 KVK_KEY = "kvk_nummer"
+BTW_KEY = "btw_nummer"
 NAME_KEY = "naam"
 URL_KEY = "url"
 URLNL_KEY = "url_nl"
@@ -26,6 +27,7 @@ ECOMMERCE = "ecommerce"
 SUBDOMAIN_KEY = "subdomain"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
+CATEGORY_KEY = "category"
 
 WEB_DF_COLS = [URL_KEY,
                EXISTS_KEY,
