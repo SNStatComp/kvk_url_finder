@@ -939,12 +939,12 @@ class KvKUrlParser(mp.Process):
         urls: pd.DataFrame = self.url_df[[URL_KEY, KVK_KEY]].copy()
         urls.loc[:, GETEST_KEY] = False
         urls.loc[:, BESTAAT_KEY] = False
-        urls.loc[:, BTW_KEY] = None
+        urls.loc[:, BTW_KEY] = -1
+        urls.loc[:, KVK_KEY] = -1
         urls.loc[:, SUBDOMAIN_KEY] = None
         urls.loc[:, DOMAIN_KEY] = None
         urls.loc[:, SUFFIX_KEY] = None
         urls.loc[:, ECOMMERCE] = False
-        urls.loc[:, BTW_KEY] = False
 
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
 
