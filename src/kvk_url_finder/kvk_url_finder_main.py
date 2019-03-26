@@ -189,7 +189,7 @@ def setup_logging(write_log_to_file=False,
 
     # with this call we merge the settings of our logger with the logger in the cbs_utils logger
     # so we can control the output
-    merge_loggers(_logger, "cbs_utils")
+    merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level)
     # merge_loggers(_logger, "kvk_url_finder.engine")
 
     return _logger

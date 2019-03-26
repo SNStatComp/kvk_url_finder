@@ -17,7 +17,7 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from cbs_utils.web_scraping import UrlSearchStrings
+from cbs_utils.web_scraping import UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP
 
 try:
     from kvk_url_finder import __version__
@@ -1205,6 +1205,7 @@ class CompanyUrlMatch(object):
                                   save=self.save,
                                   url_nl=self.url_nl,
                                   older_time=self.older_time,
+                                  timezone=self.timezone,
                                   )
         self.find_match_for_company()
 
@@ -1259,6 +1260,7 @@ class UrlCollection(object):
                  save: bool = False,
                  url_nl: bool = None,
                  older_time: datetime.timedelta = None,
+                 timezone: pytz.timezone = None,
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
@@ -1266,6 +1268,7 @@ class UrlCollection(object):
         self.save = save
         self.url_nl = url_nl
         self.older_time = older_time
+        self.timezone = timezone
 
         assert scraper in SCRAPERS
 
@@ -1335,7 +1338,7 @@ class UrlCollection(object):
             else:
                 logger.debug("found in UrlNL in table {} ".format(url_nl.url))
 
-            now = datetime.datetime.now()
+            now = datetime.datetime.now(pytz.timezone(self.timezone))
             if url_nl:
                 processing_time = url_nl.datetime
                 logger.debug("processing time {} ".format(processing_time))
@@ -1362,8 +1365,9 @@ class UrlCollection(object):
                 self.logger.debug("Start Url Search : {}".format(url))
                 url_analyse = UrlSearchStrings(url,
                                                search_strings={
-                                                   POSTAL_CODE_KEY: r"\d{4}\s{0,1}[a-zA-Z]{2}",
-                                                   KVK_KEY: r"(\d{7,8})"
+                                                   POSTAL_CODE_KEY: ZIP_REGEXP,
+                                                   KVK_KEY: KVK_REGEXP,
+                                                   BTW_KEY: BTW_REGEXP
                                                },
                                                store_page_to_cache=self.store_html_to_cache,
                                                max_cache_dir_size=self.max_cache_dir_size
@@ -1380,11 +1384,13 @@ class UrlCollection(object):
 
                 # if we are here, the web side is tested and exists
                 web.bestaat = True
+                url_nl.bestaat = True
                 for key, matches in url_analyse.matches.items():
                     self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
                 postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
                 kvk_lijst = url_analyse.matches[KVK_KEY]
+                btw_lijst = url_analyse.matches[BTW_KEY]
             else:
                 self.logger.debug("Skipping Url Search : {}".format(url))
                 # if we did not scrape the internet, set the postcode_lijst eepty
@@ -1393,7 +1399,8 @@ class UrlCollection(object):
 
             ranking = 0
             postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-            kvk_set = set([int(k) for k in kvk_lijst])
+            kvk_set = set([int(kvk) for kvk in kvk_lijst])
+            btw_set = set([int(btw) for btw in btw_lijst])
 
             if self.postcodes.intersection(postcode_set):
                 self.logger.debug("Found matching post code. Adding to ranking")
@@ -1409,6 +1416,13 @@ class UrlCollection(object):
                 ranking += 3
             else:
                 has_kvk_nummer = False
+
+            if btw_set:
+                self.logger.debug("Found matching btw number. Adding to ranking")
+                has_btw_nummer = True
+                ranking += 3
+            else:
+                has_btw_nummer = False
 
             # get the url from the database
             match = UrlStringMatch(url, self.company_name_small)
