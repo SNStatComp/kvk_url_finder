@@ -1411,8 +1411,10 @@ class UrlCollection(object):
                 has_postcode = False
 
             if self.kvk_nr in kvk_set:
+                kvk = list(kvk_set)[0]
                 self.web_df.loc[i_web, HAS_KVK_NR] = True
-                self.logger.debug("Found matching kvknummer code. Adding to ranking")
+                self.logger.debug(f"Found matching kvknummer code {kvk}. Adding to ranking")
+                url_nl.kvk_nummer = kvk
                 has_kvk_nummer = True
                 ranking += 3
             else:
