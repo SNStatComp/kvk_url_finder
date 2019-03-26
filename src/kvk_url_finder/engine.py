@@ -1396,11 +1396,12 @@ class UrlCollection(object):
                 # if we did not scrape the internet, set the postcode_lijst eepty
                 postcode_lijst = list()
                 kvk_lijst = list()
+                btw_lijst = list()
 
             ranking = 0
             postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-            kvk_set = set([int(kvk) for kvk in kvk_lijst])
-            btw_set = set([int(btw) for btw in btw_lijst])
+            kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+            btw_set = set([btw for btw in btw_lijst])
 
             if self.postcodes.intersection(postcode_set):
                 self.logger.debug("Found matching post code. Adding to ranking")
@@ -1418,11 +1419,10 @@ class UrlCollection(object):
                 has_kvk_nummer = False
 
             if btw_set:
-                self.logger.debug("Found matching btw number. Adding to ranking")
-                has_btw_nummer = True
+                btw = re.sub(r"\.", "", list(btw_set)[0])
+                self.logger.debug(f"Found matching btw number {btw}. Adding to ranking")
+                url_nl.btw_nummer = btw
                 ranking += 3
-            else:
-                has_btw_nummer = False
 
             # get the url from the database
             match = UrlStringMatch(url, self.company_name_small)

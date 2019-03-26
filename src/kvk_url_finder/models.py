@@ -101,7 +101,7 @@ def init_models(db, reset_tables=False):
         url = pw.CharField(null=True, unique=True)
         bestaat = pw.BooleanField(default=False)
         kvk_nummer = pw.IntegerField(default=-1)
-        btw_nummer = pw.IntegerField(default=-1)
+        btw_nummer = pw.CharField(null=True)
         datetime = DateTimeTZField(null=True)  # the process time
         subdomain = pw.CharField(null=True)
         domain = pw.CharField(null=True)
