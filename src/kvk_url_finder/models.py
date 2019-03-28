@@ -26,7 +26,9 @@ EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
 HAS_POSTCODE_KEY = "has_postcode"
 HAS_KVK_NR = "has_kvk_nr"
-ECOMMERCE = "ecommerce"
+ECOMMERCE_KEY = "ecommerce"
+SOCIALMEDIA_KEY = "social_media"
+REFERRED_KEY = "referred_by"
 SUBDOMAIN_KEY = "subdomain"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
@@ -51,6 +53,18 @@ PRAGMAS = {
     "synchronous": 0
 }
 DATABASE_TYPES = ("sqlite", "postgres")
+
+SOCIALMEDIA = {
+    "facebook": 0,
+    "whatapp": 1,
+    "instagram": 2,
+    "youtube": 3,
+}
+ECOMMERCE = {
+    "paypall": 0,
+    "ideal": 1,
+    "visa": 2,
+}
 
 logger = logging.getLogger(__name__)
 
@@ -103,11 +117,10 @@ def init_models(db, reset_tables=False):
         kvk_nummer = pw.IntegerField(default=-1)
         btw_nummer = pw.CharField(null=True)
         datetime = DateTimeTZField(null=True)  # the process time
-        subdomain = pw.CharField(null=True)
-        domain = pw.CharField(null=True)
-        suffix = pw.CharField(null=True)
         category = pw.IntegerField(default=-1)
         ecommerce = pw.IntegerField(default=-1)
+        social_media = pw.CharField(null=True)
+        referred_by = pw.CharField(null=True)
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")

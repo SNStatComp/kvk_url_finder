@@ -948,10 +948,10 @@ class KvKUrlParser(mp.Process):
         urls.loc[:, BESTAAT_KEY] = False
         urls.loc[:, BTW_KEY] = -1
         urls.loc[:, KVK_KEY] = -1
-        urls.loc[:, SUBDOMAIN_KEY] = None
-        urls.loc[:, DOMAIN_KEY] = None
-        urls.loc[:, SUFFIX_KEY] = None
-        urls.loc[:, ECOMMERCE] = False
+        urls.loc[:, CATEGORY_KEY] = -1
+        urls.loc[:, ECOMMERCE_KEY] = False
+        urls.loc[:, SOCIALMEDIA_KEY] = -1
+        urls.loc[:, REFERRED_KEY] = -1
 
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
 
@@ -1243,7 +1243,14 @@ class CompanyUrlMatch(object):
 
 class UrlCollection(object):
     """
-    Analyses all url of one single company
+    Analyses all potential urls of one single company. Each url is ranked based on how close it matches with the
+    company based on the following score:
+
+    has postcode: 1 pt
+    has kvknummer: 3 pt
+    has btwnummer: 5 pt
+    levenstein distance  < 10: 1
+    string match  > 0.5: 1
     """
 
     def __init__(self,
@@ -1349,12 +1356,13 @@ class UrlCollection(object):
                         logger.debug(f"Less than {self.older_time}. Skipping")
                         continue
                     else:
-                        logger.debug(f"File was processed more than {self.older_time} ago. Do it")
-
+                        logger.debug(f"File was processed more than {self.older_time} ago. Do it again!")
                 else:
                     # we are not skipping this file and we have a url_nl reference. Store the
                     # current processing time
-                    url_nl.datetime = now
+                    logger.debug(f"We are updating the url_nl datetime {now}")
+
+                url_nl.datetime = now
 
             web.naam = self.company_name
             web.bestaat = False
@@ -1369,6 +1377,16 @@ class UrlCollection(object):
                                                    KVK_KEY: KVK_REGEXP,
                                                    BTW_KEY: BTW_REGEXP
                                                },
+                                               sort_order_hrefs=[
+                                                   "over.ons",
+                                                   "about.us",
+                                                   "about.us",
+                                                   "klantenservice",
+                                                   "detail",
+                                                   "contact",
+                                                   "copyright",
+                                               ],
+                                               stop_search_on_found_keys=[BTW_KEY],
                                                store_page_to_cache=self.store_html_to_cache,
                                                max_cache_dir_size=self.max_cache_dir_size
                                                )
@@ -1397,34 +1415,38 @@ class UrlCollection(object):
                 postcode_lijst = list()
                 kvk_lijst = list()
                 btw_lijst = list()
+                url_analyse = None
 
+            # turn the lists into set such tht we only get the unique values
             ranking = 0
             postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
             kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
             btw_set = set([btw for btw in btw_lijst])
 
             if self.postcodes.intersection(postcode_set):
-                self.logger.debug("Found matching post code. Adding to ranking")
                 has_postcode = True
-                ranking += 3
+                ranking += 2
+                self.logger.debug(f"Found matching postcode. Added to ranking {ranking}")
             else:
                 has_postcode = False
 
             if self.kvk_nr in kvk_set:
                 kvk = list(kvk_set)[0]
                 self.web_df.loc[i_web, HAS_KVK_NR] = True
-                self.logger.debug(f"Found matching kvknummer code {kvk}. Adding to ranking")
-                url_nl.kvk_nummer = kvk
+                url_nl.kvk_nummer = self.kvk_nr
                 has_kvk_nummer = True
                 ranking += 3
+                self.logger.debug(f"Found matching kvknummer code {kvk}. Added to ranking {ranking}")
             else:
                 has_kvk_nummer = False
 
             if btw_set:
                 btw = re.sub(r"\.", "", list(btw_set)[0])
-                self.logger.debug(f"Found matching btw number {btw}. Adding to ranking")
                 url_nl.btw_nummer = btw
-                ranking += 3
+                ranking += 5
+                self.logger.debug(f"Found matching btw number {btw}. Added to ranking {ranking}")
+            else:
+                btw = None
 
             # get the url from the database
             match = UrlStringMatch(url, self.company_name_small)
@@ -1450,8 +1472,10 @@ class UrlCollection(object):
             web.has_kvk_nr = has_kvk_nummer
 
             if self.save:
+                logger.debug("Saving the web database")
                 web.save()
                 if url_nl:
+                    logger.debug("Saving the url database")
                     url_nl.save()
 
             if min_distance is None or match.distance < min_distance:
@@ -1461,6 +1485,19 @@ class UrlCollection(object):
             if max_sequence_match is None or match.string_match > max_sequence_match:
                 index_string_match = i_web
                 max_sequence_match = match.string_match
+
+            if btw is not None:
+                logger.debug(f"Check all external url because this side has btw {btw}")
+                for external_url in url_analyse.external_hrefs:
+                    cl = tldextract.extract(external_url)
+                    clean_url = ".".join([cl.subdomain, cl.domain, cl.suffix])
+                    query = self.url_nl.select().where(self.url_nl.url == clean_url)
+                    if not query.exists():
+                        logger.debug(f"Adding a new entry {clean_url}")
+                        self.url_nl.create(url=clean_url, bestaat=True, referred_by=url,
+                                           )
+                    else:
+                        logger.debug(f"url is already present {external_url}")
 
             self.web_df.loc[i_web, :] = [url,  # url
                                          True,  # url bestaat
