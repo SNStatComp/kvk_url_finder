@@ -952,6 +952,7 @@ class KvKUrlParser(mp.Process):
         urls.loc[:, ECOMMERCE_KEY] = False
         urls.loc[:, SOCIALMEDIA_KEY] = -1
         urls.loc[:, REFERRED_KEY] = -1
+        urls.loc[:, SSL_KEY] = True
 
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
 
@@ -1403,6 +1404,7 @@ class UrlCollection(object):
                 # if we are here, the web side is tested and exists
                 web.bestaat = True
                 url_nl.bestaat = True
+                url_nl.ssl = url_analyse.ssl
                 for key, matches in url_analyse.matches.items():
                     self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
@@ -1494,8 +1496,7 @@ class UrlCollection(object):
                     query = self.url_nl.select().where(self.url_nl.url == clean_url)
                     if not query.exists():
                         logger.debug(f"Adding a new entry {clean_url}")
-                        self.url_nl.create(url=clean_url, bestaat=True, referred_by=url,
-                                           )
+                        self.url_nl.create(url=clean_url, bestaat=True, referred_by=url)
                     else:
                         logger.debug(f"url is already present {external_url}")
 
