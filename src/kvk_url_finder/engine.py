@@ -1404,7 +1404,7 @@ class UrlCollection(object):
                 # if we are here, the web side is tested and exists
                 web.bestaat = True
                 url_nl.bestaat = True
-                url_nl.ssl = url_analyse.ssl
+                url_nl.ssl = url_analyse.req.ssl
                 for key, matches in url_analyse.matches.items():
                     self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
