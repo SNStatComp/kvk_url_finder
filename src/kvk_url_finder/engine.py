@@ -17,7 +17,8 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from cbs_utils.web_scraping import UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP
+from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
+                                    get_clean_url )
 
 try:
     from kvk_url_finder import __version__
@@ -1491,8 +1492,7 @@ class UrlCollection(object):
             if btw is not None:
                 logger.debug(f"Check all external url because this side has btw {btw}")
                 for external_url in url_analyse.external_hrefs:
-                    cl = tldextract.extract(external_url)
-                    clean_url = ".".join([cl.subdomain, cl.domain, cl.suffix])
+                    clean_url = get_clean_url(external_url)
                     query = self.url_nl.select().where(self.url_nl.url == clean_url)
                     if not query.exists():
                         logger.debug(f"Adding a new entry {clean_url}")
