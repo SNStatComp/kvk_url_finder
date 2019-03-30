@@ -334,6 +334,7 @@ def main(args_in):
             force_process=args.force_process,
             kvk_range_process=kvk_range_process,
             n_url_count_threshold=n_url_count_threshold,
+            number_of_processes=args.n_processes,
             progressbar=args.progressbar,
             address_input_file_name=address_input_file_name,
             url_input_file_name=kvk_url_file_name,
