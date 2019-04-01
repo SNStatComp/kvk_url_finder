@@ -210,8 +210,10 @@ class KvKUrlParser(mp.Process):
 
         self.logger.debug("With debug on?")
 
+        # a list of all country url extension which we want to exclude
         self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS, columns=["include", "country", "suffix"])
         self.exclude_extension = self.exclude_extension[~self.exclude_extension["include"]]
+        self.exclude_extension = self.exclude_extension.set_index("suffix", drop=True).drop(["include"], axis=1)
 
         self.i_proc = i_proc
         self.store_html_to_cache = store_html_to_cache
