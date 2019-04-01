@@ -17,8 +17,9 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
+from kvk_url_finder.countries_extension import COUNTRY_EXTENSIONS
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
-                                    get_clean_url )
+                                    get_clean_url)
 
 try:
     from kvk_url_finder import __version__
@@ -209,6 +210,9 @@ class KvKUrlParser(mp.Process):
 
         self.logger.debug("With debug on?")
 
+        self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS, columns=["include", "country", "suffix"])
+        self.exclude_extension = self.exclude_extension[~self.exclude_extension["include"]]
+
         self.i_proc = i_proc
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
@@ -286,6 +290,7 @@ class KvKUrlParser(mp.Process):
         self.company = tables[1]
         self.address = tables[2]
         self.website = tables[3]
+
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -1370,6 +1375,8 @@ class UrlCollection(object):
             web.bestaat = False
             web.getest = False
 
+
+
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
                 self.logger.debug("Start Url Search : {}".format(url))
@@ -1578,7 +1585,7 @@ class UrlStringMatch(object):
         self.string_match = None
 
         self.get_levenstein_distance()
-        self.match = self.get_string_match()
+        self.get_string_match()
 
     def get_levenstein_distance(self):
         """

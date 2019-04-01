@@ -30,6 +30,7 @@ ECOMMERCE_KEY = "ecommerce"
 SOCIALMEDIA_KEY = "social_media"
 REFERRED_KEY = "referred_by"
 SUBDOMAIN_KEY = "subdomain"
+EXTENSION_KEY = "extension"
 SSL_KEY = "ssl"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
@@ -119,6 +120,9 @@ def init_models(db, reset_tables=False):
         btw_nummer = pw.CharField(null=True)
         datetime = DateTimeTZField(null=True)  # the process time
         ssl = pw.BooleanField(default=False)
+        subdomain = pw.CharField(null=True)
+        domain = pw.CharField(null=True)
+        suffix = pw.CharField(null=True)
         category = pw.IntegerField(default=-1)
         ecommerce = pw.IntegerField(default=-1)
         social_media = pw.CharField(null=True)
