@@ -293,7 +293,6 @@ class KvKUrlParser(mp.Process):
         self.address = tables[2]
         self.website = tables[3]
 
-
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
@@ -961,6 +960,9 @@ class KvKUrlParser(mp.Process):
         urls.loc[:, SOCIALMEDIA_KEY] = -1
         urls.loc[:, REFERRED_KEY] = -1
         urls.loc[:, SSL_KEY] = True
+        urls.loc[:, SUBDOMAIN_KEY] = None
+        urls.loc[:, DOMAIN_KEY] = None
+        urls.loc[:, SUFFIX_KEY] = None
 
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
 
@@ -1376,8 +1378,6 @@ class UrlCollection(object):
             web.naam = self.company_name
             web.bestaat = False
             web.getest = False
-
-
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
