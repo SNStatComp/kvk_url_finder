@@ -1,7 +1,6 @@
 import datetime
 import pytz
 import difflib
-import logging
 import multiprocessing as mp
 import os
 import re
@@ -14,7 +13,7 @@ import progressbar as pb
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, standard_postcode)
+from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
 from kvk_url_finder.countries_extension import COUNTRY_EXTENSIONS
@@ -571,7 +570,8 @@ class KvKUrlParser(mp.Process):
                                     internet_scraping=self.internet_scraping,
                                     url_nl=self.UrlNL,
                                     older_time=self.older_time,
-                                    timezone=self.timezone
+                                    timezone=self.timezone,
+                                    exclude_extension=self.exclude_extension
                                     )
 
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
@@ -1185,7 +1185,8 @@ class CompanyUrlMatch(object):
                  internet_scraping: bool = True,
                  url_nl=None,
                  older_time: datetime.timedelta = None,
-                 timezone=None
+                 timezone=None,
+                 exclude_extension=None
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1205,6 +1206,8 @@ class CompanyUrlMatch(object):
         # impose a url
         self.impose_url = imposed_urls.get(self.kvk_nr)
 
+        print_banner(f"Matching Company {company} : {company.naam}", top_symbol="+")
+
         # first collect all the urls and obtain the match properties
         self.logger.debug("Get Url collection....")
         self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
@@ -1217,6 +1220,7 @@ class CompanyUrlMatch(object):
                                   url_nl=self.url_nl,
                                   older_time=self.older_time,
                                   timezone=self.timezone,
+                                  exclude_extensions=exclude_extension
                                   )
         self.find_match_for_company()
 
@@ -1279,6 +1283,7 @@ class UrlCollection(object):
                  url_nl: bool = None,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = None,
+                 exclude_extensions: pd.DataFrame = None
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
@@ -1287,6 +1292,7 @@ class UrlCollection(object):
         self.url_nl = url_nl
         self.older_time = older_time
         self.timezone = timezone
+        self.exclude_extensions = exclude_extensions
 
         assert scraper in SCRAPERS
 
@@ -1347,6 +1353,15 @@ class UrlCollection(object):
             # one kvk search
             url = web.url
 
+            print_banner(f"Processing {url}")
+
+            url_extract = tldextract.extract(url)
+
+            suffix = url_extract.suffix
+            if suffix in self.exclude_extensions.index:
+                logger.info(f"Web site {url} has suffix '.{suffix}' which is in the exclude extension list. skipping")
+                continue
+
             # now also get the url from the unique url_nl table, with only one url
             try:
                 url_nl = self.url_nl.get(self.url_nl.url == url)
@@ -1374,6 +1389,9 @@ class UrlCollection(object):
                     logger.debug(f"We are updating the url_nl datetime {now}")
 
                 url_nl.datetime = now
+                url_nl.suffix = suffix
+                url_nl.subdomain = url_extract.subdomain
+                url_nl.domain = url_extract.domain
 
             web.naam = self.company_name
             web.bestaat = False
@@ -1399,7 +1417,8 @@ class UrlCollection(object):
                                                ],
                                                stop_search_on_found_keys=[BTW_KEY],
                                                store_page_to_cache=self.store_html_to_cache,
-                                               max_cache_dir_size=self.max_cache_dir_size
+                                               max_cache_dir_size=self.max_cache_dir_size,
+
                                                )
                 self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
                 web.getest = True
@@ -1461,7 +1480,7 @@ class UrlCollection(object):
                 btw = None
 
             # get the url from the database
-            match = UrlStringMatch(url, self.company_name_small)
+            match = UrlStringMatch(url, self.company_name_small, url_extract=url_extract)
 
             if match.string_match >= self.threshold_string_match:
                 ranking += 1
@@ -1578,9 +1597,14 @@ class UrlStringMatch(object):
     Class do perform all operation to match a url
     """
 
-    def __init__(self, url, company_name):
+    def __init__(self, url, company_name, url_extract=None):
         self.company_name = company_name
-        self.ext = tldextract.extract(url)
+
+        if url_extract is None:
+            self.ext = tldextract.extract(url)
+        else:
+            # we have passed the tld extract as an argument
+            self.ext = url_extract
 
         self.distance = None
         self.string_match = None

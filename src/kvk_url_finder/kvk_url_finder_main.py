@@ -172,7 +172,8 @@ def setup_logging(write_log_to_file=False,
                             file_log_level=log_level_file,
                             console_log_level=log_level,
                             log_file=log_file_base,
-                            formatter_file=formatter_long
+                            formatter_file=formatter_long,
+                            console_log_format_long=True,
                             )
 
     if progress_bar:
@@ -189,8 +190,14 @@ def setup_logging(write_log_to_file=False,
 
     # with this call we merge the settings of our logger with the logger in the cbs_utils logger
     # so we can control the output
+    cbs_utils_logger = logging.getLogger("cbs_utils")
+    cbs_utils_logger.setLevel(log_level)
+
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    #_logger.addHandler(handler)
+    #cbs_utils_logger.addHandler(handler)
     merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level)
-    # merge_loggers(_logger, "kvk_url_finder.engine")
 
     return _logger
 
