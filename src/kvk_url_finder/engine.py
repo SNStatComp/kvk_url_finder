@@ -16,7 +16,7 @@ from tqdm import tqdm
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.models import *
-from kvk_url_finder.countries_extension import COUNTRY_EXTENSIONS
+from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
 
@@ -1391,15 +1391,7 @@ class UrlCollection(object):
                                                    KVK_KEY: KVK_REGEXP,
                                                    BTW_KEY: BTW_REGEXP
                                                },
-                                               sort_order_hrefs=[
-                                                   "over.ons",
-                                                   "about.us",
-                                                   "about.us",
-                                                   "klantenservice",
-                                                   "detail",
-                                                   "contact",
-                                                   "copyright",
-                                               ],
+                                               sort_order_hrefs=SORT_ORDER_HREFS,
                                                stop_search_on_found_keys=[BTW_KEY],
                                                store_page_to_cache=self.store_html_to_cache,
                                                max_cache_dir_size=self.max_cache_dir_size,

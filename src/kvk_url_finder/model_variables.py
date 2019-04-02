@@ -1,3 +1,15 @@
+SORT_ORDER_HREFS = [
+    "over.ons",
+    "about.us",
+    "about.us",
+    "klantenservice",
+    "customer",
+    "service",
+    "detail",
+    "contact",
+    "copyright",
+]
+
 COUNTRY_EXTENSIONS = [
     [False, "Afghanistan", "af"],
     [False, "Åland", "ax"],
