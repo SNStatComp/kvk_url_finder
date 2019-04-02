@@ -138,13 +138,12 @@ def init_models(db, reset_tables=False):
 
     class WebSite(BaseModel):
         company = pw.ForeignKeyField(Company, backref="websites")
-        kvk_nummer = pw.IntegerField(null=True)
         url = pw.CharField(null=False)
         naam = pw.CharField(null=False)
         getest = pw.BooleanField(null=True)
         levenshtein = pw.IntegerField(null=True)
         string_match = pw.FloatField(null=True)
-        best_match = pw.BooleanField(default=True)
+        best_match = pw.BooleanField(null=True)
         has_postcode = pw.BooleanField(null=True)
         has_kvk_nr = pw.BooleanField(null=True)
         ranking = pw.IntegerField(null=True)

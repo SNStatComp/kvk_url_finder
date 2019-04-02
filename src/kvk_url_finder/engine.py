@@ -952,17 +952,7 @@ class KvKUrlParser(mp.Process):
             return
 
         urls: pd.DataFrame = self.url_df[[URL_KEY, KVK_KEY]].copy()
-        urls.loc[:, BESTAAT_KEY] = False
-        urls.loc[:, BTW_KEY] = -1
-        urls.loc[:, KVK_KEY] = -1
-        urls.loc[:, CATEGORY_KEY] = -1
-        urls.loc[:, ECOMMERCE_KEY] = False
-        urls.loc[:, SOCIALMEDIA_KEY] = -1
-        urls.loc[:, REFERRED_KEY] = -1
-        urls.loc[:, SSL_KEY] = True
-        urls.loc[:, SUBDOMAIN_KEY] = None
-        urls.loc[:, DOMAIN_KEY] = None
-        urls.loc[:, SUFFIX_KEY] = None
+        urls.loc[:, KVK_KEY] = None
 
         urls.sort_values([URL_KEY, KVK_KEY], inplace=True)
 
@@ -1007,12 +997,7 @@ class KvKUrlParser(mp.Process):
             return
 
         # create selection of data columns
-        urls = self.url_df[[KVK_KEY, URL_KEY, NAME_KEY]]
-        urls.loc[:, COMPANY_KEY] = None
-        urls.loc[:, BEST_MATCH_KEY] = False
-        urls.loc[:, LEVENSHTEIN_KEY] = -1
-        urls.loc[:, STRING_MATCH_KEY] = -1
-        urls.sort_values([KVK_KEY], inplace=True)
+        urls = self.url_df[[KVK_KEY, URL_KEY, NAME_KEY]].sort_values([KVK_KEY])
         # count the number of urls per kvk
         n_url_per_kvk = urls.groupby(KVK_KEY)[KVK_KEY].count()
 
@@ -1070,7 +1055,7 @@ class KvKUrlParser(mp.Process):
         urls.dropna(axis=0, inplace=True)
 
         # the kvk key is already visible via the company_id
-        # urls.drop([KVK_KEY], inplace=True, axis=1)
+        urls.drop([KVK_KEY], inplace=True, axis=1)
 
         self.logger.info("Converting urls to dict. This make take some time...")
         url_list = list(urls.to_dict(orient="index").values())
