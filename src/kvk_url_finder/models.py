@@ -102,8 +102,8 @@ def init_models(db, reset_tables=False):
     class Company(BaseModel):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
-        ranking = pw.IntegerField(default=-1)
-        core_id = pw.IntegerField(default=-1)  # also give the process number. If -1, not done
+        ranking = pw.IntegerField(null=True)
+        core_id = pw.IntegerField(null=True)  # also give the process number. If -1, not done
         datetime = DateTimeTZField(null=True)  # the process time
 
     class UrlNL(BaseModel):
@@ -115,22 +115,22 @@ def init_models(db, reset_tables=False):
         """
         # maak url unique, maar gebruik geen primary key voor de url. Dat is minder efficient
         url = pw.CharField(null=True, unique=True)
-        bestaat = pw.BooleanField(default=False)
-        kvk_nummer = pw.IntegerField(default=-1)
+        bestaat = pw.BooleanField(null=True)
+        kvk_nummer = pw.IntegerField(null=True)
         btw_nummer = pw.CharField(null=True)
         datetime = DateTimeTZField(null=True)  # the process time
-        ssl = pw.BooleanField(default=False)
+        ssl = pw.BooleanField(null=True)
         subdomain = pw.CharField(null=True)
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
-        category = pw.IntegerField(default=-1)
-        ecommerce = pw.IntegerField(default=-1)
+        category = pw.IntegerField(null=True)
+        ecommerce = pw.IntegerField(null=True)
         social_media = pw.CharField(null=True)
         referred_by = pw.CharField(null=True)
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
-        kvk_nummer = pw.IntegerField(default=-1)
+        kvk_nummer = pw.IntegerField(null=True)
         naam = pw.CharField(null=True)
         plaats = pw.CharField(null=True)
         postcode = pw.CharField(null=True)
@@ -138,17 +138,17 @@ def init_models(db, reset_tables=False):
 
     class WebSite(BaseModel):
         company = pw.ForeignKeyField(Company, backref="websites")
-        kvk_nummer = pw.IntegerField(default=-1)
+        kvk_nummer = pw.IntegerField(null=True)
         url = pw.CharField(null=False)
         naam = pw.CharField(null=False)
-        getest = pw.BooleanField(default=False)
-        levenshtein = pw.IntegerField(default=-1)
-        string_match = pw.FloatField(default=-1)
+        getest = pw.BooleanField(null=True)
+        levenshtein = pw.IntegerField(null=True)
+        string_match = pw.FloatField(null=True)
         best_match = pw.BooleanField(default=True)
-        has_postcode = pw.BooleanField(default=False)
-        has_kvk_nr = pw.BooleanField(default=False)
-        ranking = pw.IntegerField(default=-1)
-        bestaat = pw.BooleanField(default=False)
+        has_postcode = pw.BooleanField(null=True)
+        has_kvk_nr = pw.BooleanField(null=True)
+        ranking = pw.IntegerField(null=True)
+        bestaat = pw.BooleanField(null=True)
 
     tables = (UrlNL, Company, Address, WebSite)
 
