@@ -1495,16 +1495,15 @@ class UrlCollection(object):
                 index_string_match = i_web
                 max_sequence_match = match.string_match
 
-            if btw is not None:
-                logger.debug(f"Check all external url because this side has btw {btw}")
-                for external_url in url_analyse.external_hrefs:
-                    clean_url = get_clean_url(external_url)
-                    query = self.url_nl.select().where(self.url_nl.url == clean_url)
-                    if not query.exists():
-                        logger.debug(f"Adding a new entry {clean_url}")
-                        self.url_nl.create(url=clean_url, bestaat=True, referred_by=url)
-                    else:
-                        logger.debug(f"url is already present {external_url}")
+            logger.debug(f"Check all external url ")
+            for external_url in url_analyse.external_hrefs:
+                clean_url = get_clean_url(external_url)
+                query = self.url_nl.select().where(self.url_nl.url == clean_url)
+                if not query.exists():
+                    logger.debug(f"Adding a new entry {clean_url}")
+                    self.url_nl.create(url=clean_url, bestaat=True, referred_by=url)
+                else:
+                    logger.debug(f"url is already present {external_url}")
 
             self.web_df.loc[i_web, :] = [url,  # url
                                          True,  # url bestaat
