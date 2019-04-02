@@ -1419,6 +1419,7 @@ class UrlCollection(object):
                 web.bestaat = True
                 url_nl.bestaat = True
                 url_nl.ssl = url_analyse.req.ssl
+                url_nl.ssl_invalid = url_analyse.req.ssl_invalid
                 for key, matches in url_analyse.matches.items():
                     self.logger.debug("Found {}:{} in {}".format(key, matches, url))
 
