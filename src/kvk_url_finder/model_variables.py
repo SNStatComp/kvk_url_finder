@@ -10,6 +10,10 @@ SORT_ORDER_HREFS = [
     "copyright",
     "informatie",
     "information",
+    "algemene",
+    "algemeen",
+    "general",
+    "voorwaarden",
 ]
 
 COUNTRY_EXTENSIONS = [
