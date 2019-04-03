@@ -5,6 +5,10 @@ general:
     Windows: /P/Projects/something_els
   cache_directory: cache
   store_html_to_cache: true
+  internet_scraping: true
+  search_urls: true
+  max_cache_dir_size: 0  # altenatively: 1 GB or 1 MB 
+  older_time: 1 s
   output_directory: .
   database_name: kvk_db
   database_type: postgres # sqlite
@@ -49,7 +53,7 @@ process_settings:
   kvk_range_process:
     # once a kvk range has been written to sql, process the kvk numbers by checking the url
     # the range to process can be limitted here. If empty, all the kvk nunber are processed
-    start: 24137476
+    start: 8137415 # 4059949 # 8137415 # 1160461 # 22040224 # 24137476
     stop:   
   # max entries can be used to stop processing after a fixed number of kvk's
   maximum_entries: 1
@@ -59,3 +63,9 @@ process_settings:
     # all the url that fail to give the correct match can here be impose
     # 24255704: apotheekdorpsweg.leef.nl
     8137415: www.tulpkeukens.nl
+  url_filters:
+    # only process the urls that match one of the filter below
+    apply_filters: false
+    filters:
+    - www.superkeukens.nl
+
