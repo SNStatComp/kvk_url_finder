@@ -1511,6 +1511,7 @@ class UrlCollection(object):
             web.levenshtein = match.distance
             web.has_postcode = match.has_postcode
             web.has_kvk_nr = match.has_kvk_nummer
+            web.ranking = match.ranking
 
             if self.save:
                 logger.debug("Saving to the web database")
