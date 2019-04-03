@@ -8,6 +8,8 @@ SORT_ORDER_HREFS = [
     "detail",
     "contact",
     "copyright",
+    "informatie",
+    "information",
 ]
 
 COUNTRY_EXTENSIONS = [

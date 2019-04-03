@@ -182,7 +182,8 @@ class KvKUrlParser(mp.Process):
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
                  older_time: datetime.timedelta = None,
-                 timezone: pytz.timezone = 'Europe/Amsterdam'
+                 timezone: pytz.timezone = 'Europe/Amsterdam',
+                 filter_urls: list = None
                  ):
 
         # launch the process
@@ -228,6 +229,7 @@ class KvKUrlParser(mp.Process):
         self.save = save
         self.older_time = older_time
         self.timezone = timezone
+        self.filter_urls = filter_urls
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -573,7 +575,8 @@ class KvKUrlParser(mp.Process):
                                     url_nl=self.UrlNL,
                                     older_time=self.older_time,
                                     timezone=self.timezone,
-                                    exclude_extension=self.exclude_extension
+                                    exclude_extension=self.exclude_extension,
+                                    filter_urls=self.filter_urls
                                     )
 
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
@@ -1173,7 +1176,8 @@ class CompanyUrlMatch(object):
                  url_nl=None,
                  older_time: datetime.timedelta = None,
                  timezone=None,
-                 exclude_extension=None
+                 exclude_extension=None,
+                 filter_urls: list=None
                  ):
 
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
@@ -1183,6 +1187,7 @@ class CompanyUrlMatch(object):
         self.url_nl = url_nl
         self.older_time = older_time
         self.timezone = timezone
+        self.filter_urls = filter_urls
 
         self.kvk_nr = company.kvk_nummer
         self.company_name: str = company.naam
@@ -1207,7 +1212,8 @@ class CompanyUrlMatch(object):
                                   url_nl=self.url_nl,
                                   older_time=self.older_time,
                                   timezone=self.timezone,
-                                  exclude_extensions=exclude_extension
+                                  exclude_extensions=exclude_extension,
+                                  filter_urls=self.filter_urls
                                   )
         self.find_match_for_company()
 
@@ -1270,7 +1276,8 @@ class UrlCollection(object):
                  url_nl: bool = None,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = None,
-                 exclude_extensions: pd.DataFrame = None
+                 exclude_extensions: pd.DataFrame = None,
+                 filter_urls: list = None
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
@@ -1280,6 +1287,7 @@ class UrlCollection(object):
         self.older_time = older_time
         self.timezone = timezone
         self.exclude_extensions = exclude_extensions
+        self.filter_urls = filter_urls
 
         assert scraper in SCRAPERS
 
@@ -1446,6 +1454,10 @@ class UrlCollection(object):
             # one kvk search
             url = web.url
 
+            if self.filter_urls and url not in self.filter_urls:
+                logger.debug(f"filter urls is given so skip {url}")
+                continue
+
             print_banner(f"Processing {url}")
 
             # quick check if we can processes this url based on the country code
@@ -1518,6 +1530,10 @@ class UrlCollection(object):
 
             logger.debug(f"Check all external url ")
             for external_url in url_analyse.external_hrefs:
+                if external_url is None:
+                    logger.debug("A None external href was stored. Check later why, skip for now")
+                    continue
+                logger.debug(f"Cleaning {external_url}")
                 clean_url = get_clean_url(external_url)
                 query = self.url_nl.select().where(self.url_nl.url == clean_url)
                 if not query.exists():

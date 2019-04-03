@@ -266,6 +266,14 @@ def main(args_in):
     threshold_distance = process_settings["threshold_distance"]
     threshold_string_match = process_settings["threshold_string_match"]
 
+    # store a list of url filter if given in the process file
+    url_filters = process_settings.get('url_filters')
+    if url_filters and url_filters["apply_filters"]:
+        filter_urls = url_filters["filters"]
+    else:
+        filter_urls = list()
+
+
     if args.kvk_start is not None:
         kvk_range_process["start"] = args.kvk_start
     if args.kvk_stop is not None:
@@ -359,7 +367,8 @@ def main(args_in):
             hostname=args.hostname,
             password=args.password,
             user=user,
-            older_time=older_time
+            older_time=older_time,
+            filter_urls=filter_urls
         )
 
         if args.dumpdb:
@@ -430,7 +439,8 @@ def main(args_in):
                         password=args.password,
                         user=user,
                         hostname=args.hostname,
-                        older_time=older_time
+                        older_time=older_time,
+                        filter_urls=filter_urls
                     )
 
                     if args.n_processes > 1:
