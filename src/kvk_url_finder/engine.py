@@ -329,7 +329,7 @@ class KvKUrlParser(mp.Process):
                 # skip because is outside range
                 continue
             number_in_range += 1
-            if not self.force_process and q.core_id >= 0:
+            if not self.force_process and q.core_id is not None:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
             # we can processes this record, so add it to the list
@@ -1326,6 +1326,137 @@ class UrlCollection(object):
         else:
             self.logger.debug("No website found for".format(self.company_name))
 
+    def get_and_update_url_nl_query(self, url, url_extract: tldextract.TLDExtract = None):
+        """
+        Check the url to see if it needs updated or not based on the last processing time
+
+        Parameters
+        ----------
+        url: str
+            url str to update
+        url_extract: tldextract
+            Output of the tldextract holding the url subdomain, domain and suffix
+
+        Returns
+        -------
+        url_nl or None:
+            query with the url_nl update
+
+        Notes
+        -----
+        If the query needs to be updated, store the current processing time and set the update flag
+        to true, otherwise the flag to update is false (we skip this query) and nothing is updated
+        """
+        # check if we can get the url from the UrlNL table
+        try:
+            url_nl = self.url_nl.get(self.url_nl.url == url)
+        except self.url_nl.DoesNotExist:
+            logger.warning("not found in UrlNL in table {}. Skipping ".format(url))
+            url_nl = None
+        else:
+            logger.debug("found in UrlNL in table {} ".format(url_nl.url))
+
+            now = datetime.datetime.now(pytz.timezone(self.timezone))
+            processing_time = url_nl.datetime
+            logger.debug("processing time {} ".format(processing_time))
+            if processing_time and self.older_time:
+                delta_time = now - processing_time
+                logger.debug(f"Processed with delta time {delta_time}")
+                if delta_time < self.older_time:
+                    logger.debug(f"Less than {self.older_time}. Skipping")
+                    url_nl = None
+                else:
+                    logger.debug(f"File was processed more than {self.older_time} ago. Do it again!")
+            else:
+                # we are not skipping this file and we have a url_nl reference. Store the
+                # current processing time
+                logger.debug(f"We are updating the url_nl datetime {now}")
+
+            if url_nl:
+                url_nl.datetime = now
+                url_nl.suffix = url_extract.suffix
+                url_nl.subdomain = url_extract.subdomain
+                url_nl.domain = url_extract.domain
+
+        return url_nl
+
+    def scrape_url_and_store_in_tables(self, url, web, url_nl):
+        """
+        Start scrapring the url and store some info in the tables web and url_df
+        Parameters
+        ----------
+        url: str
+            Name of the url
+        web: peewee Table
+            Table with all the url per kvk
+        url_df: peewee Table
+            Table with all the unique urls
+
+        Returns
+        -------
+
+        """
+
+        self.logger.debug("Start Url Search : {}".format(url))
+
+        url_analyse = UrlSearchStrings(url,
+                                       search_strings={
+                                           POSTAL_CODE_KEY: ZIP_REGEXP,
+                                           KVK_KEY: KVK_REGEXP,
+                                           BTW_KEY: BTW_REGEXP
+                                       },
+                                       sort_order_hrefs=SORT_ORDER_HREFS,
+                                       stop_search_on_found_keys=[BTW_KEY],
+                                       store_page_to_cache=self.store_html_to_cache,
+                                       max_cache_dir_size=self.max_cache_dir_size,
+
+                                       )
+        self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
+        web.getest = True
+
+        self.logger.debug(url_analyse)
+        if not url_analyse.exists:
+            web.bestaat = False
+        else:
+            # if we are here, the web side is tested and exists
+            web.bestaat = True
+
+            url_nl.bestaat = True
+            url_nl.ssl = url_analyse.req.ssl
+            url_nl.ssl_invalid = url_analyse.req.ssl_invalid
+
+            for key, matches in url_analyse.matches.items():
+                self.logger.debug("Found {}:{} in {}".format(key, matches, url))
+
+        return url_analyse
+
+    def get_ranking_score(self, url, url_analyse, url_extract):
+        """
+        Based on the url nama and the scraped web info we are giving this url a score
+
+        Parameters
+        ----------
+        url: str
+            Name of the url
+        url_analyse: UrlCompanyRanking
+            Information with the scraped data
+        url_extract: tldextect
+            url analyse info
+
+        Returns
+        -------
+        UrlStringMatch:
+            class with the string match
+        """
+
+
+
+        web.ranking = ranking
+
+        return match
+
+        # store the matching values back into the database
+
     def collect_web_sites(self):
         """
         Collect all the web sites of a company and store it in a data frame
@@ -1340,145 +1471,54 @@ class UrlCollection(object):
 
             print_banner(f"Processing {url}")
 
+            # quick check if we can processes this url
             url_extract = tldextract.extract(url)
-
             suffix = url_extract.suffix
             if suffix in self.exclude_extensions.index:
                 logger.info(f"Web site {url} has suffix '.{suffix}' which is in the exclude extension list. skipping")
                 continue
 
-            # now also get the url from the unique url_nl table, with only one url
-            try:
-                url_nl = self.url_nl.get(self.url_nl.url == url)
-            except self.url_nl.DoesNotExist:
-                url_nl = None
-                logger.debug("not found in UrlNL in table {} ".format(url))
-            else:
-                logger.debug("found in UrlNL in table {} ".format(url_nl.url))
+            # we are processing the url from the Website table, but we also need to query from the
+            # UrlNL table. Get it here. In this table we set the url_nl return value to None
+            # in case this query  was already processed before
+            url_nl = self.get_and_update_url_nl_query(url, url_extract)
+            if url_nl is None:
+                logger.info("Skipping url because it was processed already {url}")
+                continue
 
-            now = datetime.datetime.now(pytz.timezone(self.timezone))
-            if url_nl:
-                processing_time = url_nl.datetime
-                logger.debug("processing time {} ".format(processing_time))
-                if processing_time and self.older_time:
-                    delta_time = now - processing_time
-                    logger.debug(f"Processed with delta time {delta_time}")
-                    if delta_time < self.older_time:
-                        logger.debug(f"Less than {self.older_time}. Skipping")
-                        continue
-                    else:
-                        logger.debug(f"File was processed more than {self.older_time} ago. Do it again!")
-                else:
-                    # we are not skipping this file and we have a url_nl reference. Store the
-                    # current processing time
-                    logger.debug(f"We are updating the url_nl datetime {now}")
-
-                url_nl.datetime = now
-                url_nl.suffix = suffix
-                url_nl.subdomain = url_extract.subdomain
-                url_nl.domain = url_extract.domain
-
+            # start with storing the name and assume we have not tested the url or it exist
             web.naam = self.company_name
             web.bestaat = False
             web.getest = False
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
-                self.logger.debug("Start Url Search : {}".format(url))
-                url_analyse = UrlSearchStrings(url,
-                                               search_strings={
-                                                   POSTAL_CODE_KEY: ZIP_REGEXP,
-                                                   KVK_KEY: KVK_REGEXP,
-                                                   BTW_KEY: BTW_REGEXP
-                                               },
-                                               sort_order_hrefs=SORT_ORDER_HREFS,
-                                               stop_search_on_found_keys=[BTW_KEY],
-                                               store_page_to_cache=self.store_html_to_cache,
-                                               max_cache_dir_size=self.max_cache_dir_size,
-
-                                               )
-                self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
-                web.getest = True
-
-                self.logger.debug(url_analyse)
-
-                if not url_analyse.exists:
-                    self.logger.debug(f"url '{url}'' does not exist")
-                    self.web_df.loc[i_web, EXISTS_KEY] = False
-                    continue
-
-                # if we are here, the web side is tested and exists
-                web.bestaat = True
-                url_nl.bestaat = True
-                url_nl.ssl = url_analyse.req.ssl
-                url_nl.ssl_invalid = url_analyse.req.ssl_invalid
-                for key, matches in url_analyse.matches.items():
-                    self.logger.debug("Found {}:{} in {}".format(key, matches, url))
-
-                postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
-                kvk_lijst = url_analyse.matches[KVK_KEY]
-                btw_lijst = url_analyse.matches[BTW_KEY]
+                url_analyse = self.scrape_url_and_store_in_tables(url, web, url_nl)
             else:
-                self.logger.debug("Skipping Url Search : {}".format(url))
-                # if we did not scrape the internet, set the postcode_lijst eepty
-                postcode_lijst = list()
-                kvk_lijst = list()
-                btw_lijst = list()
                 url_analyse = None
 
-            # turn the lists into set such tht we only get the unique values
-            ranking = 0
-            postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-            kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
-            btw_set = set([btw for btw in btw_lijst])
+            if url_analyse and not url_analyse.exists:
+                self.logger.debug(f"url '{url}'' does not exist")
+                self.web_df.loc[i_web, EXISTS_KEY] = False
+                continue
 
-            if self.postcodes.intersection(postcode_set):
-                has_postcode = True
-                ranking += 2
-                self.logger.debug(f"Found matching postcode. Added to ranking {ranking}")
-            else:
-                has_postcode = False
+            match = UrlCompanyRanking(url, self.company_name_small, url_extract=url_extract,
+                                      url_analyse=url_analyse,
+                                      threshold_string_match=self.threshold_string_match,
+                                      threshold_distance=self.threshold_distance,
+                                      logger=self.logger)
 
-            if self.kvk_nr in kvk_set:
-                kvk = list(kvk_set)[0]
-                self.web_df.loc[i_web, HAS_KVK_NR] = True
+            self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
+            if match.has_kvk_nummer:
                 url_nl.kvk_nummer = self.kvk_nr
-                has_kvk_nummer = True
-                ranking += 3
-                self.logger.debug(f"Found matching kvknummer code {kvk}. Added to ranking {ranking}")
-            else:
-                has_kvk_nummer = False
 
-            if btw_set:
-                btw = re.sub(r"\.", "", list(btw_set)[0])
-                url_nl.btw_nummer = btw
-                ranking += 5
-                self.logger.debug(f"Found matching btw number {btw}. Added to ranking {ranking}")
-            else:
-                btw = None
+            url_nl.btw_nummer = match.btw_nummer
 
-            # get the url from the database
-            match = UrlStringMatch(url, self.company_name_small, url_extract=url_extract)
-
-            if match.string_match >= self.threshold_string_match:
-                ranking += 1
-
-            if match.distance <= self.threshold_distance:
-                ranking += 1
-
-            if match.ext.suffix in ("com", "org"):
-                ranking += 1
-            elif match.ext.suffix == "nl":
-                ranking += 2
-
-            web.ranking = ranking
-
-            # store the matching values back into the database
             web.best_match = False
             web.string_match = match.string_match
             web.levenshtein = match.distance
-            web.has_postcode = has_postcode
-            web.has_kvk_nr = has_kvk_nummer
+            web.has_postcode = match.has_postcode
+            web.has_kvk_nr = match.has_kvk_nummer
 
             if self.save:
                 logger.debug("Saving the web database")
@@ -1569,13 +1609,26 @@ class UrlCollection(object):
         self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
 
 
-class UrlStringMatch(object):
+class UrlCompanyRanking(object):
     """
     Class do perform all operation to match a url
     """
 
-    def __init__(self, url, company_name, url_extract=None):
+    def __init__(self, url, company_name, url_extract=None, url_analyse=None,
+                 company_postcodes=None, company_kvk_nummer=None, company_btw_nummer=None,
+                 threshold_string_match=None, threshold_distance=None, logger=None):
+
+        self.logger = logger
         self.company_name = company_name
+        self.url = url
+
+        self.company_postcodes = company_postcodes
+        self.company_kvk_nummer = company_kvk_nummer
+        self.company_btw_nummer = company_btw_nummer
+
+        self.url_analyse = url_analyse
+        self.threshold_string_match = threshold_string_match
+        self.threshold_distance = threshold_distance
 
         if url_extract is None:
             self.ext = tldextract.extract(url)
@@ -1583,12 +1636,26 @@ class UrlStringMatch(object):
             # we have passed the tld extract as an argument
             self.ext = url_extract
 
+        self.ranking = 0
+
         self.distance = None
         self.string_match = None
         self.string_match = None
 
+        self.has_postcode = False
+        self.has_kvk_nummer = False
+        self.has_btw_nummer = False
+
+        self.kvk_nummer = None
+        self.btw_nummer = None
+
+        self.postcode_set = set()
+        self.kvk_set = set()
+        self.btw_set = set()
+
         self.get_levenstein_distance()
         self.get_string_match()
+        self.get_ranking()
 
     def get_levenstein_distance(self):
         """
@@ -1612,3 +1679,54 @@ class UrlStringMatch(object):
         domain_match = difflib.SequenceMatcher(None, self.ext.domain,
                                                self.company_name).ratio()
         self.string_match = max(subdomain_match, domain_match)
+
+    def get_ranking(self):
+
+        if self.url_analyse:
+            postcode_lijst = self.url_analyse.matches[POSTAL_CODE_KEY]
+            kvk_lijst = self.url_analyse.matches[KVK_KEY]
+            btw_lijst = self.url_analyse.matches[BTW_KEY]
+        else:
+            self.logger.debug("Skipping Url Search : {}".format(self.url))
+            # if we did not scrape the internet, set the postcode_lijst eepty
+            postcode_lijst = list()
+            kvk_lijst = list()
+            btw_lijst = list()
+
+        # turn the lists into set such tht we only get the unique values
+        self.postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
+        self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+        self.btw_set = set([btw for btw in btw_lijst])
+
+        if self.company_postcodes.intersection(self.postcode_set):
+            self.has_postcode = True
+            self.ranking += 2
+            self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
+        else:
+            self.has_postcode = False
+
+        if self.company_kvk_nummer in self.kvk_set:
+            self.has_kvk_nummer = True
+            self.ranking += 3
+            self.logger.debug(f"Found matching kvknummer code {kvk}. "
+                              f"Added to ranking {self.ranking}")
+
+        if  self.company_btw_nummer in self.btw_set:
+            self.has_btw_nummer = True
+            self.btw_nummer = re.sub(r"\.", "", list(self.btw_set)[0])
+            self.ranking += 5
+            self.logger.debug(f"Found matching btw number {self.btw_nummer}. "
+                              f"Added to ranking {self.ranking}")
+        else:
+            self.btw_nummer = None
+
+        if self.string_match >= self.threshold_string_match:
+            self.ranking += 1
+
+        if self.distance <= self.threshold_distance:
+            self.ranking += 1
+
+        if self.ext.suffix in ("com", "org"):
+            self.ranking += 1
+        elif self.ext.suffix == "nl":
+            self.ranking += 2
