@@ -1,5 +1,4 @@
 import datetime
-import pytz
 import difflib
 import multiprocessing as mp
 import os
@@ -10,15 +9,16 @@ import time
 import Levenshtein
 import pandas as pd
 import progressbar as pb
+import pytz
 import tldextract
 from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
-from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
-from kvk_url_finder.models import *
-from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
+from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
+from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
+from kvk_url_finder.models import *
 
 try:
     from kvk_url_finder import __version__
@@ -210,9 +210,11 @@ class KvKUrlParser(mp.Process):
         self.logger.debug("With debug on?")
 
         # a list of all country url extension which we want to exclude
-        self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS, columns=["include", "country", "suffix"])
+        self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
+                                              columns=["include", "country", "suffix"])
         self.exclude_extension = self.exclude_extension[~self.exclude_extension["include"]]
-        self.exclude_extension = self.exclude_extension.set_index("suffix", drop=True).drop(["include"], axis=1)
+        self.exclude_extension = self.exclude_extension.set_index("suffix", drop=True).drop(
+            ["include"], axis=1)
 
         self.i_proc = i_proc
         self.store_html_to_cache = store_html_to_cache
@@ -1366,7 +1368,8 @@ class UrlCollection(object):
                     logger.debug(f"Less than {self.older_time}. Skipping")
                     url_nl = None
                 else:
-                    logger.debug(f"File was processed more than {self.older_time} ago. Do it again!")
+                    logger.debug(
+                        f"File was processed more than {self.older_time} ago. Do it again!")
             else:
                 # we are not skipping this file and we have a url_nl reference. Store the
                 # current processing time
@@ -1430,36 +1433,10 @@ class UrlCollection(object):
 
         return url_analyse
 
-    def get_ranking_score(self, url, url_analyse, url_extract):
-        """
-        Based on the url nama and the scraped web info we are giving this url a score
-
-        Parameters
-        ----------
-        url: str
-            Name of the url
-        url_analyse: UrlCompanyRanking
-            Information with the scraped data
-        url_extract: tldextect
-            url analyse info
-
-        Returns
-        -------
-        UrlStringMatch:
-            class with the string match
-        """
-
-
-
-        web.ranking = ranking
-
-        return match
-
-        # store the matching values back into the database
-
     def collect_web_sites(self):
         """
-        Collect all the web sites of a company and store it in a data frame
+        Collect all the web sites of a company, scrape the contents to find info, get the
+        best matching web site to the company
         """
         min_distance = None
         max_sequence_match = None
@@ -1471,11 +1448,11 @@ class UrlCollection(object):
 
             print_banner(f"Processing {url}")
 
-            # quick check if we can processes this url
+            # quick check if we can processes this url based on the country code
             url_extract = tldextract.extract(url)
             suffix = url_extract.suffix
             if suffix in self.exclude_extensions.index:
-                logger.info(f"Web site {url} has suffix '.{suffix}' which is in the exclude extension list. skipping")
+                logger.info(f"Web site {url} has suffix '.{suffix}' Skipping")
                 continue
 
             # we are processing the url from the Website table, but we also need to query from the
@@ -1502,12 +1479,15 @@ class UrlCollection(object):
                 self.web_df.loc[i_web, EXISTS_KEY] = False
                 continue
 
+            # based on the company postcodes and kvknummer and web contents, make a ranking how
+            # good the web sides matches the company
             match = UrlCompanyRanking(url, self.company_name_small, url_extract=url_extract,
                                       url_analyse=url_analyse,
                                       threshold_string_match=self.threshold_string_match,
                                       threshold_distance=self.threshold_distance,
                                       logger=self.logger)
 
+            # store the info in both the dataframe web_df and the url_nl table
             self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
             if match.has_kvk_nummer:
                 url_nl.kvk_nummer = self.kvk_nr
@@ -1521,12 +1501,13 @@ class UrlCollection(object):
             web.has_kvk_nr = match.has_kvk_nummer
 
             if self.save:
-                logger.debug("Saving the web database")
+                logger.debug("Saving to the web database")
                 web.save()
                 if url_nl:
-                    logger.debug("Saving the url database")
+                    logger.debug("Saving to the the url database")
                     url_nl.save()
 
+            # update the min max
             if min_distance is None or match.distance < min_distance:
                 index_distance = i_web
                 min_distance = match.distance
@@ -1549,8 +1530,8 @@ class UrlCollection(object):
                                          True,  # url bestaat
                                          match.distance,  # levenstein distance
                                          match.string_match,  # string match
-                                         has_postcode,  # the web site has the postcode
-                                         has_kvk_nummer,  # the web site has the kvk
+                                         match.has_postcode,  # the web site has the postcode
+                                         match.has_kvk_nummer,  # the web site has the kvk
                                          match.ext.subdomain,  # subdomain of the url
                                          match.ext.domain,  # domain of the url
                                          match.ext.suffix,  # suffix of the url
@@ -1698,7 +1679,7 @@ class UrlCompanyRanking(object):
         self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
         self.btw_set = set([btw for btw in btw_lijst])
 
-        if self.company_postcodes.intersection(self.postcode_set):
+        if self.company_postcodes and self.company_postcodes.intersection(self.postcode_set):
             self.has_postcode = True
             self.ranking += 2
             self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
@@ -1708,10 +1689,10 @@ class UrlCompanyRanking(object):
         if self.company_kvk_nummer in self.kvk_set:
             self.has_kvk_nummer = True
             self.ranking += 3
-            self.logger.debug(f"Found matching kvknummer code {kvk}. "
+            self.logger.debug(f"Found matching kvknummer code {self.company_kvk_nummer}. "
                               f"Added to ranking {self.ranking}")
 
-        if  self.company_btw_nummer in self.btw_set:
+        if self.company_btw_nummer in self.btw_set:
             self.has_btw_nummer = True
             self.btw_nummer = re.sub(r"\.", "", list(self.btw_set)[0])
             self.ranking += 5
