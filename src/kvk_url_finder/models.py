@@ -40,7 +40,6 @@ DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
 CATEGORY_KEY = "category"
 
-
 WEB_DF_COLS = [URL_KEY,
                EXISTS_KEY,
                DISTANCE_KEY,
@@ -61,18 +60,31 @@ PRAGMAS = {
 }
 DATABASE_TYPES = ("sqlite", "postgres")
 
-SOCIALMEDIA = [
-    "facebook",
-    "twitter",
-    "whatapp",
-    "instagram",
-    "youtube"
+SOCIAL_MEDIA = [
+    "Facebook",
+    "YouTube",
+    "WhatsApp",
+    "Messenger",
+    "WeChat",
+    "Instagram",
+    "Twitter",
+    "Skype",
+    "LinkedIn",
+    "Viber",
+    "Snapchat",
+    "Line",
+    "Pinterest",
+    "Telegram",
+    "Tinder",
 ]
 
 PAY_OPTIONS = [
-    "paypall",
-    "ideal",
-    "visa",
+    "PayPal",
+    "PaymentWall",
+    "Ideal",
+    "GooglePay",
+    "GoogleWallet",
+    "CreditCard",
 ]
 
 logger = logging.getLogger(__name__)
@@ -123,7 +135,7 @@ def init_models(db, reset_tables=False):
         maar niet perse de eigenaars van de site.
         """
         # maak url unique, maar gebruik geen primary key voor de url. Dat is minder efficient
-        url = pw.CharField(null=True, unique=True)
+        url = pw.CharField(null=True, unique=True, primary_key=True)
         bestaat = pw.BooleanField(null=True)
         kvk_nummer = pw.IntegerField(null=True)
         btw_nummer = pw.CharField(null=True)
@@ -148,7 +160,8 @@ def init_models(db, reset_tables=False):
 
     class WebSite(BaseModel):
         company = pw.ForeignKeyField(Company, backref="websites")
-        url = pw.CharField(null=False)
+        # url = pw.CharField(null=False)
+        url = pw.ForeignKeyField(UrlNL, backref="websites")
         naam = pw.CharField(null=False)
         getest = pw.BooleanField(null=True)
         levenshtein = pw.IntegerField(null=True)
@@ -162,15 +175,15 @@ def init_models(db, reset_tables=False):
 
     class PayOptions(BaseModel):
         naam = pw.CharField(null=False, unique=True)
-        company = pw.ForeignKeyField(Company, backref='pay_options')
-        website = pw.ForeignKeyField(WebSite, backref='pay_options')
-        url_nl = pw.ForeignKeyField(UrlNL, backref='pay_options')
+        company = pw.ForeignKeyField(Company, backref='pay_options', null=True)
+        website = pw.ForeignKeyField(WebSite, backref='pay_options', null=True)
+        url_nl = pw.ForeignKeyField(UrlNL, backref='pay_options', null=True)
 
     class SocialMedia(BaseModel):
         naam = pw.CharField(null=False, unique=True)
-        company = pw.ForeignKeyField(Company, backref='social_media')
-        website = pw.ForeignKeyField(WebSite, backref='social_media')
-        url_nl = pw.ForeignKeyField(UrlNL, backref='social_media')
+        company = pw.ForeignKeyField(Company, backref='social_media', null=True)
+        website = pw.ForeignKeyField(WebSite, backref='social_media', null=True)
+        url_nl = pw.ForeignKeyField(UrlNL, backref='social_media', null=True)
 
     tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia)
 
@@ -181,4 +194,3 @@ def init_models(db, reset_tables=False):
     db.create_tables(tables)
 
     return tables
-
