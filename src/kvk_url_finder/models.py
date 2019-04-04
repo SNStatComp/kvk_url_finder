@@ -163,10 +163,14 @@ def init_models(db, reset_tables=False):
     class PayOptions(BaseModel):
         naam = pw.CharField(null=False, unique=True)
         company = pw.ForeignKeyField(Company, backref='pay_options')
+        website = pw.ForeignKeyField(WebSite, backref='pay_options')
+        url_nl = pw.ForeignKeyField(UrlNL, backref='pay_options')
 
     class SocialMedia(BaseModel):
         naam = pw.CharField(null=False, unique=True)
         company = pw.ForeignKeyField(Company, backref='social_media')
+        website = pw.ForeignKeyField(WebSite, backref='social_media')
+        url_nl = pw.ForeignKeyField(UrlNL, backref='social_media')
 
     tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia)
 
