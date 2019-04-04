@@ -25,9 +25,13 @@ BESTAAT_KEY = "bestaat"
 EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
 HAS_POSTCODE_KEY = "has_postcode"
+HAS_BTW_NR_KEY = "has_btw_nr"
 HAS_KVK_NR = "has_kvk_nr"
-ECOMMERCE_KEY = "ecommerce"
-SOCIALMEDIA_KEY = "social_media"
+KVK_LIST_KEY = "kvk_list"
+BTW_LIST_KEY = "btw_list"
+POSTCODE_LIST_KEY = "postcode_list"
+PAY_OPTION_KEY = "pay_option"
+SOCIAL_MEDIA_KEY = "social_media"
 REFERRED_KEY = "referred_by"
 SUBDOMAIN_KEY = "subdomain"
 EXTENSION_KEY = "extension"
@@ -35,6 +39,7 @@ SSL_KEY = "ssl"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
 CATEGORY_KEY = "category"
+
 
 WEB_DF_COLS = [URL_KEY,
                EXISTS_KEY,
@@ -56,17 +61,19 @@ PRAGMAS = {
 }
 DATABASE_TYPES = ("sqlite", "postgres")
 
-SOCIALMEDIA = {
-    "facebook": 0,
-    "whatapp": 1,
-    "instagram": 2,
-    "youtube": 3,
-}
-ECOMMERCE = {
-    "paypall": 0,
-    "ideal": 1,
-    "visa": 2,
-}
+SOCIALMEDIA = [
+    "facebook",
+    "twitter",
+    "whatapp",
+    "instagram",
+    "youtube"
+]
+
+PAY_OPTIONS = [
+    "paypall",
+    "ideal",
+    "visa",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +104,13 @@ def init_models(db, reset_tables=False):
         class Meta:
             database = db
             only_save_dirty = True
+            legacy_table_names = False
 
     # this class describes the format of the sql data base
     class Company(BaseModel):
         kvk_nummer = pw.IntegerField(primary_key=True)
         naam = pw.CharField(null=True)
+        url = pw.CharField(null=True)
         ranking = pw.IntegerField(null=True)
         core_id = pw.IntegerField(null=True)  # also give the process number. If -1, not done
         datetime = DateTimeTZField(null=True)  # the process time
@@ -147,10 +156,19 @@ def init_models(db, reset_tables=False):
         best_match = pw.BooleanField(null=True)
         has_postcode = pw.BooleanField(null=True)
         has_kvk_nr = pw.BooleanField(null=True)
+        has_btw_nr = pw.BooleanField(null=True)
         ranking = pw.IntegerField(null=True)
         bestaat = pw.BooleanField(null=True)
 
-    tables = (UrlNL, Company, Address, WebSite)
+    class PayOptions(BaseModel):
+        naam = pw.CharField(null=False, unique=True)
+        company = pw.ForeignKeyField(Company, backref='pay_options')
+
+    class SocialMedia(BaseModel):
+        naam = pw.CharField(null=False, unique=True)
+        company = pw.ForeignKeyField(Company, backref='social_media')
+
+    tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia)
 
     if db.is_closed():
         db.connect()
@@ -159,3 +177,4 @@ def init_models(db, reset_tables=False):
     db.create_tables(tables)
 
     return tables
+
