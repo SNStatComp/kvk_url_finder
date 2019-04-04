@@ -1372,9 +1372,9 @@ class UrlCollection(object):
         """
         # check if we can get the url from the UrlNL table
         try:
-            url_nl = self.url_nl.get(self.url_nl.url == url)
-        except self.url_nl.DoesNotExist:
-            logger.warning("not found in UrlNL in table {}. Skipping ".format(url))
+            url_nl = self.url_nl[url]
+        except (self.url_nl.DoesNotExist, IndexError) as err:
+            logger.warning("not found in UrlNL in table {}. Skipping with err:{} ".format(url, err))
             url_nl = None
         else:
             logger.debug("found in UrlNL in table {} ".format(url_nl.url))
