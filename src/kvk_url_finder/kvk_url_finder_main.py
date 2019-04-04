@@ -55,7 +55,6 @@ except ModuleNotFoundError:
 
 
 def _parse_the_command_line_arguments(args):
-
     def check_positive(value):
         """ local function to test if an argument is larger than zero"""
         ivalue = int(value)
@@ -69,6 +68,7 @@ def _parse_the_command_line_arguments(args):
         if ivalue < 0:
             raise argparse.ArgumentTypeError("{} is an invalid negative int value".format(value))
         return ivalue
+
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse the command line to set some options2
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -195,8 +195,8 @@ def setup_logging(write_log_to_file=False,
 
     handler = logging.StreamHandler()
     handler.setLevel(log_level)
-    #_logger.addHandler(handler)
-    #cbs_utils_logger.addHandler(handler)
+    # _logger.addHandler(handler)
+    # cbs_utils_logger.addHandler(handler)
     merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level)
 
     return _logger
@@ -272,7 +272,6 @@ def main(args_in):
         filter_urls = url_filters["filters"]
     else:
         filter_urls = list()
-
 
     if args.kvk_start is not None:
         kvk_range_process["start"] = args.kvk_start

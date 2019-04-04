@@ -181,11 +181,12 @@ def init_models(db, reset_tables=False):
 
     class SocialMedia(BaseModel):
         naam = pw.CharField(null=False, unique=True)
-        company = pw.ForeignKeyField(Company, backref='social_media', null=True)
-        website = pw.ForeignKeyField(WebSite, backref='social_media', null=True)
-        url_nl = pw.ForeignKeyField(UrlNL, backref='social_media', null=True)
 
-    tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia)
+    class WebsiteSocialmedia(BaseModel):
+        social_media = pw.ForeignKeyField(SocialMedia)
+        website = pw.ForeignKeyField(WebSite)
+
+    tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia, WebsiteSocialmedia)
 
     if db.is_closed():
         db.connect()

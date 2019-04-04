@@ -297,6 +297,7 @@ class KvKUrlParser(mp.Process):
         self.website = tables[3]
         self.pay_options = tables[4]
         self.social_media = tables[5]
+        self.website_social_media = tables[6]
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -1433,10 +1434,14 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
-
                                        )
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
         web.getest = True
+
+        for external_url in url_analyse.external_hrefs:
+            dom = tldextract.extract(external_url).domain
+            if dom in [sm.lower() for sm in SOCIAL_MEDIA]:
+                logger.info(f"Hier {dom}")
 
         self.logger.debug(url_analyse)
         if not url_analyse.exists:
@@ -1524,7 +1529,7 @@ class UrlCollection(object):
             web.levenshtein = match.distance
             web.has_postcode = match.has_postcode
             web.has_kvk_nr = match.has_kvk_nummer
-            web.has_btw_nr = match.has_kvk_nummer
+            web.has_btw_nr = match.has_btw_nummer
             web.ranking = match.ranking
 
             if self.save:
@@ -1652,7 +1657,6 @@ class UrlCompanyRanking(object):
 
         self.distance = None
         self.string_match = None
-        self.string_match = None
 
         self.has_postcode = False
         self.has_kvk_nummer = False
@@ -1708,7 +1712,7 @@ class UrlCompanyRanking(object):
         # turn the lists into set such tht we only get the unique values
         self.postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
         self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
-        self.btw_set = set([btw for btw in btw_lijst])
+        self.btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
 
         if self.company_postcodes and self.company_postcodes.intersection(self.postcode_set):
             self.has_postcode = True
@@ -1723,7 +1727,7 @@ class UrlCompanyRanking(object):
             self.logger.debug(f"Found matching kvknummer code {self.company_kvk_nummer}. "
                               f"Added to ranking {self.ranking}")
 
-        if self.company_btw_nummer in self.btw_set:
+        if self.btw_set:
             self.has_btw_nummer = True
             self.btw_nummer = re.sub(r"\.", "", list(self.btw_set)[0])
             self.ranking += 5
