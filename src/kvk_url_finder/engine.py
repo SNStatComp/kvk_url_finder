@@ -1440,8 +1440,18 @@ class UrlCollection(object):
 
         for external_url in url_analyse.external_hrefs:
             dom = tldextract.extract(external_url).domain
+            sm_list = list()
+            ec_list = list()
             if dom in [sm.lower() for sm in SOCIAL_MEDIA]:
-                logger.info(f"Hier {dom}")
+                logger.debug(f"Found social media {dom}")
+                sm_list.append(dom)
+            if sm_list:
+                url_nl.social_media = ";".join(sm_list)
+            if dom in [ec.lower() for ec in PAY_OPTIONS]:
+                logger.debug(f"Found social media {dom}")
+                ec_list.append(dom)
+            if ec_list:
+                url_nl.ecommerce = ";".join(ec_list)
 
         self.logger.debug(url_analyse)
         if not url_analyse.exists:
