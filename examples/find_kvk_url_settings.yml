@@ -63,9 +63,5 @@ process_settings:
     # all the url that fail to give the correct match can here be impose
     # 24255704: apotheekdorpsweg.leef.nl
     8137415: www.tulpkeukens.nl
-  url_filters:
-    # only process the urls that match one of the filter below
-    apply_filters: false
-    filters:
-    - www.superkeukens.nl
+
 

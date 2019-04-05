@@ -186,7 +186,7 @@ def init_models(db, reset_tables=False):
         social_media = pw.ForeignKeyField(SocialMedia)
         website = pw.ForeignKeyField(WebSite)
 
-    tables = (UrlNL, Company, Address, WebSite, PayOptions, SocialMedia, WebsiteSocialmedia)
+    tables = (UrlNL, Company, Address, WebSite)
 
     if db.is_closed():
         db.connect()

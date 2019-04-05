@@ -295,9 +295,6 @@ class KvKUrlParser(mp.Process):
         self.company = tables[1]
         self.address = tables[2]
         self.website = tables[3]
-        self.pay_options = tables[4]
-        self.social_media = tables[5]
-        self.website_social_media = tables[6]
 
     def run(self):
         # read from either original csv or cache. After this the data attribute is filled with a
@@ -312,21 +309,10 @@ class KvKUrlParser(mp.Process):
         self.read_database_urls()
         self.merge_data_base_kvks()
 
-        self.fixed_tables_to_sql()
         self.company_kvks_to_sql()
         self.url_nl_to_sql()
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
-
-    def fixed_tables_to_sql(self):
-
-        for medium in SOCIAL_MEDIA:
-            self.logger.debug(f"Creating social media entry {medium}")
-            self.social_media.create(naam=medium)
-
-        for pay_option in PAY_OPTIONS:
-            self.logger.debug(f"Creating social media entry {pay_option}")
-            self.pay_options.create(naam=pay_option)
 
     def get_kvk_list_per_process(self):
         """
