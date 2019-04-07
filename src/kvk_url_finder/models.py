@@ -146,7 +146,7 @@ def init_models(db, reset_tables=False):
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
         category = pw.IntegerField(null=True)
-        ecommerce = pw.IntegerField(null=True)
+        ecommerce = pw.CharField(null=True)
         social_media = pw.CharField(null=True)
         referred_by = pw.CharField(null=True)
 
@@ -172,19 +172,6 @@ def init_models(db, reset_tables=False):
         has_btw_nr = pw.BooleanField(null=True)
         ranking = pw.IntegerField(null=True)
         bestaat = pw.BooleanField(null=True)
-
-    class PayOptions(BaseModel):
-        naam = pw.CharField(null=False, unique=True)
-        company = pw.ForeignKeyField(Company, backref='pay_options', null=True)
-        website = pw.ForeignKeyField(WebSite, backref='pay_options', null=True)
-        url_nl = pw.ForeignKeyField(UrlNL, backref='pay_options', null=True)
-
-    class SocialMedia(BaseModel):
-        naam = pw.CharField(null=False, unique=True)
-
-    class WebsiteSocialmedia(BaseModel):
-        social_media = pw.ForeignKeyField(SocialMedia)
-        website = pw.ForeignKeyField(WebSite)
 
     tables = (UrlNL, Company, Address, WebSite)
 
