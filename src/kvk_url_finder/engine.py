@@ -556,7 +556,6 @@ class KvKUrlParser(mp.Process):
                 continue
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
-            self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
 
             if self.search_urls:
                 self.logger.info("Start a URL search for this company first")
@@ -1196,7 +1195,9 @@ class CompanyUrlMatch(object):
 
         # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
         # impose a url
-        self.impose_url = imposed_urls.get(self.kvk_nr)
+        impose_url = imposed_urls.get(self.kvk_nr)
+
+        self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
 
         print_banner(f"Matching Company {company} : {company.naam}", top_symbol="+")
 
@@ -1205,6 +1206,7 @@ class CompanyUrlMatch(object):
         self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
                                   threshold_distance=distance_threshold,
                                   threshold_string_match=string_match_threshold,
+                                  impose_url=impose_url,
                                   store_html_to_cache=store_html_to_cache,
                                   max_cache_dir_size=max_cache_dir_size,
                                   internet_scraping=internet_scraping,
@@ -1328,7 +1330,7 @@ class UrlCollection(object):
         self.logger.debug("Get best match")
         if impose_url:
             # just select the url to impose
-            self.logger.debug(f"Imposing {impose_url}")
+            self.logger.info(f"Imposing {impose_url}")
             self.web_df = self.web_df[self.web_df[URL_KEY] == impose_url].copy()
         elif self.web_df is not None:
             self.get_best_matching_web_site()
