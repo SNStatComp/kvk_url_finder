@@ -1197,8 +1197,6 @@ class CompanyUrlMatch(object):
         # impose a url
         impose_url = imposed_urls.get(self.kvk_nr)
 
-        self.logger.debug("Impose {}".format(self.impose_url_for_kvk))
-
         print_banner(f"Matching Company {company} : {company.naam}", top_symbol="+")
 
         # first collect all the urls and obtain the match properties
