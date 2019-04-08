@@ -1511,6 +1511,8 @@ class UrlCollection(object):
             # good the web sides matches the company
             match = UrlCompanyRanking(url, self.company_name_small, url_extract=url_extract,
                                       url_analyse=url_analyse,
+                                      company_kvk_nummer=self.kvk_nr,
+                                      company_postcodes=self.postcodes,
                                       threshold_string_match=self.threshold_string_match,
                                       threshold_distance=self.threshold_distance,
                                       logger=self.logger)
