@@ -1201,20 +1201,18 @@ class CompanyUrlMatch(object):
 
         # first collect all the urls and obtain the match properties
         self.logger.debug("Get Url collection....")
-        self.urls = UrlCollection(company, self.company_name, self.kvk_nr,
-                                  threshold_distance=distance_threshold,
-                                  threshold_string_match=string_match_threshold,
-                                  impose_url=impose_url,
-                                  store_html_to_cache=store_html_to_cache,
-                                  max_cache_dir_size=max_cache_dir_size,
-                                  internet_scraping=internet_scraping,
-                                  save=self.save,
-                                  url_nl=self.url_nl,
-                                  older_time=self.older_time,
-                                  timezone=self.timezone,
-                                  exclude_extensions=exclude_extension,
-                                  filter_urls=self.filter_urls
-                                  )
+        self.collection = UrlCollection(company, self.company_name, self.kvk_nr,
+                                        threshold_distance=distance_threshold,
+                                        threshold_string_match=string_match_threshold,
+                                        impose_url=impose_url,
+                                        store_html_to_cache=store_html_to_cache,
+                                        max_cache_dir_size=max_cache_dir_size,
+                                        internet_scraping=internet_scraping, save=self.save,
+                                        url_nl=self.url_nl, older_time=self.older_time,
+                                        timezone=self.timezone,
+                                        exclude_extensions=exclude_extension,
+                                        filter_urls=self.filter_urls)
+        self.urls = self.collection
         self.find_match_for_company()
 
     def find_match_for_company(self):
