@@ -1422,20 +1422,22 @@ class UrlCollection(object):
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
         web.getest = True
 
+        sm_list = list()
+        ec_list = list()
+        all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
+        all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
         for external_url in url_analyse.external_hrefs:
             dom = tldextract.extract(external_url).domain
-            sm_list = list()
-            ec_list = list()
-            if dom in [sm.lower() for sm in SOCIAL_MEDIA]:
+            if dom in all_social_media and dom not in sm_list:
                 logger.debug(f"Found social media {dom}")
                 sm_list.append(dom)
-            if sm_list:
-                url_nl.social_media = ";".join(sm_list)
-            if dom in [ec.lower() for ec in PAY_OPTIONS]:
-                logger.debug(f"Found social media {dom}")
+            if dom in all_ecommerce and dom not in ec_list:
+                logger.debug(f"Found ecommerce {dom}")
                 ec_list.append(dom)
-            if ec_list:
-                url_nl.ecommerce = ";".join(ec_list)
+        if ec_list:
+            url_nl.ecommerce = ";".join(ec_list)
+        if sm_list:
+            url_nl.social_media = ";".join(sm_list)
 
         self.logger.debug(url_analyse)
         if not url_analyse.exists:
@@ -1513,8 +1515,18 @@ class UrlCollection(object):
 
             # store the info in both the dataframe web_df and the url_nl table
             self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
-            if match.has_kvk_nummer:
-                url_nl.kvk_nummer = self.kvk_nr
+
+            # we have sorted the kvk set with a ranking. The first kvk number in the set has
+            # the closest match, store that
+            try:
+                url_nl.kvk_nummer = list(match.kvk_set)[0]
+            except IndexError:
+                pass
+
+            try:
+                url_nl.post_code = list(match.postcode_set)[0]
+            except IndexError:
+                pass
 
             url_nl.btw_nummer = match.btw_nummer
 
@@ -1665,6 +1677,7 @@ class UrlCompanyRanking(object):
 
         self.get_levenstein_distance()
         self.get_string_match()
+        self.rank_contact_list()
         self.get_ranking()
 
     def get_levenstein_distance(self):
@@ -1689,6 +1702,29 @@ class UrlCompanyRanking(object):
         domain_match = difflib.SequenceMatcher(None, self.ext.domain,
                                                self.company_name).ratio()
         self.string_match = max(subdomain_match, domain_match)
+
+    def rank_contact_list(self):
+        df = pd.DataFrame(index=[POSTAL_CODE_KEY, KVK_KEY, BTW_KEY])
+        for key, url_p_m in self.url_analyse.url_per_match.items():
+            for match, url in url_p_m.items():
+                if url not in df.columns:
+                    df[url] = 0
+                df.loc[key, url] += 1
+
+        contact_hits_per_url = df.astype(bool).sum()
+
+        for key, url_p_m in self.url_analyse.url_per_match.items():
+            match_list = list()
+            url_score = list()
+            for match, url in url_p_m.items():
+                match_list.append(match)
+                url_score.append(contact_hits_per_url[url])
+            match_df = pd.DataFrame(zip(match_list, url_score), columns=["match", "score"])
+            match_df.sort_values(["score"])
+
+            self.url_analyse.matches[key] = list(match_df["match"].values)
+
+        self.logger.debug("got sorted url {}".format(self.url_analyse))
 
     def get_ranking(self):
 
