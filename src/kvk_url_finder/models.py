@@ -24,6 +24,7 @@ GETEST_KEY = "getest"
 BESTAAT_KEY = "bestaat"
 EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
+DISTANCE_STRING_MATCH_KEY = "dist_str_match"
 HAS_POSTCODE_KEY = "has_postcode"
 HAS_BTW_NR_KEY = "has_btw_nr"
 HAS_KVK_NR = "has_kvk_nr"
@@ -40,10 +41,12 @@ DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
 CATEGORY_KEY = "category"
 
+
 WEB_DF_COLS = [URL_KEY,
                EXISTS_KEY,
                DISTANCE_KEY,
                STRING_MATCH_KEY,
+               DISTANCE_STRING_MATCH_KEY,
                HAS_POSTCODE_KEY,
                HAS_KVK_NR,
                SUBDOMAIN_KEY,
@@ -167,6 +170,7 @@ def init_models(db, reset_tables=False):
         getest = pw.BooleanField(null=True)
         levenshtein = pw.IntegerField(null=True)
         string_match = pw.FloatField(null=True)
+        url_match = pw.FloatField(null=True)
         best_match = pw.BooleanField(null=True)
         has_postcode = pw.BooleanField(null=True)
         has_kvk_nr = pw.BooleanField(null=True)

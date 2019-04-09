@@ -1535,6 +1535,7 @@ class UrlCollection(object):
             web.best_match = False
             web.string_match = match.string_match
             web.levenshtein = match.distance
+            web.url_match = match.distance * (1 - match.string_match)
             web.has_postcode = match.has_postcode
             web.has_kvk_nr = match.has_kvk_nummer
             web.has_btw_nr = match.has_btw_nummer
@@ -1574,6 +1575,7 @@ class UrlCollection(object):
                                          True,  # url bestaat
                                          match.distance,  # levenstein distance
                                          match.string_match,  # string match
+                                         match.url_match,  # dist/match
                                          match.has_postcode,  # the web site has the postcode
                                          match.has_kvk_nummer,  # the web site has the kvk
                                          match.ext.subdomain,  # subdomain of the url
@@ -1629,8 +1631,8 @@ class UrlCollection(object):
         # make a copy of the valid web sides
         self.web_df = self.web_df[mask].copy()
 
-        self.web_df.sort_values([RANKING_KEY, DISTANCE_KEY, STRING_MATCH_KEY], inplace=True,
-                                ascending=[False, False, True])
+        self.web_df.sort_values([RANKING_KEY, DISTANCE_STRING_MATCH_KEY], inplace=True,
+                                ascending=[False, False])
         self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
 
 
@@ -1748,7 +1750,7 @@ class UrlCompanyRanking(object):
 
         if self.company_postcodes and self.company_postcodes.intersection(self.postcode_set):
             self.has_postcode = True
-            self.ranking += 2
+            self.ranking += 3
             self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
         else:
             self.has_postcode = False
@@ -1778,3 +1780,8 @@ class UrlCompanyRanking(object):
             self.ranking += 1
         elif self.ext.suffix == "nl":
             self.ranking += 2
+
+        if self.ext.subdomain == "www":
+            self.ranking += 2
+        elif self.ext.subdomain == "":
+            self.ranking += 1
