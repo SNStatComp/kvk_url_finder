@@ -1762,7 +1762,7 @@ class UrlCompanyRanking(object):
         if self.btw_set:
             self.has_btw_nummer = True
             self.btw_nummer = re.sub(r"\.", "", list(self.btw_set)[0])
-            self.ranking += 5
+            self.ranking += 0   # for now we dont give a score to btw because we cannot validate it
             self.logger.debug(f"Found matching btw number {self.btw_nummer}. "
                               f"Added to ranking {self.ranking}")
         else:
