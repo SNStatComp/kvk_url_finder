@@ -1576,6 +1576,7 @@ class UrlCollection(object):
                                          match.distance,  # levenstein distance
                                          match.string_match,  # string match
                                          match.url_match,  # dist/match
+                                         match.url_rank,  # dist/match
                                          match.has_postcode,  # the web site has the postcode
                                          match.has_kvk_nummer,  # the web site has the kvk
                                          match.ext.subdomain,  # subdomain of the url
@@ -1643,7 +1644,8 @@ class UrlCompanyRanking(object):
 
     def __init__(self, url, company_name, url_extract=None, url_analyse=None,
                  company_postcodes=None, company_kvk_nummer=None, company_btw_nummer=None,
-                 threshold_string_match=None, threshold_distance=None, logger=None):
+                 threshold_string_match=None, threshold_distance=None, logger=None,
+                 max_url_score=3):
 
         self.logger = logger
         self.company_name = company_name
@@ -1656,6 +1658,7 @@ class UrlCompanyRanking(object):
         self.url_analyse = url_analyse
         self.threshold_string_match = threshold_string_match
         self.threshold_distance = threshold_distance
+        self.max_url_score = max_url_score
 
         if url_extract is None:
             self.ext = tldextract.extract(url)
@@ -1665,8 +1668,9 @@ class UrlCompanyRanking(object):
 
         self.ranking = 0
 
-        self.distance = None
-        self.string_match = None
+        self.distance: int = None
+        self.string_match: float = None
+        self.url_match: float = None
 
         self.has_postcode = False
         self.has_kvk_nummer = False
@@ -1681,6 +1685,7 @@ class UrlCompanyRanking(object):
 
         self.get_levenstein_distance()
         self.get_string_match()
+
         self.rank_contact_list()
         self.get_ranking()
 
@@ -1708,6 +1713,14 @@ class UrlCompanyRanking(object):
         self.string_match = max(subdomain_match, domain_match)
 
     def rank_contact_list(self):
+        """
+        Give extra score to the btw in case btw number, postcode and kvk number occur at the
+        same page, as it is more likely that this page contains the contact info of the company
+
+        """
+
+        # create datafrmae with the postcode, kvk and btw. for each occurence of one of the items,
+        # add one
         df = pd.DataFrame(index=[POSTAL_CODE_KEY, KVK_KEY, BTW_KEY])
         for key, url_p_m in self.url_analyse.url_per_match.items():
             for match, url in url_p_m.items():
@@ -1715,8 +1728,10 @@ class UrlCompanyRanking(object):
                     df[url] = 0
                 df.loc[key, url] += 1
 
+        # clip the count per item to 0 or 1 (no or at least one occurance)
         contact_hits_per_url = df.astype(bool).sum()
 
+        # create a data frame for all urls per match in which we ahve the match and number of url
         for key, url_p_m in self.url_analyse.url_per_match.items():
             match_list = list()
             url_score = list()
@@ -1726,6 +1741,8 @@ class UrlCompanyRanking(object):
             match_df = pd.DataFrame(zip(match_list, url_score), columns=["match", "score"])
             match_df.sort_values(["score"])
 
+            # overwrite the match list of the current column postcode, kvk, btw such that the
+            # values with many other items is on top
             self.url_analyse.matches[key] = list(match_df["match"].values)
 
         self.logger.debug("got sorted url {}".format(self.url_analyse))
@@ -1770,11 +1787,12 @@ class UrlCompanyRanking(object):
         else:
             self.btw_nummer = None
 
-        if self.string_match >= self.threshold_string_match:
-            self.ranking += 1
+        # calculate the url match based on the levenshtein distance and string match
+        self.url_match = self.distance * (1 - self.string_match)
+        self.url_rank = self.max_url_score * (1 - self.url_match / self.threshold_distance)
 
-        if self.distance <= self.threshold_distance:
-            self.ranking += 1
+        # add the url matching score
+        self.ranking += self.url_rank
 
         if self.ext.suffix in ("com", "org", "eu"):
             self.ranking += 1
