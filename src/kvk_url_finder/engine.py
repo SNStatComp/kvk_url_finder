@@ -1774,7 +1774,7 @@ class UrlCompanyRanking(object):
         if self.distance <= self.threshold_distance:
             self.ranking += 1
 
-        if self.ext.suffix in ("com", "org"):
+        if self.ext.suffix in ("com", "org", "eu"):
             self.ranking += 1
         elif self.ext.suffix == "nl":
             self.ranking += 2
