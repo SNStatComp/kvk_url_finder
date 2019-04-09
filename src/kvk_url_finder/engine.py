@@ -1535,7 +1535,8 @@ class UrlCollection(object):
             web.best_match = False
             web.string_match = match.string_match
             web.levenshtein = match.distance
-            web.url_match = match.distance * (1 - match.string_match)
+            web.url_match = match.url_match
+            web.url_rank = match.url_rank
             web.has_postcode = match.has_postcode
             web.has_kvk_nr = match.has_kvk_nummer
             web.has_btw_nr = match.has_btw_nummer
@@ -1671,6 +1672,7 @@ class UrlCompanyRanking(object):
         self.distance: int = None
         self.string_match: float = None
         self.url_match: float = None
+        self.url_rank: float = None
 
         self.has_postcode = False
         self.has_kvk_nummer = False
@@ -1791,15 +1793,15 @@ class UrlCompanyRanking(object):
         self.url_match = self.distance * (1 - self.string_match)
         self.url_rank = self.max_url_score * (1 - self.url_match / self.threshold_distance)
 
-        # add the url matching score
-        self.ranking += self.url_rank
-
         if self.ext.suffix in ("com", "org", "eu"):
-            self.ranking += 1
+            self.url_rank += 1
         elif self.ext.suffix == "nl":
-            self.ranking += 2
+            self.url_rank += 2
 
         if self.ext.subdomain == "www":
-            self.ranking += 2
+            self.url_rank += 2
         elif self.ext.subdomain == "":
-            self.ranking += 1
+            self.url_rank += 1
+
+        # add the url matching score
+        self.ranking += self.url_rank

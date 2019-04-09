@@ -15,7 +15,6 @@ POSTAL_CODE_KEY = "postcode"
 CITY_KEY = "plaats"
 COMPANY_KEY = "company"
 BEST_MATCH_KEY = "best_match"
-LEVENSHTEIN_KEY = "levenshtein"
 STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
@@ -24,6 +23,8 @@ GETEST_KEY = "getest"
 BESTAAT_KEY = "bestaat"
 EXISTS_KEY = "exists"
 DISTANCE_KEY = "distance"
+URL_MATCH = "url_match"
+URL_RANK = "url_rank"
 DISTANCE_STRING_MATCH_KEY = "dist_str_match"
 HAS_POSTCODE_KEY = "has_postcode"
 HAS_BTW_NR_KEY = "has_btw_nr"
@@ -47,6 +48,7 @@ WEB_DF_COLS = [URL_KEY,
                DISTANCE_KEY,
                STRING_MATCH_KEY,
                DISTANCE_STRING_MATCH_KEY,
+               URL_RANK,
                HAS_POSTCODE_KEY,
                HAS_KVK_NR,
                SUBDOMAIN_KEY,
