@@ -27,8 +27,6 @@ def _parse_the_command_line_arguments(args):
 
     # set the verbosity level command line arguments
     # mandatory arguments
-    parser.add_argument("configuration_file", action="store",
-                        help="The yaml settings file")
     parser.add_argument("--version", help="Show the current version", action="version",
                         version="{}\nPart of kvk_url_finder version {}".format(
                             os.path.basename(__file__), __version__))
@@ -42,9 +40,11 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--type", default=None, choices=PLOT_TYPES, help="Choice a plot type")
     parser.add_argument("--user", action="store",
                         help="Username of the postgres database. By default use current user")
+    parser.add_argument("--database", action="store", default="kvk_db",
+                        help="Name of the database to plot")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
-    parser.add_argument("--hostname", action="store",
+    parser.add_argument("--hostname", action="store", default="localhost",
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
 
@@ -54,28 +54,30 @@ def _parse_the_command_line_arguments(args):
     return parsed_arguments, parser
 
 
-def read_table(table_name, connection):
-    cache_file = table_name + ".pkl"
-    try:
-        df = pd.read_pickle(cache_file)
-        logger.info(f"Read table pickle file {cache_file}")
-    except IOError:
-        logger.info("Connecting to database")
-        logger.info(f"Start reading table from postgres table {table_name}.pkl")
-        df = pd.read_sql(f"select * from {table_name}", con=connection)
-        logger.info("Dumping to pickle file")
-        df.to_pickle(cache_file)
-
-    return df
-
-
 class KvkPlotter(object):
-    def __init__(self, database="kvk_db", user="evlt", password=None):
-        self.connection = psycopg2.connect(database=database, user=user, password=password)
+    def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost"):
+
+        logger.info(f"Opening databse {database} for user {user} ")
+        self.connection = psycopg2.connect(host=hostname, database=database, user=user,
+                                           password=password)
+
+    def read_table(self, table_name):
+        cache_file = table_name + ".pkl"
+        try:
+            df = pd.read_pickle(cache_file)
+            logger.info(f"Read table pickle file {cache_file}")
+        except IOError:
+            logger.info("Connecting to database")
+            logger.info(f"Start reading table from postgres table {table_name}.pkl")
+            df = pd.read_sql(f"select * from {table_name}", con=self.connection)
+            logger.info("Dumping to pickle file")
+            df.to_pickle(cache_file)
+
+        return df
 
     def plot_website_ranking(self):
         table_name = 'web_site'
-        df = read_table(table_name, self.connection)
+        df = self.read_table(table_name)
 
         df["url_match"] = df.levenshtein * (1 - df.string_match)
         max_match = 10
@@ -99,8 +101,8 @@ class KvkPlotter(object):
         plt.show()
 
     def plot_processing_time(self):
-        table_name = 'url_nl'
-        df = read_table(table_name, self.connection)
+        table_name = 'company'
+        df: pd.DataFrame = self.read_table(table_name)
         # df[df["datetime"].isnull]
         df.dropna(axis=0, subset=["datetime"], inplace=True)
         df.sort_values(["datetime"], inplace=True)
@@ -108,14 +110,22 @@ class KvkPlotter(object):
         df.reset_index(inplace=True)
         df.set_index("datetime", drop=True, inplace=True)
 
-        df["tot_count"] = df.count()
-        df["count"] = df.groupby("group")
+        df["tot_count"] = range(1, len(df) + 1)
 
-        # df.set_index(["datetime"], drop=True)
-        df.info()
-        df.plot(y=["index"], style=".")
+        fig, ax = plt.subplots(figsize=(10, 12))
+        line_labels = list()
+
+        df.plot(y=["tot_count"], style="-", ax=ax)
+        line_labels.append("total")
+
+        for core_id, core_df in df.groupby("core_id"):
+            logger.info(f"plotting core {core_id}")
+            core_df["count"] = range(1, len(core_df) + 1)
+            core_df.plot(y=["count"], style="-", ax=ax)
+            line_labels.append(int(core_id))
+
+        ax.legend(line_labels, title="Core")
         plt.show()
-
 
 def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
@@ -124,7 +134,9 @@ def main(args_in):
 
     kvk_plotter = KvkPlotter(database=args.database,
                              user=args.user,
-                             password=args.password)
+                             password=args.password,
+                             hostname=args.hostname,
+                             )
 
     if args.type == "process_time":
         logger.info("Plotting process time")
