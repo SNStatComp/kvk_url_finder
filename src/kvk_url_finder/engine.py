@@ -1558,7 +1558,7 @@ class UrlCollection(object):
             # store the info in both the dataframe web_df and the url_nl table
             self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
 
-            url_nl.all_kvk = ",".join(list(match.kvk_set))
+            url_nl.all_kvk = ",".join(["{:08d}".format(kvk) for kvk in list(match.kvk_set)])
             url_nl.all_btw = ",".join(list(match.btw_set))
             url_nl.all_psc = ",".join(list(match.postcode_set))
 
