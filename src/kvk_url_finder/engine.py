@@ -1334,7 +1334,7 @@ class UrlCollection(object):
         else:
             self.logger.debug("No website found for".format(self.company_name))
 
-    def get_and_update_url_nl_query(self, url, url_extract: tldextract.TLDExtract = None):
+    def get_url_nl_query(self, url, url_extract: tldextract.TLDExtract = None):
         """
         Check the url to see if it needs updated or not based on the last processing time
 
@@ -1342,8 +1342,6 @@ class UrlCollection(object):
         ----------
         url: str
             url str to update
-        url_extract: tldextract
-            Output of the tldextract holding the url subdomain, domain and suffix
 
         Returns
         -------
@@ -1364,32 +1362,52 @@ class UrlCollection(object):
         else:
             logger.debug("found in UrlNL in table {} ".format(url_nl.url))
 
-            now = datetime.datetime.now(pytz.timezone(self.timezone))
-            processing_time = url_nl.datetime
-            logger.debug("processing time {} ".format(processing_time))
-            if processing_time and self.older_time:
-                delta_time = now - processing_time
-                logger.debug(f"Processed with delta time {delta_time}")
-                if delta_time < self.older_time:
-                    logger.debug(f"Less than {self.older_time}. Skipping")
-                    url_nl = None
-                else:
-                    logger.debug(
-                        f"File was processed more than {self.older_time} ago. Do it again!")
-            else:
-                # we are not skipping this file and we have a url_nl reference. Store the
-                # current processing time
-                logger.debug(f"We are updating the url_nl datetime {now}")
-
-            if url_nl:
-                url_nl.datetime = now
-                url_nl.suffix = url_extract.suffix
-                url_nl.subdomain = url_extract.subdomain
-                url_nl.domain = url_extract.domain
-
         return url_nl
 
-    def scrape_url_and_store_in_tables(self, url, web, url_nl):
+    def check_if_url_needs_update(self, url_nl, url_extract: tldextract.TLDExtract = None):
+        """
+        Check the url to see if it needs updated or not based on the last processing time
+
+        Parameters
+        ----------
+        url_nl: table model
+            The row from the url_nl table with the properties
+        url_extract: tldextract
+            Output of the tldextract holding the url subdomain, domain and suffix
+
+        Returns
+        -------
+        bool:
+            True in case it needs update
+        """
+
+        url_needs_update = True
+        now = datetime.datetime.now(pytz.timezone(self.timezone))
+        processing_time = url_nl.datetime
+        logger.debug("processing time {} ".format(processing_time))
+        if processing_time and self.older_time:
+            delta_time = now - processing_time
+            logger.debug(f"Processed with delta time {delta_time}")
+            if delta_time < self.older_time:
+                logger.debug(f"Less than {self.older_time}. Skipping")
+                url_needs_update = False
+            else:
+                logger.debug(
+                    f"File was processed more than {self.older_time} ago. Do it again!")
+        else:
+            # we are not skipping this file and we have a url_nl reference. Store the
+            # current processing time
+            logger.debug(f"We are updating the url_nl datetime {now}")
+
+        if url_needs_update:
+            url_nl.datetime = now
+            url_nl.suffix = url_extract.suffix
+            url_nl.subdomain = url_extract.subdomain
+            url_nl.domain = url_extract.domain
+
+        return url_needs_update
+
+    def scrape_url_and_store_in_tables(self, url, web, url_nl, url_needs_update):
         """
         Start scrapring the url and store some info in the tables web and url_df
         Parameters
@@ -1400,6 +1418,8 @@ class UrlCollection(object):
             Table with all the url per kvk
         url_df: peewee Table
             Table with all the unique urls
+        url_needs_update: bool
+            If true we need to search the url again
 
         Returns
         -------
@@ -1418,37 +1438,55 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
+                                       scrape_url=url_needs_update
                                        )
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
         web.getest = True
 
-        sm_list = list()
-        ec_list = list()
-        all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
-        all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
-        for external_url in url_analyse.external_hrefs:
-            dom = tldextract.extract(external_url).domain
-            if dom in all_social_media and dom not in sm_list:
-                logger.debug(f"Found social media {dom}")
-                sm_list.append(dom)
-            if dom in all_ecommerce and dom not in ec_list:
-                logger.debug(f"Found ecommerce {dom}")
-                ec_list.append(dom)
-        if ec_list:
-            url_nl.ecommerce = ";".join(ec_list)
-        if sm_list:
-            url_nl.social_media = ";".join(sm_list)
+        if not url_needs_update:
+            logger.debug("We skipped the scraping to transfer previous data ")
+            url_analyse.exists = True
+            # we have not scraped the url, but we want to set the info anyways
+            postcodes = url_nl.all_psc
+            if postcodes is not None and postcodes != "":
+                url_analyse.matches[POSTAL_CODE_KEY] = postcodes.split(",")
+            btw_nummers = url_nl.all_btw
+            if btw_nummers is not None and btw_nummers != "":
+                url_analyse.matches[BTW_KEY] = btw_nummers.split(",")
+            kvk_nummers = url_nl.all_kvk
+            if kvk_nummers is not None and kvk_nummers != "":
+                url_analyse.matches[KVK_KEY] = kvk_nummers.split(",")
+        else:
+            logger.debug("We scraped the web site. Store the social media")
+            sm_list = list()
+            ec_list = list()
+            all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
+            all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
+            for external_url in url_analyse.external_hrefs:
+                dom = tldextract.extract(external_url).domain
+                if dom in all_social_media and dom not in sm_list:
+                    logger.debug(f"Found social media {dom}")
+                    sm_list.append(dom)
+                if dom in all_ecommerce and dom not in ec_list:
+                    logger.debug(f"Found ecommerce {dom}")
+                    ec_list.append(dom)
+            if ec_list:
+                url_nl.ecommerce = ";".join(ec_list)
+            if sm_list:
+                url_nl.social_media = ";".join(sm_list)
+
+            if url_analyse.exists:
+                url_nl.bestaat = True
+                url_nl.ssl = url_analyse.req.ssl
+                url_nl.ssl_invalid = url_analyse.req.ssl_invalid
 
         self.logger.debug(url_analyse)
+
         if not url_analyse.exists:
             web.bestaat = False
         else:
             # if we are here, the web side is tested and exists
             web.bestaat = True
-
-            url_nl.bestaat = True
-            url_nl.ssl = url_analyse.req.ssl
-            url_nl.ssl_invalid = url_analyse.req.ssl_invalid
 
             for key, matches in url_analyse.matches.items():
                 self.logger.debug("Found {}:{} in {}".format(key, matches, url))
@@ -1482,12 +1520,13 @@ class UrlCollection(object):
                 continue
 
             # we are processing the url from the Website table, but we also need to query from the
-            # UrlNL table. Get it here. In this table we set the url_nl return value to None
-            # in case this query  was already processed before
-            url_nl = self.get_and_update_url_nl_query(url, url_extract)
+            # UrlNL table. Get it here.
+            url_nl = self.get_url_nl_query(url, url_extract)
             if url_nl is None:
-                logger.info("Skipping url because it was processed already {url}")
+                logger.info("Skipping url because it was not available in url_nl table: {url}")
                 continue
+
+            url_needs_update = self.check_if_url_needs_update(url_nl, url_extract)
 
             # start with storing the name and assume we have not tested the url or it exist
             web.naam = self.company_name
@@ -1496,7 +1535,8 @@ class UrlCollection(object):
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
-                url_analyse = self.scrape_url_and_store_in_tables(url, web, url_nl)
+                url_analyse = self.scrape_url_and_store_in_tables(url, web, url_nl,
+                                                                  url_needs_update)
             else:
                 url_analyse = None
 
@@ -1517,6 +1557,10 @@ class UrlCollection(object):
 
             # store the info in both the dataframe web_df and the url_nl table
             self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
+
+            url_nl.all_kvk = ",".join(list(match.kvk_set))
+            url_nl.all_btw = ",".join(list(match.btw_set))
+            url_nl.all_psc = ",".join(list(match.postcode_set))
 
             # we have sorted the kvk set with a ranking. The first kvk number in the set has
             # the closest match, store that

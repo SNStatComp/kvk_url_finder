@@ -155,6 +155,9 @@ def init_models(db, reset_tables=False):
         ecommerce = pw.CharField(null=True)
         social_media = pw.CharField(null=True)
         referred_by = pw.CharField(null=True)
+        all_psc = pw.CharField(null=True)
+        all_kvk = pw.CharField(null=True)
+        all_btw = pw.CharField(null=True)
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")
