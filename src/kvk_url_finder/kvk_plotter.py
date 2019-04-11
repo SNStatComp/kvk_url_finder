@@ -37,14 +37,14 @@ def _parse_the_command_line_arguments(args):
                         dest="log_level", const=logging.INFO)
     parser.add_argument('-q', '--quiet', help="Be quiet: no output", action="store_const",
                         dest="log_level", const=logging.WARNING)
-    parser.add_argument("--type", default=None, choices=PLOT_TYPES, help="Choice a plot type")
+    parser.add_argument("--type", default="all", choices=PLOT_TYPES, help="Choice a plot type")
     parser.add_argument("--user", action="store",
                         help="Username of the postgres database. By default use current user")
     parser.add_argument("--database", action="store", default="kvk_db",
                         help="Name of the database to plot")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
-    parser.add_argument("--hostname", action="store", default="localhost",
+    parser.add_argument("--hostname", action="store",
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
 
@@ -57,7 +57,7 @@ def _parse_the_command_line_arguments(args):
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost"):
 
-        logger.info(f"Opening databse {database} for user {user} ")
+        logger.info(f"Opening database {database} for user {user} at {hostname}")
         self.connection = psycopg2.connect(host=hostname, database=database, user=user,
                                            password=password)
 
@@ -127,6 +127,7 @@ class KvkPlotter(object):
         ax.legend(line_labels, title="Core")
         plt.show()
 
+
 def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
 
@@ -138,10 +139,10 @@ def main(args_in):
                              hostname=args.hostname,
                              )
 
-    if args.type == "process_time":
+    if args.type in ("process_time", "all"):
         logger.info("Plotting process time")
         kvk_plotter.plot_processing_time()
-    elif args.type == "web_ranking":
+    if args.type in ("web_ranking", "all"):
         logger.info("Plotting web ranking")
         kvk_plotter.plot_website_ranking()
 
