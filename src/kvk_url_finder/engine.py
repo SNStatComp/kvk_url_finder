@@ -1409,7 +1409,7 @@ class UrlCollection(object):
 
     def scrape_url_and_store_in_tables(self, url, web, url_nl, url_needs_update):
         """
-        Start scrapring the url and store some info in the tables web and url_df
+        Start scraping the url and store some info in the tables web and url_df
         Parameters
         ----------
         url: str

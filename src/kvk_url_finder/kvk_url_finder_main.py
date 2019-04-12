@@ -218,6 +218,9 @@ def main(args_in):
     internet_scraping = general.get("internet_scraping", True)
     search_urls = general.get("search_urls", False)
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
+    certificate = general.get("certificate")
+    if certificate is not None:
+        os.environ["REQUEST_CA_BUNDLE"] = certificate
     older_time_str = general.get("older_time", None)
     if older_time_str:
         # use pytimeparse to allow general string notition of delta time, 1 h, 3 days, etc
