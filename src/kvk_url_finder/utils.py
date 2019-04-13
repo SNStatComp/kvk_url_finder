@@ -13,7 +13,7 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
     # matches the fist item (? is non-greedy)
     length = len(result)
     if length > max_length:
-        result = result[-1:0]  # reverse string to be able to peel off from the back
+        result = result[-1:0:-1]  # reverse string to be able to peel off from the back
         match = re.compile(r"^.*?" + separator)
         cnt = 0
         while length > max_length:
@@ -25,7 +25,7 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
                 break
 
         # reverse back
-        result = result[-1:0]
+        result = result[-1:0:-1]
 
     return result
 
