@@ -18,6 +18,7 @@ BEST_MATCH_KEY = "best_match"
 STRING_MATCH_KEY = "string_match"
 RANKING_KEY = "ranking"
 MAX_PROCESSES = 128
+MAX_CHARFIELD_LENGTH = 255
 
 GETEST_KEY = "getest"
 BESTAAT_KEY = "bestaat"
@@ -152,12 +153,12 @@ def init_models(db, reset_tables=False):
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
         category = pw.IntegerField(null=True)
-        ecommerce = pw.CharField(null=True)
-        social_media = pw.CharField(null=True)
+        ecommerce = pw.CharField(null=True, max_length=MAX_CHARFIELD_LENGTH)
+        social_media = pw.CharField(null=True, max_length=MAX_CHARFIELD_LENGTH)
         referred_by = pw.CharField(null=True)
-        all_psc = pw.CharField(null=True)
-        all_kvk = pw.CharField(null=True)
-        all_btw = pw.CharField(null=True)
+        all_psc = pw.CharField(null=True, max_length=MAX_CHARFIELD_LENGTH)
+        all_kvk = pw.CharField(null=True, max_length=MAX_CHARFIELD_LENGTH)
+        all_btw = pw.CharField(null=True, max_length=MAX_CHARFIELD_LENGTH)
 
     class Address(BaseModel):
         company = pw.ForeignKeyField(Company, backref="address")

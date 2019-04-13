@@ -19,6 +19,7 @@ from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KV
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
+from kvk_url_finder.utils import paste_strings
 
 try:
     from kvk_url_finder import __version__
@@ -1471,9 +1472,9 @@ class UrlCollection(object):
                     logger.debug(f"Found ecommerce {dom}")
                     ec_list.append(dom)
             if ec_list:
-                url_nl.ecommerce = ";".join(ec_list)
+                url_nl.ecommerce = paste_strings(ec_list, max_length=MAX_CHARFIELD_LENGTH)
             if sm_list:
-                url_nl.social_media = ";".join(sm_list)
+                url_nl.social_media = paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
 
             if url_analyse.exists:
                 url_nl.bestaat = True
@@ -1558,9 +1559,11 @@ class UrlCollection(object):
             # store the info in both the dataframe web_df and the url_nl table
             self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
 
-            url_nl.all_kvk = ",".join(["{:08d}".format(kvk) for kvk in list(match.kvk_set)])
-            url_nl.all_btw = ",".join(list(match.btw_set))
-            url_nl.all_psc = ",".join(list(match.postcode_set))
+            url_nl.all_kvk = paste_strings(["{:08d}".format(kvk) for kvk in list(match.kvk_set)],
+                                           max_length=MAX_CHARFIELD_LENGTH)
+            url_nl.all_btw = paste_strings(list(match.btw_set), max_length=MAX_CHARFIELD_LENGTH)
+            url_nl.all_psc = paste_strings(list(match.postcode_set),
+                                           max_length=MAX_CHARFIELD_LENGTH)
 
             # we have sorted the kvk set with a ranking. The first kvk number in the set has
             # the closest match, store that
@@ -1765,7 +1768,7 @@ class UrlCompanyRanking(object):
 
         """
 
-        # create datafrmae with the postcode, kvk and btw. for each occurence of one of the items,
+        # create dataframe with the postcode, kvk and btw. for each occurrence of one of the items,
         # add one
         df = pd.DataFrame(index=[POSTAL_CODE_KEY, KVK_KEY, BTW_KEY])
         for key, url_p_m in self.url_analyse.url_per_match.items():
@@ -1777,7 +1780,7 @@ class UrlCompanyRanking(object):
         # clip the count per item to 0 or 1 (no or at least one occurance)
         contact_hits_per_url = df.astype(bool).sum()
 
-        # create a data frame for all urls per match in which we ahve the match and number of url
+        # create a data frame for all urls per match in which we have the match and number of url
         for key, url_p_m in self.url_analyse.url_per_match.items():
             match_list = list()
             url_score = list()
