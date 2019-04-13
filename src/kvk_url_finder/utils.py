@@ -2,7 +2,8 @@ import logging
 import re
 
 from kvk_url_finder import LOGGER_BASE_NAME
-logger = logging.getLevelName(LOGGER_BASE_NAME)
+
+logger = logging.getLogger(LOGGER_BASE_NAME)
 
 
 def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000):
