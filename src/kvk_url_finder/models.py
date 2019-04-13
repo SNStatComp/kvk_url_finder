@@ -173,6 +173,7 @@ def init_models(db, reset_tables=False):
         url = pw.ForeignKeyField(UrlNL, backref="websites")
         naam = pw.CharField(null=False)
         getest = pw.BooleanField(null=True)
+        bestaat = pw.BooleanField(null=True)
         levenshtein = pw.IntegerField(null=True)
         string_match = pw.FloatField(null=True)
         url_match = pw.FloatField(null=True)
@@ -182,7 +183,6 @@ def init_models(db, reset_tables=False):
         has_kvk_nr = pw.BooleanField(null=True)
         has_btw_nr = pw.BooleanField(null=True)
         ranking = pw.FloatField(null=True)
-        bestaat = pw.BooleanField(null=True)
 
     tables = (UrlNL, Company, Address, WebSite)
 

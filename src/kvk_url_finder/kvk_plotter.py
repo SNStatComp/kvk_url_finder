@@ -44,6 +44,8 @@ def _parse_the_command_line_arguments(args):
                         help="Name of the database to plot")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
+    parser.add_argument("--reset", action="store_true",
+                        help="If true reset the cache and reread the data")
     parser.add_argument("--hostname", action="store",
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
@@ -55,18 +57,25 @@ def _parse_the_command_line_arguments(args):
 
 
 class KvkPlotter(object):
-    def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost"):
+    def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
+                 reset=False):
 
+        self.reset = reset
         logger.info(f"Opening database {database} for user {user} at {hostname}")
         self.connection = psycopg2.connect(host=hostname, database=database, user=user,
                                            password=password)
 
     def read_table(self, table_name):
         cache_file = table_name + ".pkl"
-        try:
-            df = pd.read_pickle(cache_file)
-            logger.info(f"Read table pickle file {cache_file}")
-        except IOError:
+        df = None
+        if not self.reset:
+            try:
+                df = pd.read_pickle(cache_file)
+                logger.info(f"Read table pickle file {cache_file}")
+            except IOError:
+                logger.debug(f"No pickle file available {cache_file}")
+
+        if df is None:
             logger.info("Connecting to database")
             logger.info(f"Start reading table from postgres table {table_name}.pkl")
             df = pd.read_sql(f"select * from {table_name}", con=self.connection)
@@ -137,6 +146,7 @@ def main(args_in):
                              user=args.user,
                              password=args.password,
                              hostname=args.hostname,
+                             reset=args.reset
                              )
 
     if args.type in ("process_time", "all"):
