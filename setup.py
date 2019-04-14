@@ -15,6 +15,7 @@ from setuptools import setup
 entry_points = """
 [console_scripts]
 kvk_url_finder = kvk_url_finder.kvk_url_finder_main:_run
+kvk_plotter = kvk_url_finder.kvk_plotter:_run
 # For example:
 # fibonacci = kvk_url_finder.skeleton:run
 """

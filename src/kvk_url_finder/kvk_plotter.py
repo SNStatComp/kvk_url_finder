@@ -79,8 +79,9 @@ class KvkPlotter(object):
             logger.info("Connecting to database")
             logger.info(f"Start reading table from postgres table {table_name}.pkl")
             df = pd.read_sql(f"select * from {table_name}", con=self.connection)
-            logger.info("Dumping to pickle file")
+            logger.info(f"Dumping to pickle file {cache_file}")
             df.to_pickle(cache_file)
+            logger.info("Done")
 
         return df
 
