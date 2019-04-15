@@ -82,7 +82,7 @@ def _parse_the_command_line_arguments(args):
                         help="Write the logging information to file")
     parser.add_argument("--no_write_log_to_file", action="store_false", dest="write_log_to_file",
                         help="Do not write the logging information to file")
-    parser.add_argument("--log_file_base", default="log", help="Default name of the logging output")
+    parser.add_argument("--log_file_base", default="log_url", help="Default name  logging output")
     parser.add_argument('--log_file_debug', help="Be very verbose to file", action="store_const",
                         dest="log_level_file", const=logging.DEBUG, default=logging.INFO)
     parser.add_argument('--log_file_verbose', help="Be verbose to file", action="store_const",
@@ -354,6 +354,70 @@ def main(args_in):
             sys.exit(0)
 
         url_parser.get_url_list_per_process()
+
+        jobs = list()
+        for i_proc, url_range in enumerate(url_parser.url_ranges):
+
+            if use_subprocess:
+                logger.info("Still needs to be implemented")
+            else:
+                logger.info(f"Processing @ {i_proc} urls in range {url_range}")
+
+                url_sub_parser = UrlParser(
+                    database_name=database_name,
+                    database_type=database_type,
+                    max_cache_dir_size=max_cache_dir_size,
+                    search_urls=search_urls,
+                    internet_scraping=internet_scraping,
+                    store_html_to_cache=store_html_to_cache,
+                    progressbar=args.progressbar,
+                    url_range_process=url_range,
+                    maximum_entries=maximum_entries,
+                    force_process=args.force_process,
+                    i_proc=i_proc + args.process_nr,
+                    number_of_processes=args.n_processes,
+                    log_file_base=args.log_file_base,
+                    log_level_file=args.log_level_file,
+                    singlebar=args.singlebar,
+                    password=args.password,
+                    user=user,
+                    hostname=args.hostname,
+                    older_time=older_time,
+                    filter_urls=filter_urls
+                )
+
+                if args.n_processes > 1:
+                    # we should not be running on windows if we are here
+                    assert platform.system() != "Windows"
+                    url_sub_parser.start()
+                else:
+                    # for one cpu we can directly call run
+                    url_sub_parser.run()
+
+                jobs.append(url_sub_parser)
+
+        if args.n_processes > 1:
+            if not use_subprocess:
+                # this will block the script until all jobs are done
+                for job in jobs:
+                    job.join()
+
+                for i_proc, process in enumerate(jobs):
+                    db = process.database
+                    if not db.is_closed():
+                        logger.info(f"Closing process {i_proc} ")
+                        db.close()
+            else:
+                for ip, process in enumerate(jobs):
+                    logger.info("Waiting for process {} : {}".format(ip, process.pid))
+                    try:
+                        os.waitpid(process.pid, 0)
+                        logger.debug("DONE: {} : {}".format(ip, process.pid))
+                    except ChildProcessError:
+                        logger.debug("NoMore: {} : {}".format(ip, process.pid))
+
+        logger.info("Goodbye Urls!")
+        logger.debug("Really:-)")
 
 
 def _run():

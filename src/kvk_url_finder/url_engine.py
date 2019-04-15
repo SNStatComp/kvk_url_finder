@@ -208,6 +208,11 @@ class UrlParser(mp.Process):
         self.address = tables[2]
         self.website = tables[3]
 
+    def run(self):
+        # read from either original csv or cache. After this the data attribute is filled with a
+        # data frame
+        self.logger.debug(f"Scraping the url in range {self.url_range_process}")
+
     def export_db(self, file_name):
         export_file = Path(file_name)
         if export_file.suffix in (".xls", ".xlsx"):
