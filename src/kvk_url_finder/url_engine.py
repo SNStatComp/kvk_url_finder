@@ -1,25 +1,23 @@
 import datetime
-import difflib
 import multiprocessing as mp
 import os
 import re
 import sys
 import time
 
-import Levenshtein
 import pandas as pd
 import progressbar as pb
 import pytz
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
+from cbs_utils.misc import (create_logger, print_banner, standard_postcode)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
-from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
+from kvk_url_finder import LOGGER_BASE_NAME
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import Range, check_if_url_needs_update
+from kvk_url_finder.utils import (Range, check_if_url_needs_update, paste_strings)
 
 try:
     from kvk_url_finder import __version__
@@ -115,6 +113,7 @@ class UrlParser(mp.Process):
                  url_range_process=None,
                  save=True,
                  number_of_processes=1,
+                 exclude_extensions=None,
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
@@ -147,11 +146,17 @@ class UrlParser(mp.Process):
 
         self.logger.debug("With debug on?")
 
+        self.progressbar = progressbar
+        self.showbar = progressbar
+        if singlebar and i_proc > 0 or i_proc is None:
+            # in case the single bar option is given, we only show the bar of the first process
+            self.showbar = False
+
         # a list of all country url extension which we want to exclude
-        self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
-                                              columns=["include", "country", "suffix"])
-        self.exclude_extension = self.exclude_extension[~self.exclude_extension["include"]]
-        self.exclude_extension = self.exclude_extension.set_index("suffix", drop=True).drop(
+        self.exclude_extensions = pd.DataFrame(COUNTRY_EXTENSIONS,
+                                               columns=["include", "country", "suffix"])
+        self.exclude_extensions = self.exclude_extensions[~self.exclude_extensions["include"]]
+        self.exclude_extensions = self.exclude_extensions.set_index("suffix", drop=True).drop(
             ["include"], axis=1)
 
         self.i_proc = i_proc
@@ -345,4 +350,124 @@ class UrlParser(mp.Process):
         self.logger.info("Start processing {} queries between {} - {} ".format(max_queries,
                                                                                start, stop))
 
+        if self.progressbar and self.showbar:
+            pbar = tqdm(total=max_queries, position=self.i_proc, file=sys.stdout)
+            pbar.set_description("@{:2d}: ".format(self.i_proc))
+        else:
+            pbar = None
 
+        start = time.time()
+        for cnt, q_url in enumerate(query):
+
+            # first check if we do not have to stop
+            if self.maximum_entries is not None and cnt == self.maximum_entries:
+                self.logger.info("Maximum entries reached")
+                break
+            if os.path.exists(STOP_FILE):
+                self.logger.info("Stop file found. Quit processing")
+                os.remove(STOP_FILE)
+                break
+
+            if not check_if_url_needs_update(q_url.datetime, now, older):
+                continue
+
+            url = q_url.url
+
+            if self.filter_urls and url not in self.filter_urls:
+                logger.debug(f"filter urls is given so skip {url}")
+                continue
+
+            print_banner(f"Processing {url}")
+
+            # quick check if we can processes this url based on the country code
+            url_extract = tldextract.extract(url)
+            suffix = url_extract.suffix
+            if suffix in self.exclude_extensions.index:
+                logger.info(f"Web site {url} has suffix '.{suffix}' Skipping")
+                continue
+
+            q_url.datetime = now
+            q_url.suffix = url_extract.suffix
+            q_url.subdomain = url_extract.subdomain
+            q_url.domain = url_extract.domain
+
+            url_analyse = UrlSearchStrings(url,
+                                           search_strings={
+                                               POSTAL_CODE_KEY: ZIP_REGEXP,
+                                               KVK_KEY: KVK_REGEXP,
+                                               BTW_KEY: BTW_REGEXP
+                                           },
+                                           sort_order_hrefs=SORT_ORDER_HREFS,
+                                           stop_search_on_found_keys=[BTW_KEY],
+                                           store_page_to_cache=self.store_html_to_cache,
+                                           max_cache_dir_size=self.max_cache_dir_size,
+                                           scrape_url=True
+                                           )
+            logger.debug("We scraped the web site. Store the social media")
+            sm_list = list()
+            ec_list = list()
+            all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
+            all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
+            for external_url in url_analyse.external_hrefs:
+                dom = tldextract.extract(external_url).domain
+                if dom in all_social_media and dom not in sm_list:
+                    logger.debug(f"Found social media {dom}")
+                    sm_list.append(dom)
+                if dom in all_ecommerce and dom not in ec_list:
+                    logger.debug(f"Found ecommerce {dom}")
+                    ec_list.append(dom)
+            if ec_list:
+                q_url.ecommerce = paste_strings(ec_list, max_length=MAX_CHARFIELD_LENGTH)
+            if sm_list:
+                q_url.social_media = paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
+
+            if url_analyse.exists:
+                q_url.bestaat = True
+                q_url.ssl = url_analyse.req.ssl
+                q_url.ssl_invalid = url_analyse.req.ssl_invalid
+
+            postcode_lijst = url_analyse.matches[POSTAL_CODE_KEY]
+            kvk_lijst = url_analyse.matches[KVK_KEY]
+            btw_lijst = url_analyse.matches[BTW_KEY]
+            postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
+            kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+            btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
+
+            q_url.all_kvk = paste_strings(["{:08d}".format(kvk) for kvk in list(kvk_set)],
+                                          max_length=MAX_CHARFIELD_LENGTH)
+            q_url.all_btw = paste_strings(list(btw_set), max_length=MAX_CHARFIELD_LENGTH)
+            q_url.all_psc = paste_strings(list(postcode_set),
+                                          max_length=MAX_CHARFIELD_LENGTH)
+
+            try:
+                q_url.btw_nummer = btw_lijst[0]
+            except IndexError:
+                pass
+
+            if self.save:
+                q_url.save()
+
+            logger.debug(f"Check all external url ")
+            for external_url in url_analyse.external_hrefs:
+                if external_url is None:
+                    logger.debug("A None external href was stored. Check later why, skip for now")
+                    continue
+                logger.debug(f"Cleaning {external_url}")
+                clean_url = get_clean_url(external_url)
+                qq = self.UrlNL.select().where(self.UrlNL.url == clean_url)
+                if not qq.exists():
+                    logger.debug(f"Adding a new entry {clean_url}")
+                    self.UrlNL.create(url=clean_url, bestaat=True, referred_by=url)
+                else:
+                    logger.debug(f"url is already present {external_url}")
+
+            self.logger.debug(url_analyse)
+
+            if pbar:
+                pbar.update()
+
+        if pbar is not None:
+            pbar.close()
+
+        duration = time.time() - start
+        self.logger.info(f"Done processing in {duration} seconds")
