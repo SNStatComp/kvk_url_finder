@@ -1842,7 +1842,7 @@ class UrlCompanyRanking(object):
 
         # calculate the url match based on the levenshtein distance and string match
         self.url_match = self.distance * (1 - self.string_match)
-        self.url_rank = self.max_url_score * (1 - self.url_match / self.threshold_distance)
+        self.url_rank = max(self.max_url_score * (1 - self.url_match / self.threshold_distance), 0)
 
         if self.ext.suffix in ("com", "org", "eu"):
             self.url_rank += 1
