@@ -19,7 +19,7 @@ from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KV
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import Range
+from kvk_url_finder.utils import Range, check_if_url_needs_update
 
 try:
     from kvk_url_finder import __version__
@@ -196,7 +196,7 @@ class UrlParser(mp.Process):
 
         self.number_of_processes = number_of_processes
 
-        self.url_range_process = url_range_process
+        self.url_range_process = Range(url_range_process)
         self.url_ranges = None
 
         self.database = init_database(database_name, database_type=database_type,
@@ -212,6 +212,7 @@ class UrlParser(mp.Process):
         # read from either original csv or cache. After this the data attribute is filled with a
         # data frame
         self.logger.debug(f"Scraping the url in range {self.url_range_process}")
+        self.scrape_the_urls()
 
     def export_db(self, file_name):
         export_file = Path(file_name)
@@ -265,12 +266,16 @@ class UrlParser(mp.Process):
             if not process_url:
                 continue
 
-            number_in_range += 1
-            if not self.force_process and q.core_id is not None:
-                # skip because we have already processed this record and the 'force' option is False
-                continue
-            # we can processes this record, so add it to the list
-            url_to_process.append(url)
+            now = datetime.datetime.now(pytz.timezone(self.timezone))
+            processing_time = q.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=now,
+                                                         older_time=self.older_time)
+            if url_needs_update or self.force_process:
+                logger.debug(f"Adding {url} to the list")
+                # we can processes this record, so add it to the list
+                url_to_process.append(url)
+                number_in_range += 1
 
         n_url = len(url_to_process)
         self.logger.debug(f"Found {n_url} kvk's to process with {number_in_range}"
@@ -306,3 +311,38 @@ class UrlParser(mp.Process):
                 logger.warning("Something is wrong here")
             else:
                 self.url_ranges.append(dict(start=url_first, stop=url_last))
+
+    def scrape_the_urls(self):
+
+        start = self.url_range_process.start
+        stop = self.url_range_process.stop
+        self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
+
+        if start is not None or stop is not None:
+            if start is None:
+                self.logger.info("Make query from start until stop {}".format(stop))
+                query = self.UrlNL.select().where(self.UrlNL.url <= stop)
+            elif stop is None:
+                self.logger.info("Make query from start {} until end".format(start))
+                query = self.UrlNL.select().where(self.UrlNL.url >= start)
+            else:
+                self.logger.info("Make query from start {} until stop {}".format(start, stop))
+                query = self.UrlNL.select().where(self.UrlNL.url.between(start, stop))
+                self.logger.info("Done!")
+        else:
+            self.logger.info("Make query without selecting in the kvk range")
+            query = self.UrlNL.select()
+
+        # count the number of none-processed queries (ie in which the processed flag == False
+        # we have already imposed the max_entries option in the selection of the ranges
+        self.logger.info("Counting all...")
+        now = datetime.datetime.now(pytz.timezone(self.timezone))
+        older = self.older_time
+        max_queries = [check_if_url_needs_update(q.datetime, now, older) or
+                       self.force_process for q in query].count(True)
+        self.logger.info("Maximum queries obtained from selection as {}".format(max_queries))
+
+        self.logger.info("Start processing {} queries between {} - {} ".format(max_queries,
+                                                                               start, stop))
+
+

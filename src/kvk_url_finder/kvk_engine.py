@@ -19,7 +19,7 @@ from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KV
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import (paste_strings, Range)
+from kvk_url_finder.utils import (paste_strings, Range, check_if_url_needs_update)
 
 try:
     from kvk_url_finder import __version__
@@ -106,7 +106,6 @@ def clean_name(naam):
     naam_small = re.sub("\s+", "", naam_small)
 
     return naam_small
-
 
 
 class KvKUrlParser(mp.Process):
@@ -1347,48 +1346,6 @@ class UrlCollection(object):
 
         return url_nl
 
-    def check_if_url_needs_update(self, url_nl, url_extract: tldextract.TLDExtract = None):
-        """
-        Check the url to see if it needs updated or not based on the last processing time
-
-        Parameters
-        ----------
-        url_nl: table model
-            The row from the url_nl table with the properties
-        url_extract: tldextract
-            Output of the tldextract holding the url subdomain, domain and suffix
-
-        Returns
-        -------
-        bool:
-            True in case it needs update
-        """
-
-        url_needs_update = True
-        now = datetime.datetime.now(pytz.timezone(self.timezone))
-        processing_time = url_nl.datetime
-        logger.debug("processing time {} ".format(processing_time))
-        if processing_time and self.older_time:
-            delta_time = now - processing_time
-            logger.debug(f"Processed with delta time {delta_time}")
-            if delta_time < self.older_time:
-                logger.debug(f"Less than {self.older_time}. Skipping")
-                url_needs_update = False
-            else:
-                logger.debug(
-                    f"File was processed more than {self.older_time} ago. Do it again!")
-        else:
-            # we are not skipping this file and we have a url_nl reference. Store the
-            # current processing time
-            logger.debug(f"We are updating the url_nl datetime {now}")
-
-        if url_needs_update:
-            url_nl.datetime = now
-            url_nl.suffix = url_extract.suffix
-            url_nl.subdomain = url_extract.subdomain
-            url_nl.domain = url_extract.domain
-
-        return url_needs_update
 
     def scrape_url_and_store_in_tables(self, url, web, url_nl, url_needs_update):
         """
@@ -1509,7 +1466,16 @@ class UrlCollection(object):
                 logger.info("Skipping url because it was not available in url_nl table: {url}")
                 continue
 
-            url_needs_update = self.check_if_url_needs_update(url_nl, url_extract)
+            now = datetime.datetime.now(pytz.timezone(self.timezone))
+            processing_time = url_nl.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=now,
+                                                         older_time=self.older_time)
+            if url_needs_update:
+                url_nl.datetime = now
+                url_nl.suffix = url_extract.suffix
+                url_nl.subdomain = url_extract.subdomain
+                url_nl.domain = url_extract.domain
 
             # start with storing the name and assume we have not tested the url or it exist
             web.naam = self.company_name

@@ -307,7 +307,7 @@ def main(args_in):
         make_directory(CACHE_DIRECTORY)
         make_directory(output_directory)
 
-        url_range_process = Range(dict(start=args.start_url, stop=args.stop_url))
+        url_range_process = dict(start=args.start_url, stop=args.stop_url)
 
         if args.user is not None:
             user = args.user

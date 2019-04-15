@@ -1,3 +1,4 @@
+import datetime
 import logging
 import re
 
@@ -54,3 +55,42 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
     return result
 
 
+def check_if_url_needs_update(processing_time: datetime.datetime,
+                              current_time: datetime.datetime,
+                              older_time: datetime.timedelta,
+                              ):
+    """
+    Check the url to see if it needs updated or not based on the last processing time
+
+    Parameters
+    ----------
+    processing_time: datetime.datetime
+        Time of last processing of the url
+    current_time: datetime.datetime
+        Current time of processing
+    older_time: datetime.timedelta
+        Update the url in case it was processed longer than 'older_time' ago
+
+    Returns
+    -------
+    bool:
+        True in case it needs update
+    """
+
+    url_needs_update = True
+    logger.debug("processing time {} ".format(processing_time))
+    if processing_time and older_time:
+        delta_time = current_time - processing_time
+        logger.debug(f"Processed with delta time {delta_time}")
+        if delta_time < older_time:
+            logger.debug(f"Less than {older_time}. Skipping")
+            url_needs_update = False
+        else:
+            logger.debug(
+                f"File was processed more than {older_time} ago. Do it again!")
+    else:
+        # we are not skipping this file and we have a url_nl reference. Store the
+        # current processing time
+        logger.debug(f"We are updating the url_nl datetime {current_time}")
+
+    return url_needs_update
