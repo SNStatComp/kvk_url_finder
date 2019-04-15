@@ -19,7 +19,7 @@ from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KV
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import paste_strings
+from kvk_url_finder.utils import Range
 
 try:
     from kvk_url_finder import __version__
@@ -111,13 +111,8 @@ class UrlParser(mp.Process):
                  stop_url=None,
                  progressbar=False,
                  singlebar=False,
-                 n_url_count_threshold=100,
                  force_process=False,
-                 kvk_range_read=None,
-                 kvk_range_process=None,
-                 impose_url_for_kvk=None,
-                 threshold_distance=None,
-                 threshold_string_match=None,
+                 url_range_process=None,
                  save=True,
                  number_of_processes=1,
                  i_proc=None,
@@ -201,12 +196,13 @@ class UrlParser(mp.Process):
 
         self.number_of_processes = number_of_processes
 
-        self.kvk_ranges = None
+        self.url_range_process = Range(url_range_process)
+        self.url_ranges = None
 
         self.database = init_database(database_name, database_type=database_type,
                                       user=user, password=password, host=hostname)
         self.database.execute_sql("SET TIME ZONE '{}'".format(self.timezone))
-        tables = init_models(self.database, self.reset_database)
+        tables = init_models(self.database)
         self.UrlNL = tables[0]
         self.company = tables[1]
         self.address = tables[2]
@@ -242,14 +238,11 @@ class UrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.UrlNL.select(self.UrlNL.url, self.UrlNL.kvk_nummer, self.UrlNL.btw_nummer,
-                                   self.UrlNL.datetime)
-                 .order_by(self.company.url))
+        query = self.UrlNL.select(self.UrlNL.url, self.UrlNL.kvk_nummer, self.UrlNL.btw_nummer,
+                                  self.UrlNL.datetime)
         url_to_process = list()
         number_in_range = 0
-        start = self.start_url
-        stop = self.stop_url
-        if start is None:
+        if self.start_url is None:
             process_url = True
         else:
             process_url = False
@@ -258,48 +251,54 @@ class UrlParser(mp.Process):
                 # maximum entries reached
                 break
             url = q.url
-            if start is not None and kvk < start or stop is not None and kvk > stop:
-                # skip because is outside range
+            if self.start_url is not None and url == self.start_url:
+                process_url = True
+            if self.stop_url is not None and url == self.stop_url:
+                process_url = False
+
+            if not process_url:
                 continue
+
             number_in_range += 1
             if not self.force_process and q.core_id is not None:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
             # we can processes this record, so add it to the list
-            kvk_to_process.append(kvk)
+            url_to_process.append(url)
 
-        n_kvk = len(kvk_to_process)
-        self.logger.debug(f"Found {n_kvk} kvk's to process with {number_in_range}"
+        n_url = len(url_to_process)
+        self.logger.debug(f"Found {n_url} kvk's to process with {number_in_range}"
                           " in range")
 
         # check the ranges
         if number_in_range == 0:
-            raise ValueError(f"No kvk numbers where found in range {start} -- {stop}")
-        if n_kvk == 0:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}"
-                             f"but none to be processed")
+            raise ValueError(f"No urls numbers found in range {self.start_url} -- {self.stop_url}")
+        if n_url == 0:
+            raise ValueError(f"Found {number_in_range} urls in rang {self.start_url} -- "
+                             f"{self.stop_url} but none to be processed")
 
-        if n_kvk < self.number_of_processes:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
-                             f"with {n_kvk} to process, with only {self.number_of_processes} cores")
+        if n_url < self.number_of_processes:
+            raise ValueError(f"Found {number_in_range} kvk numbers in range {self.start_url} -- "
+                             f"{self.stop_url} with {n_url} to process, with only "
+                             f"{self.number_of_processes} cores")
 
-        n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
-        self.logger.debug("Number of kvk's per process: {n_per_proc}")
-        self.kvk_ranges = list()
+        n_per_proc = int(n_url / self.number_of_processes) + n_url % self.number_of_processes
+        self.logger.debug("Number of urls's per process: {n_per_proc}")
+        self.url_ranges = list()
 
         for i_proc in range(self.number_of_processes):
             if i_proc == self.number_of_processes - 1:
-                kvk_list = kvk_to_process[i_proc * n_per_proc:]
+                url_list = url_to_process[i_proc * n_per_proc:]
             else:
-                kvk_list = kvk_to_process[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
+                url_list = url_to_process[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
             try:
                 logger.info("Getting range")
-                kvk_first = kvk_list[0]
-                kvk_last = kvk_list[-1]
+                url_first = url_list[0]
+                url_last = url_list[-1]
             except IndexError:
-                logger.warning("Something is worong here")
+                logger.warning("Something is wrong here")
             else:
-                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
+                self.url_ranges.append(dict(start=url_first, stop=url_last))
 
 

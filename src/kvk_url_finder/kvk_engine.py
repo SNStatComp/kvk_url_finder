@@ -19,7 +19,7 @@ from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KV
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import paste_strings
+from kvk_url_finder.utils import (paste_strings, Range)
 
 try:
     from kvk_url_finder import __version__
@@ -107,28 +107,6 @@ def clean_name(naam):
 
     return naam_small
 
-
-class KvKRange(object):
-    """
-    A class holding the range of kvk numbers
-
-    Parameters
-    ----------
-    kvk_range: dict
-        dictionary with two fields:
-            * start: int
-                Start kvk number to process
-            * stop: int
-                End kvk number to process
-    """
-
-    def __init__(self, kvk_range):
-        if kvk_range is not None:
-            self.start = kvk_range["start"]
-            self.stop = kvk_range["stop"]
-        else:
-            self.start = None
-            self.stop = None
 
 
 class KvKUrlParser(mp.Process):
@@ -273,9 +251,9 @@ class KvKUrlParser(mp.Process):
             # in case the single bar option is given, we only show the bar of the first process
             self.showbar = False
 
-        self.kvk_range_read = KvKRange(kvk_range_read)
+        self.kvk_range_read = Range(kvk_range_read)
 
-        self.kvk_range_process = KvKRange(kvk_range_process)
+        self.kvk_range_process = Range(kvk_range_process)
 
         self.url_df: pd.DataFrame = None
         self.addresses_df: pd.DataFrame = None
