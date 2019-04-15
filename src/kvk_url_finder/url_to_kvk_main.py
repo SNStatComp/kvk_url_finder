@@ -26,7 +26,7 @@ import yaml
 from cbs_utils.misc import (create_logger, Chdir, make_directory, merge_loggers)
 from cbs_utils import Q_
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
-from kvk_url_finder.engine import KvKUrlParser
+from kvk_url_finder.url_engine import UrlParser
 from kvk_url_finder.models import DATABASE_TYPES
 
 try:
@@ -104,6 +104,8 @@ def _parse_the_command_line_arguments(args):
                         default=1)
     parser.add_argument("--process_nr", type=check_not_negative,
                         help="Impose the default process number", default=0)
+    parser.add_argument("--maximum_entries", type=check_not_negative,
+                        help="Maximum number of urls to process", default=None)
     parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
                         help="Type of database to use. If not given, select from the settings file "
                              "or take postgres")
@@ -116,6 +118,10 @@ def _parse_the_command_line_arguments(args):
                              "Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
+    parser.add_argument("--start_url", action="store",
+                        help="Start processing at this url from the database")
+    parser.add_argument("--stop_url", action="store",
+                        help="Stop processing at this url from the database")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -239,7 +245,10 @@ def main(args_in):
     n_url_count_threshold = process_settings["n_url_count_threshold"]
     kvk_range_read = process_settings["kvk_range_read"]
     kvk_range_process = process_settings["kvk_range_process"]
-    maximum_entries = process_settings["maximum_entries"]
+    if args.maximum_entries is not None:
+        maximum_entries = args.maximum_entries
+    else:
+        maximum_entries = process_settings["maximum_entries"]
     impose_url_for_kvk = process_settings["impose_url_for_kvk"]
     threshold_distance = process_settings["threshold_distance"]
     threshold_string_match = process_settings["threshold_string_match"]
@@ -313,6 +322,36 @@ def main(args_in):
             logger.info(f"Using postgres database: {database_name}")
 
         logger.info("Goodbye!")
+
+        url_parser = UrlParser(
+            database_name=database_name,
+            database_type=database_type,
+            store_html_to_cache=store_html_to_cache,
+            force_process=args.force_process,
+            kvk_range_process=kvk_range_process,
+            number_of_processes=args.n_processes,
+            progressbar=args.progressbar,
+            address_keys=address_keys,
+            kvk_url_keys=kvk_url_keys,
+            kvk_range_read=kvk_range_read,
+            maximum_entries=maximum_entries,
+            log_file_base=args.log_file_base,
+            log_level_file=args.log_level_file,
+            hostname=args.hostname,
+            password=args.password,
+            user=user,
+            older_time=older_time,
+            filter_urls=filter_urls,
+            start_url=args.start_url,
+            stop_url=args.stop_url,
+        )
+
+        if args.dumpdb:
+            logger.info("Dumping database to {}".format(args.dumpdb))
+            url_parser.export_db(args.dumpdb)
+            sys.exit(0)
+
+        url_parser.get_url_list_per_process()
 
 
 def _run():

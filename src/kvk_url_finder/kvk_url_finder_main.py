@@ -44,7 +44,7 @@ import yaml
 from cbs_utils.misc import (create_logger, Chdir, make_directory, merge_loggers)
 from cbs_utils import Q_
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
-from kvk_url_finder.engine import KvKUrlParser
+from kvk_url_finder.kvk_engine import KvKUrlParser
 from kvk_url_finder.models import DATABASE_TYPES
 
 try:
