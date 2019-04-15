@@ -365,10 +365,14 @@ class KvKUrlParser(mp.Process):
             else:
                 kvk_list = kvk_to_process[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
-            kvk_first = kvk_list[0]
-            kvk_last = kvk_list[-1]
-
-            self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
+            try:
+                logger.info("Getting range")
+                kvk_first = kvk_list[0]
+                kvk_last = kvk_list[-1]
+            except IndexError:
+                logger.warning("Something is worong here")
+            else:
+                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
 
     def merge_external_database(self):
         """
