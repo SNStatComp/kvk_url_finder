@@ -28,6 +28,7 @@ from cbs_utils import Q_
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.url_engine import UrlParser
 from kvk_url_finder.models import DATABASE_TYPES
+from kvk_url_finder.utils import Range
 
 try:
     from kvk_url_finder import __version__
@@ -306,6 +307,8 @@ def main(args_in):
         make_directory(CACHE_DIRECTORY)
         make_directory(output_directory)
 
+        url_range_process = Range(dict(start=args.start_url, stop=args.stop_url))
+
         if args.user is not None:
             user = args.user
         else:
@@ -328,12 +331,11 @@ def main(args_in):
             database_type=database_type,
             store_html_to_cache=store_html_to_cache,
             force_process=args.force_process,
-            kvk_range_process=kvk_range_process,
+            url_range_process=url_range_process,
             number_of_processes=args.n_processes,
             progressbar=args.progressbar,
             address_keys=address_keys,
             kvk_url_keys=kvk_url_keys,
-            kvk_range_read=kvk_range_read,
             maximum_entries=maximum_entries,
             log_file_base=args.log_file_base,
             log_level_file=args.log_level_file,

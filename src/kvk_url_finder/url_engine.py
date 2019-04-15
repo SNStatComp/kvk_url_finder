@@ -196,7 +196,7 @@ class UrlParser(mp.Process):
 
         self.number_of_processes = number_of_processes
 
-        self.url_range_process = Range(url_range_process)
+        self.url_range_process = url_range_process
         self.url_ranges = None
 
         self.database = init_database(database_name, database_type=database_type,
@@ -238,8 +238,9 @@ class UrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = self.UrlNL.select(self.UrlNL.url, self.UrlNL.kvk_nummer, self.UrlNL.btw_nummer,
-                                  self.UrlNL.datetime)
+        query = (self.UrlNL.select(self.UrlNL.url, self.UrlNL.kvk_nummer, self.UrlNL.btw_nummer,
+                                   self.UrlNL.datetime)
+                 .order_by(self.UrlNL.url))
         url_to_process = list()
         number_in_range = 0
         if self.start_url is None:
@@ -278,7 +279,7 @@ class UrlParser(mp.Process):
                              f"{self.stop_url} but none to be processed")
 
         if n_url < self.number_of_processes:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {self.start_url} -- "
+            raise ValueError(f"Found {number_in_range} urls in range {self.start_url} -- "
                              f"{self.stop_url} with {n_url} to process, with only "
                              f"{self.number_of_processes} cores")
 
@@ -300,5 +301,3 @@ class UrlParser(mp.Process):
                 logger.warning("Something is wrong here")
             else:
                 self.url_ranges.append(dict(start=url_first, stop=url_last))
-
-
