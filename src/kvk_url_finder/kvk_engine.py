@@ -514,7 +514,13 @@ class KvKUrlParser(mp.Process):
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
-        max_queries = [q.core_id is not None and not self.force_process for q in query].count(False)
+        max_queries = 0
+        for q in query:
+            if q.core_id is not None and not self.force_process:
+                continue
+            if self.filter_kvks and q.kvk_nummer not in self.filter_kvks:
+                continue
+            max_queries += 1
         self.logger.info("Maximum queries obtained from selection as {}".format(max_queries))
 
         self.logger.info("Start processing {} queries between {} - {} ".format(max_queries,
@@ -541,6 +547,9 @@ class KvKUrlParser(mp.Process):
             if company.core_id is not None and not self.force_process:
                 self.logger.debug("Company {} ({}) already processed. Skipping"
                                   "".format(company.kvk_nummer, company.naam))
+                continue
+
+            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
                 continue
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
