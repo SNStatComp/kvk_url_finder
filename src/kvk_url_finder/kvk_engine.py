@@ -1229,7 +1229,7 @@ class CompanyUrlMatch(object):
                     web.save()
             self.company.url = web_match.url
             self.company.core_id = self.i_proc
-            self.company.ranking = web_match.ranking
+            self.company.ranking = round(web_match.ranking)
             self.company.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
             if self.save:
                 self.company.save()
