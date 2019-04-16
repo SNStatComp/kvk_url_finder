@@ -161,7 +161,8 @@ class KvKUrlParser(mp.Process):
                  log_level_file=logging.DEBUG,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = 'Europe/Amsterdam',
-                 filter_urls: list = None
+                 filter_urls: list = None,
+                 filter_kvks: list = None
                  ):
 
         # launch the process
@@ -208,6 +209,7 @@ class KvKUrlParser(mp.Process):
         self.older_time = older_time
         self.timezone = timezone
         self.filter_urls = filter_urls
+        self.filter_kvks = filter_kvks
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -314,6 +316,10 @@ class KvKUrlParser(mp.Process):
             if not self.force_process and q.core_id is not None:
                 # skip because we have already processed this record and the 'force' option is False
                 continue
+            if self.filter_kvks and kvk not in self.filter_kvks:
+                # skip this because we have defined a kvk filter list and this one is not in it
+                continue
+
             # we can processes this record, so add it to the list
             kvk_to_process.append(kvk)
 
@@ -1785,7 +1791,7 @@ class UrlCompanyRanking(object):
 
         # calculate the url match based on the levenshtein distance and string match
         self.url_match = self.distance * (1 - self.string_match)
-        self.url_rank = max(self.max_url_score * (1 - self.url_match / self.threshold_distance), 0)
+        self.url_rank = self.max_url_score * max((1 - self.url_match / self.threshold_distance), 0)
 
         if self.ext.suffix in ("com", "org", "eu"):
             self.url_rank += 1

@@ -269,6 +269,11 @@ def main(args_in):
     threshold_string_match = process_settings["threshold_string_match"]
 
     # store a list of url filter if given in the process file
+    kvk_filters = process_settings.get('kvk_filters')
+    if kvk_filters and kvk_filters["apply_filters"]:
+        filter_kvks = kvk_filters["filters"]
+    else:
+        filter_kvks = list()
     url_filters = process_settings.get('url_filters')
     if url_filters and url_filters["apply_filters"]:
         filter_urls = url_filters["filters"]
@@ -369,7 +374,8 @@ def main(args_in):
             password=args.password,
             user=user,
             older_time=older_time,
-            filter_urls=filter_urls
+            filter_urls=filter_urls,
+            filter_kvks=filter_kvks
         )
 
         if args.dumpdb:
@@ -441,7 +447,8 @@ def main(args_in):
                         user=user,
                         hostname=args.hostname,
                         older_time=older_time,
-                        filter_urls=filter_urls
+                        filter_urls=filter_urls,
+                        filter_kvks=filter_kvks
                     )
 
                     if args.n_processes > 1:
