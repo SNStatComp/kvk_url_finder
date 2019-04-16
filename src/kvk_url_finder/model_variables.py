@@ -93,7 +93,7 @@ COUNTRY_EXTENSIONS = [
     [False, "Eritrea", "er"],
     [False, "Estonia", "ee"],
     [False, "Ethiopia", "et"],
-    [False, "European Union", "eu"],
+    [True, "European Union", "eu"],
     [False, "Falkland Islands", "fk"],
     [False, "Faeroe Islands", "fo"],
     [False, "Federated States of Micronesia", "fm"],

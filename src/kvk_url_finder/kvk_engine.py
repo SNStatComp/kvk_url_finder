@@ -1791,17 +1791,18 @@ class UrlCompanyRanking(object):
 
         # calculate the url match based on the levenshtein distance and string match
         self.url_match = self.distance * (1 - self.string_match)
-        self.url_rank = self.max_url_score * max((1 - self.url_match / self.threshold_distance), 0)
+        rel_score = max((1 - self.url_match / self.threshold_distance), 0)
+        self.url_rank = self.max_url_score * rel_score ** 2   # quick drop off for lower scores
 
         if self.ext.suffix in ("com", "org", "eu"):
-            self.url_rank += 1
+            self.url_rank += 0.5
         elif self.ext.suffix == "nl":
-            self.url_rank += 2
+            self.url_rank += 1
 
         if self.ext.subdomain == "www":
-            self.url_rank += 2
+            self.url_rank += 0.5
         elif self.ext.subdomain == "":
-            self.url_rank += 1
+            self.url_rank += 0.5
 
         # add the url matching score
         self.ranking += self.url_rank
