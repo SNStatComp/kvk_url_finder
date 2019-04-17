@@ -160,6 +160,7 @@ class KvKUrlParser(mp.Process):
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
+                 write_log_to_file=False,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = 'Europe/Amsterdam',
                  filter_urls: list = None,
@@ -172,26 +173,23 @@ class KvKUrlParser(mp.Process):
             mp.Process.__init__(self)
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
             logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
-            self.logger = setup_logging(logger_name=logger_name,
-                                        write_log_to_file=True,
-                                        log_file_base=log_file,
-                                        log_level_file=log_level_file,
-                                        log_level=console_log_level,
-                                        progress_bar=progressbar
-                                        )
-            self.logger.info("Set up class logger for proc {}".format(i_proc))
+            log_to_file = True
         else:
-            self.logger = logging.getLogger(LOGGER_BASE_NAME)
-            self.logger.setLevel(console_log_level)
-            # cbs_utils_logger = logging.getLogger("cbs_utils")
-            # cbs_utils_logger.setLevel(console_log_level)
+            log_file = log_file_base
+            logger_name = LOGGER_BASE_NAME
+            log_to_file = write_log_to_file
 
-            ## cbs_utils_logger.addHandler(handler)
-            # merge_loggers(self.logger, "cbs_utils", logger_level_to_merge=console_log_level)
-            self.logger.info("Set up class logger for main {}".format(__name__))
-            print_banner("Testing")
+        self.logger = setup_logging(logger_name=logger_name,
+                                    write_log_to_file=log_to_file,
+                                    log_file_base=log_file,
+                                    log_level_file=log_level_file,
+                                    log_level=console_log_level,
+                                    progress_bar=progressbar
+                                    )
 
+        self.logger.info("Set up class logger for proc {}".format(i_proc))
         self.logger.debug("With debug on?")
+        print_banner("Starting the main class here with a banner")
 
         # a list of all country url extension which we want to exclude
         self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
@@ -349,7 +347,7 @@ class KvKUrlParser(mp.Process):
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
-        self.logger.debug("Number of kvk's per process: {n_per_proc}")
+        self.logger.debug(f"Number of kvk's per process: {n_per_proc}")
         self.kvk_ranges = list()
 
         for i_proc in range(self.number_of_processes):
@@ -1350,6 +1348,11 @@ class UrlCollection(object):
             self.logger.debug("Best Match".format(self.web_df.head(1)))
         else:
             self.logger.debug("No website found for".format(self.company_name))
+            # still set the date time to indicate we have processed this one
+            self.company.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
+            self.company.ranking = 0
+            if self.save:
+                self.company.save()
 
     def get_url_nl_query(self, url, url_extract: tldextract.TLDExtract = None):
         """
