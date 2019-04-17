@@ -210,6 +210,7 @@ class KvKUrlParser(mp.Process):
         self.timezone = timezone
         self.filter_urls = filter_urls
         self.filter_kvks = filter_kvks
+        self.current_time = datetime.datetime.now(pytz.timezone(self.timezone))
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -298,13 +299,12 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.company.select(self.company.kvk_nummer, self.company.core_id)
+        query = (self.company.select(self.company.kvk_nummer, self.company.datetime)
                  .order_by(self.company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
         number_in_range = 0
-        now = datetime.datetime.now(pytz.timezone(self.timezone))
         for q in query:
             if self.maximum_entries is not None and number_in_range >= self.maximum_entries:
                 # maximum entries reached
@@ -319,9 +319,9 @@ class KvKUrlParser(mp.Process):
                 continue
             processing_time = q.datetime
             url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=now,
+                                                         current_time=self.current_time,
                                                          older_time=self.older_time)
-            if not (url_needs_update and not self.force_process):
+            if not (url_needs_update or self.force_process):
                 # skip because it was processed with the older time ago already and the force option
                 # is not given
                 continue
@@ -521,13 +521,12 @@ class KvKUrlParser(mp.Process):
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
         max_queries = 0
-        now = datetime.datetime.now(pytz.timezone(self.timezone))
         for q in query:
             processing_time = q.datetime
             url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=now,
+                                                         current_time=self.current_time,
                                                          older_time=self.older_time)
-            if not (url_needs_update and not self.force_process):
+            if not (url_needs_update or self.force_process):
                 # skip because it was processed with the older time ago already and the force option
                 # is not given
                 continue
@@ -557,12 +556,16 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            if company.core_id is not None and not self.force_process:
-                self.logger.debug("Company {} ({}) already processed. Skipping"
-                                  "".format(company.kvk_nummer, company.naam))
+            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
                 continue
 
-            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
+            processing_time = company.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=self.current_time,
+                                                         older_time=self.older_time)
+            if not (url_needs_update or self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
