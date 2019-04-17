@@ -13,13 +13,14 @@ import pytz
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
+from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner,
+                            merge_loggers)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import (paste_strings, Range, check_if_url_needs_update)
+from kvk_url_finder.utils import (paste_strings, Range, check_if_url_needs_update, setup_logging)
 
 try:
     from kvk_url_finder import __version__
@@ -159,6 +160,7 @@ class KvKUrlParser(mp.Process):
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
+                 write_log_to_file=False,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = 'Europe/Amsterdam',
                  filter_urls: list = None,
@@ -188,6 +190,7 @@ class KvKUrlParser(mp.Process):
             self.logger.info("Set up class logger for main {}".format(__name__))
 
         self.logger.debug("With debug on?")
+        print_banner("Starting the main class here with a banner")
 
         # a list of all country url extension which we want to exclude
         self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
@@ -210,6 +213,7 @@ class KvKUrlParser(mp.Process):
         self.timezone = timezone
         self.filter_urls = filter_urls
         self.filter_kvks = filter_kvks
+        self.current_time = datetime.datetime.now(pytz.timezone(self.timezone))
 
         if progressbar:
             # switch off all logging because we are showing the progress bar via the print statement
@@ -298,7 +302,7 @@ class KvKUrlParser(mp.Process):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.company.select(self.company.kvk_nummer, self.company.core_id)
+        query = (self.company.select(self.company.kvk_nummer, self.company.datetime)
                  .order_by(self.company.kvk_nummer))
         kvk_to_process = list()
         start = self.kvk_range_process.start
@@ -313,11 +317,16 @@ class KvKUrlParser(mp.Process):
                 # skip because is outside range
                 continue
             number_in_range += 1
-            if not self.force_process and q.core_id is not None:
-                # skip because we have already processed this record and the 'force' option is False
-                continue
             if self.filter_kvks and kvk not in self.filter_kvks:
                 # skip this because we have defined a kvk filter list and this one is not in it
+                continue
+            processing_time = q.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=self.current_time,
+                                                         older_time=self.older_time)
+            if not (url_needs_update or self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
 
             # we can processes this record, so add it to the list
@@ -339,7 +348,7 @@ class KvKUrlParser(mp.Process):
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
-        self.logger.debug("Number of kvk's per process: {n_per_proc}")
+        self.logger.debug(f"Number of kvk's per process: {n_per_proc}")
         self.kvk_ranges = list()
 
         for i_proc in range(self.number_of_processes):
@@ -516,7 +525,13 @@ class KvKUrlParser(mp.Process):
         self.logger.info("Counting all...")
         max_queries = 0
         for q in query:
-            if q.core_id is not None and not self.force_process:
+            processing_time = q.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=self.current_time,
+                                                         older_time=self.older_time)
+            if not (url_needs_update or self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
             if self.filter_kvks and q.kvk_nummer not in self.filter_kvks:
                 continue
@@ -544,12 +559,16 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            if company.core_id is not None and not self.force_process:
-                self.logger.debug("Company {} ({}) already processed. Skipping"
-                                  "".format(company.kvk_nummer, company.naam))
+            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
                 continue
 
-            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
+            processing_time = company.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=self.current_time,
+                                                         older_time=self.older_time)
+            if not (url_needs_update or self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
 
             self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
@@ -1330,6 +1349,11 @@ class UrlCollection(object):
             self.logger.debug("Best Match".format(self.web_df.head(1)))
         else:
             self.logger.debug("No website found for".format(self.company_name))
+            # still set the date time to indicate we have processed this one
+            self.company.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
+            self.company.ranking = 0
+            if self.save:
+                self.company.save()
 
     def get_url_nl_query(self, url, url_extract: tldextract.TLDExtract = None):
         """
@@ -1801,7 +1825,7 @@ class UrlCompanyRanking(object):
         # calculate the url match based on the levenshtein distance and string match
         self.url_match = self.distance * (1 - self.string_match)
         rel_score = max((1 - self.url_match / self.threshold_distance), 0)
-        self.url_rank = self.max_url_score * rel_score ** 2   # quick drop off for lower scores
+        self.url_rank = self.max_url_score * rel_score ** 2  # quick drop off for lower scores
 
         if self.ext.suffix in ("com", "org", "eu"):
             self.url_rank += 0.5
