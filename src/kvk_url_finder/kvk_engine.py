@@ -13,13 +13,14 @@ import pytz
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
+from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner,
+                            merge_loggers)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
-from kvk_url_finder.utils import (paste_strings, Range, check_if_url_needs_update)
+from kvk_url_finder.utils import (paste_strings, Range, check_if_url_needs_update, setup_logging)
 
 try:
     from kvk_url_finder import __version__
@@ -169,23 +170,26 @@ class KvKUrlParser(mp.Process):
         console_log_level = logging.getLogger(LOGGER_BASE_NAME).getEffectiveLevel()
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
-            formatter = logging.Formatter("{:2d} ".format(i_proc) +
-                                          "%(levelname)-5s : "
-                                          "%(message)s "
-                                          "(%(filename)s:%(lineno)s)",
-                                          datefmt="%Y-%m-%d %H:%M:%S")
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
             logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
-            self.logger = create_logger(name=logger_name,
-                                        console_log_level=console_log_level,
-                                        file_log_level=log_level_file,
-                                        log_file=log_file,
-                                        formatter=formatter)
+            self.logger = setup_logging(logger_name=logger_name,
+                                        write_log_to_file=True,
+                                        log_file_base=log_file,
+                                        log_level_file=log_level_file,
+                                        log_level=console_log_level,
+                                        progress_bar=progressbar
+                                        )
             self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
             self.logger.setLevel(console_log_level)
+            # cbs_utils_logger = logging.getLogger("cbs_utils")
+            # cbs_utils_logger.setLevel(console_log_level)
+
+            ## cbs_utils_logger.addHandler(handler)
+            # merge_loggers(self.logger, "cbs_utils", logger_level_to_merge=console_log_level)
             self.logger.info("Set up class logger for main {}".format(__name__))
+            print_banner("Testing")
 
         self.logger.debug("With debug on?")
 
@@ -1817,7 +1821,7 @@ class UrlCompanyRanking(object):
         # calculate the url match based on the levenshtein distance and string match
         self.url_match = self.distance * (1 - self.string_match)
         rel_score = max((1 - self.url_match / self.threshold_distance), 0)
-        self.url_rank = self.max_url_score * rel_score ** 2   # quick drop off for lower scores
+        self.url_rank = self.max_url_score * rel_score ** 2  # quick drop off for lower scores
 
         if self.ext.suffix in ("com", "org", "eu"):
             self.url_rank += 0.5
