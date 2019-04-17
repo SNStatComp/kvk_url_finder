@@ -1347,7 +1347,7 @@ class UrlCollection(object):
             self.get_best_matching_web_site()
             self.logger.debug("Best Match".format(self.web_df.head(1)))
         else:
-            self.logger.debug("No website found for".format(self.company_name))
+            self.logger.info("No website found for".format(self.company_name))
             # still set the date time to indicate we have processed this one
             self.company.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
             self.company.ranking = 0
