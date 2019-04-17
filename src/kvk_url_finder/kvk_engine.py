@@ -304,6 +304,7 @@ class KvKUrlParser(mp.Process):
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
         number_in_range = 0
+        now = datetime.datetime.now(pytz.timezone(self.timezone))
         for q in query:
             if self.maximum_entries is not None and number_in_range >= self.maximum_entries:
                 # maximum entries reached
@@ -313,11 +314,16 @@ class KvKUrlParser(mp.Process):
                 # skip because is outside range
                 continue
             number_in_range += 1
-            if not self.force_process and q.core_id is not None:
-                # skip because we have already processed this record and the 'force' option is False
-                continue
             if self.filter_kvks and kvk not in self.filter_kvks:
                 # skip this because we have defined a kvk filter list and this one is not in it
+                continue
+            processing_time = q.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=now,
+                                                         older_time=self.older_time)
+            if not (url_needs_update and not self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
 
             # we can processes this record, so add it to the list
@@ -515,8 +521,15 @@ class KvKUrlParser(mp.Process):
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
         max_queries = 0
+        now = datetime.datetime.now(pytz.timezone(self.timezone))
         for q in query:
-            if q.core_id is not None and not self.force_process:
+            processing_time = q.datetime
+            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                         current_time=now,
+                                                         older_time=self.older_time)
+            if not (url_needs_update and not self.force_process):
+                # skip because it was processed with the older time ago already and the force option
+                # is not given
                 continue
             if self.filter_kvks and q.kvk_nummer not in self.filter_kvks:
                 continue
