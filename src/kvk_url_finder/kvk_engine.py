@@ -171,23 +171,24 @@ class KvKUrlParser(mp.Process):
         console_log_level = logging.getLogger(LOGGER_BASE_NAME).getEffectiveLevel()
         if i_proc is not None and number_of_processes > 1:
             mp.Process.__init__(self)
+            formatter = logging.Formatter("{:2d} ".format(i_proc) +
+                                          "%(levelname)-5s : "
+                                          "%(message)s "
+                                          "(%(filename)s:%(lineno)s)",
+                                          datefmt="%Y-%m-%d %H:%M:%S")
             log_file = "{}_{:02d}".format(log_file_base, i_proc)
             logger_name = f"{LOGGER_BASE_NAME}_{i_proc}"
-            log_to_file = True
+            self.logger = create_logger(name=logger_name,
+                                        console_log_level=console_log_level,
+                                        file_log_level=log_level_file,
+                                        log_file=log_file,
+                                        formatter=formatter)
+            self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
-            log_file = log_file_base
-            logger_name = LOGGER_BASE_NAME
-            log_to_file = write_log_to_file
+            self.logger = logging.getLogger(LOGGER_BASE_NAME)
+            self.logger.setLevel(console_log_level)
+            self.logger.info("Set up class logger for main {}".format(__name__))
 
-        self.logger = setup_logging(logger_name=logger_name,
-                                    write_log_to_file=log_to_file,
-                                    log_file_base=log_file,
-                                    log_level_file=log_level_file,
-                                    log_level=console_log_level,
-                                    progress_bar=progressbar
-                                    )
-
-        self.logger.info("Set up class logger for proc {}".format(i_proc))
         self.logger.debug("With debug on?")
         print_banner("Starting the main class here with a banner")
 

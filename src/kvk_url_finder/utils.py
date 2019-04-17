@@ -152,6 +152,6 @@ def setup_logging(logger_name=None,
     handler.setLevel(log_level)
     # _logger.addHandler(handler)
     # cbs_utils_logger.addHandler(handler)
-    merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level_file)
+    merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level)
 
     return _logger
