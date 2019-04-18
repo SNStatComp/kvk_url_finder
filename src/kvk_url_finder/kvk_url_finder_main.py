@@ -337,7 +337,8 @@ def main(args_in):
 
         kvk_parser.get_kvk_list_per_process()
         logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
-        if not kvk_parser.database.is_closed():
+        if not kvk_parser.database.is_closed() and args.n_processes > 1:
+            # only close for multiple cores
             kvk_parser.database.close()
 
         # either merge the database with an external database (if the merge option is given) or
@@ -372,32 +373,37 @@ def main(args_in):
                 else:
                     # for linux -or- for single processing on windows, create a new object which
                     # we are going to launch
-                    kvk_sub_parser = KvKUrlParser(
-                        database_name=database_name,
-                        database_type=database_type,
-                        max_cache_dir_size=max_cache_dir_size,
-                        search_urls=search_urls,
-                        internet_scraping=internet_scraping,
-                        store_html_to_cache=store_html_to_cache,
-                        progressbar=args.progressbar,
-                        kvk_range_process=kvk_range,
-                        maximum_entries=maximum_entries,
-                        force_process=args.force_process,
-                        impose_url_for_kvk=impose_url_for_kvk,
-                        threshold_distance=threshold_distance,
-                        threshold_string_match=threshold_string_match,
-                        i_proc=i_proc + args.process_nr,
-                        number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base,
-                        log_level_file=args.log_level_file,
-                        singlebar=args.singlebar,
-                        password=args.password,
-                        user=user,
-                        hostname=args.hostname,
-                        older_time=older_time,
-                        filter_urls=filter_urls,
-                        filter_kvks=filter_kvks
-                    )
+                    if args.n_processes > 1:
+                        kvk_sub_parser = KvKUrlParser(
+                            database_name=database_name,
+                            database_type=database_type,
+                            max_cache_dir_size=max_cache_dir_size,
+                            search_urls=search_urls,
+                            internet_scraping=internet_scraping,
+                            store_html_to_cache=store_html_to_cache,
+                            progressbar=args.progressbar,
+                            kvk_range_process=kvk_range,
+                            maximum_entries=maximum_entries,
+                            force_process=args.force_process,
+                            impose_url_for_kvk=impose_url_for_kvk,
+                            threshold_distance=threshold_distance,
+                            threshold_string_match=threshold_string_match,
+                            i_proc=i_proc + args.process_nr,
+                            number_of_processes=args.n_processes,
+                            log_file_base=args.log_file_base,
+                            log_level_file=args.log_level_file,
+                            singlebar=args.singlebar,
+                            password=args.password,
+                            user=user,
+                            hostname=args.hostname,
+                            older_time=older_time,
+                            filter_urls=filter_urls,
+                            filter_kvks=filter_kvks
+                        )
+                        kvk_sub_parser.populate_dataframes()
+                    else:
+                        # for only one processes we can take the orinal version
+                        kvk_sub_parser = kvk_parser
 
                     if args.n_processes > 1:
                         # we should not be running on windows if we are here

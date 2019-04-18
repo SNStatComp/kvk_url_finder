@@ -139,6 +139,7 @@ class KvKUrlParser(mp.Process):
                  address_keys=None,
                  kvk_url_keys=None,
                  reset_database=False,
+                 reset_table_df=True,
                  extend_database=False,
                  compression=None,
                  maximum_entries=None,
@@ -238,6 +239,7 @@ class KvKUrlParser(mp.Process):
         self.address_input_file_name = address_input_file_name
 
         self.reset_database = reset_database
+        self.reset_table_df = reset_table_df
         self.extend_database = extend_database
 
         self.threshold_distance = threshold_distance
@@ -300,66 +302,43 @@ class KvKUrlParser(mp.Process):
         """
         Read the sql tables into pandas dataframes
         """
+        start = self.kvk_range_process.start
+        stop = self.kvk_range_process.stop
 
-        self.company_df = read_sql_table(table_name="company", connection=self.database,
-                                         reset=self.reset_database)
+        self.company_df = read_sql_table(table_name="company", variable=KVK_KEY, lower=start,
+                                         upper=stop, connection=self.database)
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
-        self.url_df = read_sql_table(table_name="url_nl", connection=self.database,
-                                     reset=self.reset_database)
+        self.company_df.sort_index(inplace=True)
+        # note that you need to use the dt operator before converting the date/times
+        self.company_df[DATETIME_KEY] = self.company_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+
+        self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
         self.url_df.set_index(URL_KEY, inplace=True, drop=True)
-        self.address_df = read_sql_table(table_name="address", connection=self.database,
-                                         reset=self.reset_database)
-        self.website_df = read_sql_table(table_name="web_site", connection=self.database,
-                                         reset=self.reset_database)
+        self.url_df.sort_index(inplace=True)
+        self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+
+        self.address_df = read_sql_table(table_name="address", connection=self.database)
+        self.website_df = read_sql_table(table_name="web_site", variable=COMPANY_ID_KEY,
+                                         lower=start, upper=stop, connection=self.database)
 
     def get_kvk_list_per_process(self):
         """
         Get a list of kvk numbers in the query
         """
-        query = (self.CompanyTbl.select(self.CompanyTbl.kvk_nummer, self.CompanyTbl.datetime)
-                 .order_by(self.CompanyTbl.kvk_nummer))
-        kvk_to_process = list()
-        start = self.kvk_range_process.start
-        stop = self.kvk_range_process.stop
-        if start is None:
-            start = self.company_df.index.values[0]
-        if stop is None:
-            stop = self.company_df.index.values[-1]
-        df = self.company_df[start <= self.company_df.index <= stop]
-        df["delta_time"] = df[DATETIME_KEY] - self.current_time
-        df[UPDATE_KEY] = df.where(df[DATETIME_KEY].isnull, True, )
-        number_in_range = 0
-        for q in query:
-            if self.maximum_entries is not None and number_in_range >= self.maximum_entries:
-                # maximum entries reached
-                break
-            kvk = q.kvk_nummer
-            if start is not None and kvk < start or stop is not None and kvk > stop:
-                # skip because is outside range
-                continue
-            number_in_range += 1
-            if self.filter_kvks and kvk not in self.filter_kvks:
-                # skip this because we have defined a kvk filter list and this one is not in it
-                continue
-            processing_time = q.datetime
-            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=self.current_time,
-                                                         older_time=self.older_time)
-            if not (url_needs_update or self.force_process):
-                # skip because it was processed with the older time ago already and the force option
-                # is not given
-                continue
+        # we dont have to filter the kvk range; alredy done with reading
+        number_in_range = self.company_df.index.size
+        if number_in_range == 0:
+            raise ValueError(f"No kvk numbers where found in range")
 
-            # we can processes this record, so add it to the list
-            kvk_to_process.append(kvk)
+        # set flag for all kvk processed longer than older_time ago
+        delta_time = self.current_time - self.company_df[DATETIME_KEY]
+        mask = delta_time >= self.older_time
+        self.company_df = self.company_df[mask]
 
-        n_kvk = len(kvk_to_process)
-        self.logger.debug(f"Found {n_kvk} kvk's to process with {number_in_range}"
-                          " in range")
+        n_kvk = self.company_df.index.size
+        self.logger.debug(f"Found {n_kvk} kvk's to process")
 
         # check the ranges
-        if number_in_range == 0:
-            raise ValueError(f"No kvk numbers where found in range {start} -- {stop}")
         if n_kvk == 0:
             raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}"
                              f"but none to be processed")
@@ -374,17 +353,14 @@ class KvKUrlParser(mp.Process):
 
         for i_proc in range(self.number_of_processes):
             if i_proc == self.number_of_processes - 1:
-                kvk_list = kvk_to_process[i_proc * n_per_proc:]
+                kvk_proc = self.company_df.index.values[i_proc * n_per_proc:]
             else:
-                kvk_list = kvk_to_process[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
+                kvk_proc = self.company_df.index.values[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
-            try:
+            if kvk_proc.size > 0:
                 logger.info("Getting range")
-                kvk_first = kvk_list[0]
-                kvk_last = kvk_list[-1]
-            except IndexError:
-                logger.warning("Something is worong here")
-            else:
+                kvk_first = kvk_proc[0]
+                kvk_last = kvk_proc[-1]
                 self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
 
     def merge_external_database(self):
@@ -514,53 +490,17 @@ class KvKUrlParser(mp.Process):
         Per company, see which url matches the best the company name
         """
 
-        start = self.kvk_range_process.start
-        stop = self.kvk_range_process.stop
-        self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
+        if self.filter_kvks:
+            overlap_kvk = self.company_df.index.intersection(set(self.filter_kvks))
+            self.company_df = self.company_df.loc[overlap_kvk]
 
-        if start is not None or stop is not None:
-            if start is None:
-                self.logger.info("Make query from start until stop {}".format(stop))
-                query = (self.CompanyTbl
-                         .select().where(self.CompanyTbl.kvk_nummer <= stop)
-                         .prefetch(self.WebsiteTbl, self.AddressTbl))
-            elif stop is None:
-                self.logger.info("Make query from start {} until end".format(start))
-                query = (self.CompanyTbl
-                         .select().where(self.CompanyTbl.kvk_nummer >= start)
-                         .prefetch(self.WebsiteTbl, self.AddressTbl))
-            else:
-                self.logger.info("Make query from start {} until stop {}".format(start, stop))
-                query = (self.CompanyTbl
-                         .select()
-                         .where(self.CompanyTbl.kvk_nummer.between(start, stop))
-                         .prefetch(self.WebsiteTbl, self.AddressTbl))
-                self.logger.info("Done!")
-        else:
-            self.logger.info("Make query without selecting in the kvk range")
-            query = (self.CompanyTbl.select()
-                     .prefetch(self.WebsiteTbl, self.AddressTbl))
+        self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
 
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
-        max_queries = 0
-        for q in query:
-            processing_time = q.datetime
-            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=self.current_time,
-                                                         older_time=self.older_time)
-            if not (url_needs_update or self.force_process):
-                # skip because it was processed with the older time ago already and the force option
-                # is not given
-                continue
-            if self.filter_kvks and q.kvk_nummer not in self.filter_kvks:
-                continue
-            max_queries += 1
-        self.logger.info("Maximum queries obtained from selection as {}".format(max_queries))
-
-        self.logger.info("Start processing {} queries between {} - {} ".format(max_queries,
-                                                                               start, stop))
+        max_queries = self.company_df[UPDATE_KEY].sum()
+        self.logger.info("Start processing {} queries".format(max_queries))
 
         if self.progressbar and self.showbar:
             pbar = tqdm(total=max_queries, position=self.i_proc, file=sys.stdout)
@@ -569,7 +509,7 @@ class KvKUrlParser(mp.Process):
             pbar = None
 
         start = time.time()
-        for cnt, company in enumerate(query):
+        for cnt, (index, row) in enumerate(self.company_df.iterrow()):
 
             # first check if we do not have to stop
             if self.maximum_entries is not None and cnt == self.maximum_entries:
@@ -580,32 +520,21 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            if self.filter_kvks and company.kvk_nummer not in self.filter_kvks:
-                continue
+            kvk_nummer = row[KVK_KEY]
+            company_name = row[NAME_KEY]
 
-            processing_time = company.datetime
-            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=self.current_time,
-                                                         older_time=self.older_time)
-            if not (url_needs_update or self.force_process):
-                # skip because it was processed with the older time ago already and the force option
-                # is not given
-                continue
-
-            self.logger.info("Processing {} ({})".format(company.kvk_nummer, company.naam))
+            self.logger.info("Processing {} ({})".format(kvk_nummer, company_name))
 
             if self.search_urls:
                 self.logger.info("Start a URL search for this company first")
 
             # create a database holding the urls for this company + all the info
-            number_of_websites = len(company.websites)
-            web_df = pd.DataFrame(index=range(number_of_websites), columns=WEB_DF_COLS)
-            web_df[URL_KEY] = company.websites.Select()
+            web_df = self.website_df[self.website_df[KVK_KEY] == kvk_nummer]
 
             try:
                 # match the url with the name of the company
                 company_url_match = \
-                    CompanyUrlMatch(company,
+                    CompanyUrlMatch(company_record=row,
                                     web_df=web_df,
                                     imposed_urls=self.impose_url_for_kvk,
                                     distance_threshold=self.threshold_distance,
@@ -1220,7 +1149,6 @@ class CompanyUrlMatch(object):
                  exclude_extension=None,
                  filter_urls: list = None
                  ):
-
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Company match in debug mode")
         self.save = save
@@ -1229,8 +1157,8 @@ class CompanyUrlMatch(object):
         self.timezone = timezone
         self.filter_urls = filter_urls
 
-        self.kvk_nr = company_record.kvk_nummer
-        self.company_name: str = company_record.naam
+        self.kvk_nr = company_record[KVK_KEY]
+        self.company_name: str = company_record[NAME_KEY]
 
         self.company_record = company_record
 
@@ -1265,31 +1193,30 @@ class CompanyUrlMatch(object):
         Get the best matching url based on the already calculated levensteihn distance and string
         match
         """
-        if self.urls.web_df is not None:
-
+        if self.web_df is not None:
             # the first row in the data frame is the best matching web site
-            web_df_best = self.urls.web_df.head(1)
+            web_df_best = self.web_df.head(1)
 
             # store the best matching web site
             self.logger.debug("Best matching url: {}".format(self.urls.web_df.head(1)))
             web_match_index = web_df_best.index.values[0]
-            web_match = self.urls.company_websites[web_match_index]
+            web_match = self.web_df[web_match_index]
             web_match.best_match = True
             web_match.has_postcode = web_df_best[HAS_POSTCODE_KEY].values[0]
             web_match.url = web_df_best[URL_KEY].values[0]
             web_match.ranking = web_df_best[RANKING_KEY].values[0]
             self.logger.debug("Best matching url: {}".format(web_match.url))
 
-            # update all the properties
-            if self.save:
-                for web in self.company_record.websites:
-                    web.save()
-            self.company_record.url = web_match.url
-            self.company_record.core_id = self.i_proc
-            self.company_record.ranking = round(web_match.ranking)
-            self.company_record.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
-            if self.save:
-                self.company_record.save()
+            # update all the properties TODO: move outsei
+            # if self.save:
+            #    for web in self.company_record.websites:
+            #        web.save()
+            self.company_record[URL_KEY] = web_match.url
+            self.company_record[CORE_ID] = self.i_proc
+            self.company_record[RANKING_KEY] = round(web_match.ranking)
+            self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
+            # if self.save:
+            #    self.company_record.save()
 
 
 class UrlCollection(object):

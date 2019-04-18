@@ -349,8 +349,23 @@ def setup_logging(logger_name=None,
     return _logger
 
 
-def read_sql_table(table_name, connection, reset=False):
+def read_sql_table(table_name, connection, sql_command=None,
+                   variable=None,
+                   lower=None,
+                   upper=None,
+                   reset=True):
+
     cache_file = table_name + ".pkl"
+    if sql_command is None:
+        sql_command = f"select * from {table_name}"
+    if variable is not None and (lower is not None or upper is not None):
+        if lower is not None and upper is not None:
+            sql_command += " " + f"where {variable} between {lower} and {upper}"
+        elif lower is None and upper is not None:
+            sql_command += " " + f"where {variable} <= {upper}"
+        elif lower is not None and upper is  None:
+            sql_command += " " + f"where {variable} >= {lower}"
+
     df = None
     if not reset:
         try:
@@ -362,7 +377,7 @@ def read_sql_table(table_name, connection, reset=False):
     if df is None:
         logger.info("Connecting to database")
         logger.info(f"Start reading table from postgres table {table_name}.pkl")
-        df = pd.read_sql(f"select * from {table_name}", con=connection)
+        df = pd.read_sql(sql_command, con=connection)
         logger.info(f"Dumping to pickle file {cache_file}")
         df.to_pickle(cache_file)
         logger.info("Done")
