@@ -33,8 +33,8 @@ HAS_KVK_NR = "has_kvk_nr"
 KVK_LIST_KEY = "kvk_list"
 BTW_LIST_KEY = "btw_list"
 POSTCODE_LIST_KEY = "postcode_list"
-PAY_OPTION_KEY = "pay_option"
 SOCIAL_MEDIA_KEY = "social_media"
+ECOMMERCE_KEY = "ecommerce"
 REFERRED_KEY = "referred_by"
 SUBDOMAIN_KEY = "subdomain"
 EXTENSION_KEY = "extension"
@@ -42,6 +42,16 @@ SSL_KEY = "ssl"
 DOMAIN_KEY = "domain"
 SUFFIX_KEY = "suffix"
 CATEGORY_KEY = "category"
+UPDATE_KEY = "update"
+
+ALL_KVK_KEY = "all_kvk"
+ALL_BTW_KEY = "all_btw"
+ALL_PSC_KEY = "all_psc"
+DATETIME_KEY = "datetime"
+CHECKED_KEY = "getest"
+
+SSL_KEY = "ssl"
+SSL_VALID_KEY = "ssl_valid"
 
 
 WEB_DF_COLS = [URL_KEY,

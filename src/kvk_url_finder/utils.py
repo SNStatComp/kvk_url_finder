@@ -1,11 +1,203 @@
 import datetime
 import logging
 import re
+import Levenshtein
+import tldextract
+import difflib
+import pandas as pd
 
-from cbs_utils.misc import (create_logger, merge_loggers)
+from cbs_utils.misc import (create_logger, merge_loggers, standard_postcode)
+from cbs_utils.web_scraping import UrlSearchStrings
 from kvk_url_finder import LOGGER_BASE_NAME
+from kvk_url_finder.models import (POSTAL_CODE_KEY, KVK_KEY, BTW_KEY)
 
 logger = logging.getLogger(LOGGER_BASE_NAME)
+
+
+class UrlCompanyRanking(object):
+    """
+    Class do perform all operation to match a url
+    """
+
+    def __init__(self, url, company_name, url_extract=None, url_analyse=None,
+                 company_postcodes=None, company_kvk_nummer=None, company_btw_nummer=None,
+                 threshold_string_match=None, threshold_distance=None, logger=None,
+                 max_url_score=3):
+
+        self.logger = logger
+        self.company_name = company_name
+        self.url = url
+
+        self.company_postcodes = company_postcodes
+        self.company_kvk_nummer = company_kvk_nummer
+        self.company_btw_nummer = company_btw_nummer
+
+        self.url_analyse = url_analyse
+        self.threshold_string_match = threshold_string_match
+        self.threshold_distance = threshold_distance
+        self.max_url_score = max_url_score
+
+        if url_extract is None:
+            self.ext = tldextract.extract(url)
+        else:
+            # we have passed the tld extract as an argument
+            self.ext = url_extract
+
+        self.ranking = 0
+
+        self.distance: int = None
+        self.string_match: float = None
+        self.url_match: float = None
+        self.url_rank: float = None
+
+        self.has_postcode = False
+        self.has_kvk_nummer = False
+        self.has_btw_nummer = False
+
+        self.kvk_nummer = None
+        self.btw_nummer = None
+
+        self.postcode_set = set()
+        self.kvk_set = set()
+        self.btw_set = set()
+
+        self.get_levenstein_distance()
+        self.get_string_match()
+
+        self.rank_contact_list()
+        self.get_ranking()
+
+    def get_levenstein_distance(self):
+        """
+        Get the levenstein distance of the company name
+        """
+
+        # the subdomain may also contain the relevant part, e.g. for ramlehapotheek.leef.nl,
+        # the sub domain is ramlehapotheek, which is closer to the company name the the
+        # domain leef. Therefore pick the minimum
+        subdomain_dist = Levenshtein.distance(self.ext.subdomain, self.company_name)
+        domain_dist = Levenshtein.distance(self.ext.domain, self.company_name)
+        self.distance = min(subdomain_dist, domain_dist)
+
+    def get_string_match(self):
+        """
+        Get the string match. Th match is given by a float value between 0 (no match and 1 (fully
+        matched)
+        """
+        subdomain_match = difflib.SequenceMatcher(None, self.ext.subdomain,
+                                                  self.company_name).ratio()
+        domain_match = difflib.SequenceMatcher(None, self.ext.domain,
+                                               self.company_name).ratio()
+        self.string_match = max(subdomain_match, domain_match)
+
+    def rank_contact_list(self):
+        """
+        Give extra score to the btw in case btw number, postcode and kvk number occur at the
+        same page, as it is more likely that this page contains the contact info of the company
+
+        """
+
+        # create dataframe with the postcode, kvk and btw. for each occurrence of one of the items,
+        # add one
+        df = pd.DataFrame(index=[POSTAL_CODE_KEY, KVK_KEY, BTW_KEY])
+        for key, url_p_m in self.url_analyse.url_per_match.items():
+            for match, url in url_p_m.items():
+                if url not in df.columns:
+                    df[url] = 0
+                df.loc[key, url] += 1
+
+        # clip the count per item to 0 or 1 (no or at least one occurance)
+        contact_hits_per_url = df.astype(bool).sum()
+
+        # create a data frame for all urls per match in which we have the match and number of url
+        for key, url_p_m in self.url_analyse.url_per_match.items():
+            match_list = list()
+            url_score = list()
+            for match, url in url_p_m.items():
+                match_list.append(match)
+                url_score.append(contact_hits_per_url[url])
+            match_df = pd.DataFrame(zip(match_list, url_score), columns=["match", "score"])
+            match_df.sort_values(["score"])
+
+            # overwrite the match list of the current column postcode, kvk, btw such that the
+            # values with many other items is on top
+            self.url_analyse.matches[key] = list(match_df["match"].values)
+
+        self.logger.debug("got sorted url {}".format(self.url_analyse))
+
+    def get_ranking(self):
+
+        if self.url_analyse:
+            postcode_lijst = self.url_analyse.matches[POSTAL_CODE_KEY]
+            kvk_lijst = self.url_analyse.matches[KVK_KEY]
+            btw_lijst = self.url_analyse.matches[BTW_KEY]
+        else:
+            self.logger.debug("Skipping Url Search : {}".format(self.url))
+            # if we did not scrape the internet, set the postcode_lijst eepty
+            postcode_lijst = list()
+            kvk_lijst = list()
+            btw_lijst = list()
+
+        # turn the lists into set such tht we only get the unique values
+        self.postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
+        self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+        self.btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
+
+        if self.company_postcodes and self.company_postcodes.intersection(self.postcode_set):
+            self.has_postcode = True
+            self.ranking += 3
+            self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
+        else:
+            self.has_postcode = False
+
+        if self.company_kvk_nummer in self.kvk_set:
+            self.has_kvk_nummer = True
+            self.ranking += 3
+            self.logger.debug(f"Found matching kvknummer code {self.company_kvk_nummer}. "
+                              f"Added to ranking {self.ranking}")
+
+        if self.btw_set:
+            self.has_btw_nummer = True
+            self.btw_nummer = re.sub(r"\.", "", list(self.btw_set)[0])
+            self.ranking += 0  # for now we dont give a score to btw because we cannot validate it
+            self.logger.debug(f"Found matching btw number {self.btw_nummer}. "
+                              f"Added to ranking {self.ranking}")
+        else:
+            self.btw_nummer = None
+
+        # calculate the url match based on the levenshtein distance and string match
+        self.url_match = self.distance * (1 - self.string_match)
+        rel_score = max((1 - self.url_match / self.threshold_distance), 0)
+        self.url_rank = self.max_url_score * rel_score ** 2  # quick drop off for lower scores
+
+        if self.ext.suffix in ("com", "org", "eu"):
+            self.url_rank += 0.5
+        elif self.ext.suffix == "nl":
+            self.url_rank += 1
+
+        if self.ext.subdomain == "www":
+            self.url_rank += 0.5
+        elif self.ext.subdomain == "":
+            self.url_rank += 0.5
+
+        # add the url matching score
+        self.ranking += self.url_rank
+
+
+class UrlInfo(object):
+    """
+    Class to hold all the properties of one single web site
+    """
+    def __init__(self, url):
+        self.url = url
+        self.url_extract = tldextract.extract(url)
+        self.outside_nl = False
+        self.processing_time: datetime.datetime = None
+        self.url_analyse: UrlSearchStrings = None
+        self.match: UrlCompanyRanking = None
+        self.btws = None
+        self.kvks = None
+        self.pscs = None
 
 
 class Range(object):
@@ -155,3 +347,24 @@ def setup_logging(logger_name=None,
     merge_loggers(_logger, "cbs_utils", logger_level_to_merge=log_level)
 
     return _logger
+
+
+def read_sql_table(table_name, connection, reset=False):
+    cache_file = table_name + ".pkl"
+    df = None
+    if not reset:
+        try:
+            df = pd.read_pickle(cache_file)
+            logger.info(f"Read table pickle file {cache_file}")
+        except IOError:
+            logger.debug(f"No pickle file available {cache_file}")
+
+    if df is None:
+        logger.info("Connecting to database")
+        logger.info(f"Start reading table from postgres table {table_name}.pkl")
+        df = pd.read_sql(f"select * from {table_name}", con=connection)
+        logger.info(f"Dumping to pickle file {cache_file}")
+        df.to_pickle(cache_file)
+        logger.info("Done")
+
+    return df

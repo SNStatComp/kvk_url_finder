@@ -333,6 +333,8 @@ def main(args_in):
         # given, update the sql data base from the input files
         if args.update_sql_tables:
             kvk_parser.generate_sql_tables()
+        kvk_parser.populate_dataframes()
+
         kvk_parser.get_kvk_list_per_process()
         logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))
         if not kvk_parser.database.is_closed():

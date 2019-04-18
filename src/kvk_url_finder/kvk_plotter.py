@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import psycopg2
 
+from kvk_url_finder.utils import read_sql_table
+
 try:
     from kvk_url_finder import __version__
 except ModuleNotFoundError:
@@ -65,29 +67,9 @@ class KvkPlotter(object):
         self.connection = psycopg2.connect(host=hostname, database=database, user=user,
                                            password=password)
 
-    def read_table(self, table_name):
-        cache_file = table_name + ".pkl"
-        df = None
-        if not self.reset:
-            try:
-                df = pd.read_pickle(cache_file)
-                logger.info(f"Read table pickle file {cache_file}")
-            except IOError:
-                logger.debug(f"No pickle file available {cache_file}")
-
-        if df is None:
-            logger.info("Connecting to database")
-            logger.info(f"Start reading table from postgres table {table_name}.pkl")
-            df = pd.read_sql(f"select * from {table_name}", con=self.connection)
-            logger.info(f"Dumping to pickle file {cache_file}")
-            df.to_pickle(cache_file)
-            logger.info("Done")
-
-        return df
-
     def plot_website_ranking(self):
         table_name = 'web_site'
-        df = self.read_table(table_name)
+        df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
 
         df["url_match"] = df.levenshtein * (1 - df.string_match)
         max_match = 10
@@ -112,7 +94,7 @@ class KvkPlotter(object):
 
     def plot_processing_time(self):
         table_name = 'company'
-        df: pd.DataFrame = self.read_table(table_name)
+        df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
         # df[df["datetime"].isnull]
         df.dropna(axis=0, subset=["datetime"], inplace=True)
         df.sort_values(["datetime"], inplace=True)
