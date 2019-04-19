@@ -298,9 +298,22 @@ class KvKUrlParser(mp.Process):
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
 
-    def populate_dataframes(self):
+    def populate_dataframes(self, only_the_company_df=False):
         """
         Read the sql tables into pandas dataframes
+
+        Parameters
+        ----------
+        only_the_company_df: bool
+            If true, only read the company_df table. This is the only table we need the first round
+
+        Notes
+        -----
+        * The start and stop of the range of kvk numbers kan be given here, the selection of the
+          range is made in the query
+        * The names of the table correspond to the names of the Table as defined in the models, but
+          only with lower chars and _ at the camelcase positions (UrlNl -> url_nl)
+
         """
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
@@ -309,23 +322,30 @@ class KvKUrlParser(mp.Process):
                                          upper=stop, connection=self.database)
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
+
+        # convert the timezone of the date/time stamp (which is stored in utc in sql) to our time
         # note that you need to use the dt operator before converting the date/times
         self.company_df[DATETIME_KEY] = self.company_df[DATETIME_KEY].dt.tz_convert(self.timezone)
 
-        self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
-        self.url_df.set_index(URL_KEY, inplace=True, drop=True)
-        self.url_df.sort_index(inplace=True)
-        self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+        if not only_the_company_df:
+            self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
+            self.url_df.set_index(URL_KEY, inplace=True, drop=True)
+            self.url_df.sort_index(inplace=True)
+            self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
 
-        self.address_df = read_sql_table(table_name="address", connection=self.database)
-        self.website_df = read_sql_table(table_name="web_site", variable=COMPANY_ID_KEY,
-                                         lower=start, upper=stop, connection=self.database)
+            self.address_df = read_sql_table(table_name="address", connection=self.database)
+            self.website_df = read_sql_table(table_name="web_site", variable=COMPANY_ID_KEY,
+                                             lower=start, upper=stop, connection=self.database)
+            self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
+                                   inplace=True)
+
+            self.website_df.loc[:, DISTANCE_STRING_MATCH_KEY] = None
 
     def get_kvk_list_per_process(self):
         """
-        Get a list of kvk numbers in the query
+        The company_df contains all the kvk to process. Devide them here into range per processor
         """
-        # we dont have to filter the kvk range; alredy done with reading
+        # we dont have to filter the kvk range; already done with reading
         number_in_range = self.company_df.index.size
         if number_in_range == 0:
             raise ValueError(f"No kvk numbers where found in range")
@@ -340,11 +360,11 @@ class KvKUrlParser(mp.Process):
 
         # check the ranges
         if n_kvk == 0:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop}"
+            raise ValueError(f"Found {number_in_range} kvk numbers in range"
                              f"but none to be processed")
 
         if n_kvk < self.number_of_processes:
-            raise ValueError(f"Found {number_in_range} kvk numbers in range {start} -- {stop} "
+            raise ValueError(f"Found {number_in_range} kvk numbers in range"
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
         n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
@@ -355,7 +375,8 @@ class KvKUrlParser(mp.Process):
             if i_proc == self.number_of_processes - 1:
                 kvk_proc = self.company_df.index.values[i_proc * n_per_proc:]
             else:
-                kvk_proc = self.company_df.index.values[i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
+                kvk_proc = self.company_df.index.values[
+                           i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
             if kvk_proc.size > 0:
                 logger.info("Getting range")
@@ -499,7 +520,7 @@ class KvKUrlParser(mp.Process):
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
-        max_queries = self.company_df[UPDATE_KEY].sum()
+        max_queries = self.company_df.index.size
         self.logger.info("Start processing {} queries".format(max_queries))
 
         if self.progressbar and self.showbar:
@@ -509,7 +530,7 @@ class KvKUrlParser(mp.Process):
             pbar = None
 
         start = time.time()
-        for cnt, (index, row) in enumerate(self.company_df.iterrow()):
+        for cnt, (index, row) in enumerate(self.company_df.iterrows()):
 
             # first check if we do not have to stop
             if self.maximum_entries is not None and cnt == self.maximum_entries:
@@ -520,7 +541,7 @@ class KvKUrlParser(mp.Process):
                 os.remove(STOP_FILE)
                 break
 
-            kvk_nummer = row[KVK_KEY]
+            kvk_nummer = index
             company_name = row[NAME_KEY]
 
             self.logger.info("Processing {} ({})".format(kvk_nummer, company_name))
@@ -528,14 +549,19 @@ class KvKUrlParser(mp.Process):
             if self.search_urls:
                 self.logger.info("Start a URL search for this company first")
 
-            # create a database holding the urls for this company + all the info
-            web_df = self.website_df[self.website_df[KVK_KEY] == kvk_nummer]
+            # for this kvk, get the list of urls + the address info
+            company_urls_df = self.website_df[self.website_df[KVK_KEY] == kvk_nummer].copy()
+            company_addresses_df = self.address_df[self.address_df[KVK_KEY] == kvk_nummer]
 
             try:
                 # match the url with the name of the company
                 company_url_match = \
                     CompanyUrlMatch(company_record=row,
-                                    web_df=web_df,
+                                    kvk_nr=kvk_nummer,
+                                    current_time=self.current_time,
+                                    company_urls_df=company_urls_df,
+                                    company_addresses_df=company_addresses_df,
+                                    urls_df=self.url_df,
                                     imposed_urls=self.impose_url_for_kvk,
                                     distance_threshold=self.threshold_distance,
                                     string_match_threshold=self.threshold_string_match,
@@ -1135,7 +1161,11 @@ class CompanyUrlMatch(object):
 
     def __init__(self,
                  company_record,
-                 web_df=None,
+                 kvk_nr: int = None,
+                 current_time: datetime.datetime = None,
+                 company_urls_df: pd.DataFrame = None,
+                 company_addresses_df: pd.DataFrame = None,
+                 urls_df: pd.DataFrame = None,
                  imposed_urls: dict = None,
                  distance_threshold: int = 10,
                  string_match_threshold: float = 0.5,
@@ -1156,17 +1186,21 @@ class CompanyUrlMatch(object):
         self.older_time = older_time
         self.timezone = timezone
         self.filter_urls = filter_urls
+        self.current_time = current_time
 
-        self.kvk_nr = company_record[KVK_KEY]
+        self.kvk_nr = kvk_nr
         self.company_name: str = company_record[NAME_KEY]
 
         self.company_record = company_record
 
-        self.web_df = web_df
+        # create a database holding the urls for this company + all the info
 
         # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
         # impose a url
-        impose_url = imposed_urls.get(self.kvk_nr)
+        if imposed_urls is not None:
+            impose_url = imposed_urls.get(self.kvk_nr)
+        else:
+            impose_url = None
 
         print_banner(f"Matching Company {company_record} : {company_record.naam}", top_symbol="+")
 
@@ -1175,7 +1209,10 @@ class CompanyUrlMatch(object):
         self.urls = UrlCollection(company_record,
                                   self.company_name,
                                   self.kvk_nr,
-                                  web_df=web_df,
+                                  current_time=self.current_time,
+                                  company_urls_df=company_urls_df,
+                                  company_addresses_df=company_addresses_df,
+                                  urls_df=urls_df,
                                   threshold_distance=distance_threshold,
                                   threshold_string_match=string_match_threshold,
                                   impose_url=impose_url,
@@ -1186,6 +1223,8 @@ class CompanyUrlMatch(object):
                                   timezone=self.timezone,
                                   exclude_extensions=exclude_extension,
                                   filter_urls=self.filter_urls)
+
+        self.company_urls_df = self.urls.company_urls_df
         self.find_match_for_company()
 
     def find_match_for_company(self):
@@ -1193,27 +1232,22 @@ class CompanyUrlMatch(object):
         Get the best matching url based on the already calculated levensteihn distance and string
         match
         """
-        if self.web_df is not None:
+        if self.company_urls_df is not None:
             # the first row in the data frame is the best matching web site
-            web_df_best = self.web_df.head(1)
+            best_match = self.company_urls_df.head(1)
 
             # store the best matching web site
-            self.logger.debug("Best matching url: {}".format(self.urls.web_df.head(1)))
-            web_match_index = web_df_best.index.values[0]
-            web_match = self.web_df[web_match_index]
-            web_match.best_match = True
-            web_match.has_postcode = web_df_best[HAS_POSTCODE_KEY].values[0]
-            web_match.url = web_df_best[URL_KEY].values[0]
-            web_match.ranking = web_df_best[RANKING_KEY].values[0]
-            self.logger.debug("Best matching url: {}".format(web_match.url))
+            web_match_index = best_match.index.values[0]
+            self.company_urls_df.loc[web_match_index, BEST_MATCH_KEY] = True
+            self.logger.debug("Best matching url: {}".format(best_match.url))
 
             # update all the properties TODO: move outsei
             # if self.save:
             #    for web in self.company_record.websites:
             #        web.save()
-            self.company_record[URL_KEY] = web_match.url
+            self.company_record[URL_KEY] = best_match[URL_KEY]
             self.company_record[CORE_ID] = self.i_proc
-            self.company_record[RANKING_KEY] = round(web_match.ranking)
+            self.company_record[RANKING_KEY] = round(best_match[RANKING_KEY])
             self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
             # if self.save:
             #    self.company_record.save()
@@ -1235,7 +1269,10 @@ class UrlCollection(object):
                  company_record,
                  company_name: str,
                  kvk_nr: int,
-                 web_df: pd.DataFrame = None,
+                 current_time=None,
+                 company_urls_df: pd.DataFrame = None,
+                 company_addresses_df: pd.DataFrame = None,
+                 urls_df: pd.DataFrame = None,
                  threshold_distance: int = 10,
                  threshold_string_match: float = 0.5,
                  impose_url: str = None,
@@ -1251,11 +1288,11 @@ class UrlCollection(object):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
 
-        self.web_df = web_df
         self.older_time = older_time
         self.timezone = timezone
         self.exclude_extensions = exclude_extensions
         self.filter_urls = filter_urls
+        self.current_time = current_time
 
         assert scraper in SCRAPERS
 
@@ -1266,19 +1303,19 @@ class UrlCollection(object):
         self.kvk_nr = kvk_nr
         self.company_record = company_record
         self.company_name = company_name
-        self.company_websites = self.company_record.websites
+        self.company_urls_df = company_urls_df
+        self.company_addresses_df = company_addresses_df
         self.company_name_small = clean_name(self.company_name)
+        self.urls_df = urls_df
 
         self.postcodes = list()
-        for address in self.company_record.address:
-            if is_postcode(address.postcode):
-                self.logger.debug("Found postcode {}".format(address.postcode))
-                self.postcodes.append(address.postcode)
-            else:
-                self.logger.debug("No valid postcode {}".format(address.postcode))
-
-        # always turn the list in a set so that the postcodes are unique
-        self.postcodes = set([standard_postcode(pc) for pc in self.postcodes])
+        postcodes = self.company_addresses_df[POSTAL_CODE_KEY]
+        is_valid_post_code = list(map(is_postcode, postcodes))
+        postcodes = postcodes[is_valid_post_code]
+        if postcodes.size > 0:
+            self.postcodes = set(postcodes)
+        else:
+            self.postcodes = set()
 
         self.threshold_distance = threshold_distance
         self.threshold_string_match = threshold_string_match
@@ -1294,10 +1331,11 @@ class UrlCollection(object):
         if impose_url:
             # just select the url to impose
             self.logger.info(f"Imposing {impose_url}")
-            self.web_df = self.web_df[self.web_df[URL_KEY] == impose_url].copy()
-        elif self.web_df is not None:
+            mask = self.company_urls_df[URL_KEY] == impose_url
+            self.company_urls_df = self.company_urls_df[mask].copy()
+        elif self.company_urls_df is not None:
             self.get_best_matching_web_site()
-            self.logger.debug("Best Match".format(self.web_df.head(1)))
+            self.logger.debug("Best Match".format(self.company_urls_df.head(1)))
         else:
             self.logger.info("No website found for".format(self.company_name))
             # still set the date time to indicate we have processed this one
@@ -1434,18 +1472,17 @@ class UrlCollection(object):
         max_sequence_match = None
         index_string_match = index_distance = None
         self.collection = list()
-        for i_web, web_row in self.web_df.iterrows():
+        for i_web, web_row in self.company_urls_df.iterrows():
             # get the url first from the websites table which list all the urls belonging to
             # one kvk search
             url = web_row[URL_KEY]
-            url_datetime = web_row[DATETIME_KEY]
 
             if url is None:
                 logger.debug("Skipping url because it is None")
                 continue
 
             # store a list of UrlInfo object with a minimum info the url which was tested
-            url_info = UrlInfo(url=url)
+            url_info = UrlInfo(index=i_web, url=url)
             self.collection.append(url_info)
 
             if self.filter_urls and url not in self.filter_urls:
@@ -1462,12 +1499,17 @@ class UrlCollection(object):
                 continue
 
             # get the processing time of the last time you did this url from the table
-            processing_time = url_nl_record.datetime
+            try:
+                processing_time = self.urls_df.loc[url, DATETIME_KEY]
+            except KeyError:
+                processing_time = None
+                logger.wanring(f"Tried to get url info, but {url} does not exist")
+
             url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=now,
+                                                         current_time=self.current_time,
                                                          older_time=self.older_time)
             if url_needs_update:
-                url_info.processing_time = now
+                url_info.processing_time = self.current_time
                 # TODO : need transfer
                 # self.web_df.loc[i_web, DATETIME_KEY] = now
                 # self.web_df.loc[i_web, SUFFIX_KEY] = url_info.url_extract.suffix
@@ -1507,7 +1549,7 @@ class UrlCollection(object):
 
             if url_analyse and not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
-                self.web_df.loc[i_web, EXISTS_KEY] = False
+                self.company_urls_df.loc[i_web, EXISTS_KEY] = False
                 continue
 
             # based on the company postcodes and kvknummer and web contents, make a ranking how
@@ -1624,7 +1666,7 @@ class UrlCollection(object):
                                                           match.distance))
 
         if min_distance is None:
-            self.web_df = None
+            self.company_urls_df = None
         elif index_string_match != index_distance:
             self.logger.warning(
                 "Found minimal distance for {}: {}\nwhich differs from "
@@ -1640,35 +1682,38 @@ class UrlCollection(object):
 
         # first fill the web_df columns we need for ranking
         for i_web, url_info in enumerate(self.collection):
+            index = url_info.index
             exists = url_info.url_analyse.exists
-            self.web_df.loc[i_web, URL_KEY] = url_info.url
-            self.web_df.loc[i_web, EXISTS_KEY] = exists
+            self.company_urls_df.loc[index, URL_KEY] = url_info.url
+            self.company_urls_df.loc[index, EXISTS_KEY] = exists
             if exists:
-                self.web_df.loc[i_web, DISTANCE_KEY] = url_info.match.distance
-                self.web_df.loc[i_web, STRING_MATCH_KEY] = url_info.match.string_match
-                self.web_df.loc[i_web, HAS_POSTCODE_KEY] = url_info.match.has_postcode
-                self.web_df.loc[i_web, HAS_KVK_NR] = url_info.match.has_kvk_nummer
-                self.web_df.loc[i_web, RANKING_KEY] = url_info.match.ranking
+                self.company_urls_df.loc[index, DISTANCE_KEY] = url_info.match.distance
+                self.company_urls_df.loc[index, STRING_MATCH_KEY] = url_info.match.string_match
+                self.company_urls_df.loc[index, HAS_POSTCODE_KEY] = url_info.match.has_postcode
+                self.company_urls_df.loc[index, HAS_KVK_NR] = url_info.match.has_kvk_nummer
+                self.company_urls_df.loc[index, RANKING_KEY] = url_info.match.ranking
+                self.company_urls_df.loc[index, DISTANCE_STRING_MATCH_KEY] = \
+                    url_info.match.url_match
 
         # only select the web site which exist
-        mask = self.web_df[EXISTS_KEY]
+        mask = self.company_urls_df[EXISTS_KEY]
 
         # create mask for web name distance
         if self.threshold_distance is not None:
             # select all the web sites with a minimum distance or one higher
-            m1 = (self.web_df[DISTANCE_KEY] - self.web_df[
+            m1 = (self.company_urls_df[DISTANCE_KEY] - self.company_urls_df[
                 DISTANCE_KEY].min()) <= self.threshold_distance
         else:
             m1 = mask
 
         # create mask for web string match
         if self.threshold_string_match is not None:
-            m2 = self.web_df[STRING_MATCH_KEY] >= self.threshold_string_match
+            m2 = self.company_urls_df[STRING_MATCH_KEY] >= self.threshold_string_match
         else:
             m2 = mask
 
-        m3 = self.web_df[HAS_POSTCODE_KEY]
-        m4 = self.web_df[HAS_KVK_NR]
+        m3 = self.company_urls_df[HAS_POSTCODE_KEY]
+        m4 = self.company_urls_df[HAS_KVK_NR]
 
         # we mask al the existing web page and keep all pages which are either with
         # a certain string distance (m1) or in case it has either the post code or kvk
@@ -1676,8 +1721,8 @@ class UrlCollection(object):
         mask = mask & (m1 | m2 | m3 | m4)
 
         # make a copy of the valid web sides
-        self.web_df = self.web_df[mask].copy()
+        self.company_urls_df = self.company_urls_df[mask].copy()
 
-        self.web_df.sort_values([RANKING_KEY, DISTANCE_STRING_MATCH_KEY], inplace=True,
-                                ascending=[False, False])
-        self.logger.debug("Sorted list {}".format(self.web_df[[URL_KEY, RANKING_KEY]]))
+        self.company_urls_df.sort_values([RANKING_KEY, DISTANCE_STRING_MATCH_KEY], inplace=True,
+                                         ascending=[False, True])
+        self.logger.debug("Sorted list {}".format(self.company_urls_df[[URL_KEY, RANKING_KEY]]))

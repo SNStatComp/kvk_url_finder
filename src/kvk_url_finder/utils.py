@@ -188,7 +188,8 @@ class UrlInfo(object):
     """
     Class to hold all the properties of one single web site
     """
-    def __init__(self, url):
+    def __init__(self, index, url):
+        self.index = index
         self.url = url
         self.url_extract = tldextract.extract(url)
         self.outside_nl = False
