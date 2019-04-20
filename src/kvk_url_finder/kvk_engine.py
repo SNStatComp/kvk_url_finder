@@ -628,6 +628,7 @@ class KvKUrlParser(mp.Process):
                 ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
                 query.execute()
 
+
             logger.debug(f"Updating WebsiteTbl {url}")
             query = self.WebsiteTbl.update(
                 url=url,
@@ -645,28 +646,29 @@ class KvKUrlParser(mp.Process):
             ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
             query.execute()
 
+            row2 = self.url_df.loc[url, :]
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
                 row = url_nl_df.loc[url, :]
                 logger.debug(f"Updating UrlNl {url}")
                 query = self.UrlNLTbl.update(
-                    bestaat=row[BESTAAT_KEY],
-                    post_code=row[POSTAL_CODE_KEY2],
-                    kvk_nummer=row[KVK_KEY],
-                    btw_nummer=row[BTW_KEY],
-                    datetime=row[DATETIME_KEY],
-                    ssl=row[SSL_KEY],
-                    ssl_invalid=row[SSL_VALID_KEY],
-                    subdomain=row[SUBDOMAIN_KEY],
-                    domain=row[DOMAIN_KEY],
-                    suffix=row[SUFFIX_KEY],
-                    category=row[CATEGORY_KEY],
-                    ecommerce=row[ECOMMERCE_KEY],
-                    social_media=row[SOCIAL_MEDIA_KEY],
-                    referred_by=row[REFERRED_KEY],
-                    all_psc=row[ALL_PSC_KEY],
-                    all_kvk=row[ALL_KVK_KEY],
-                    all_btw=row[ALL_BTW_KEY],
+                    bestaat=row2[BESTAAT_KEY],
+                    post_code=row2[POSTAL_CODE_KEY2],
+                    kvk_nummer=row2[KVK_KEY],
+                    btw_nummer=row2[BTW_KEY],
+                    datetime=row2[DATETIME_KEY],
+                    ssl=row2[SSL_KEY],
+                    ssl_invalid=row2[SSL_VALID_KEY],
+                    subdomain=row2[SUBDOMAIN_KEY],
+                    domain=row2[DOMAIN_KEY],
+                    suffix=row2[SUFFIX_KEY],
+                    category=row2[CATEGORY_KEY],
+                    ecommerce=row2[ECOMMERCE_KEY],
+                    social_media=row2[SOCIAL_MEDIA_KEY],
+                    referred_by=row2[REFERRED_KEY],
+                    all_psc=row2[ALL_PSC_KEY],
+                    all_kvk=row2[ALL_KVK_KEY],
+                    all_btw=row2[ALL_BTW_KEY],
                 ).where(self.UrlNLTbl.url == url)
                 query.execute()
 
@@ -1642,12 +1644,12 @@ class UrlCollection(object):
             try:
                 self.urls_df.loc[url, KVK_KEY] = list(match.kvk_set)[0]
             except IndexError:
-                pass
+                self.urls_df.loc[url, KVK_KEY] = None
 
             try:
                 self.urls_df.loc[url, POSTAL_CODE_KEY] = list(match.postcode_set)[0]
             except IndexError:
-                pass
+                self.urls_df.loc[url, POSTAL_CODE_KEY] = None
 
             self.urls_df.loc[url, BTW_KEY] = match.btw_nummer
 
