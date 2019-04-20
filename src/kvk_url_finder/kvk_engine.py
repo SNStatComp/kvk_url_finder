@@ -617,6 +617,8 @@ class KvKUrlParser(mp.Process):
             url = row[URL_KEY]
             url_info = company_url_match.urls.collection[url]
 
+            row = row.where(row.notna(), None)
+
             ranking = row[RANKING_KEY]
             if row[BEST_MATCH_KEY]:
                 logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
@@ -647,6 +649,7 @@ class KvKUrlParser(mp.Process):
             query.execute()
 
             row2 = self.url_df.loc[url, :]
+            row2 = row2.where(row2.notna(), None)
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
                 row = url_nl_df.loc[url, :]
