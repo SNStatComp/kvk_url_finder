@@ -267,6 +267,9 @@ class KvKUrlParser(mp.Process):
         self.company_vs_kvk = None
         self.n_company = None
 
+        self.company_urls_df: pd.DataFrame = None
+        self.company_address_df: pd.DataFrame = None
+
         self.number_of_processes = number_of_processes
 
         self.kvk_ranges = None
@@ -550,7 +553,7 @@ class KvKUrlParser(mp.Process):
                 self.logger.info("Start a URL search for this company first")
 
             # for this kvk, get the list of urls + the address info
-            company_urls_df = self.website_df[self.website_df[KVK_KEY] == kvk_nummer].copy()
+            company_urls_df = self.website_df[self.website_df[KVK_KEY] == kvk_nummer].reset_index()
             company_addresses_df = self.address_df[self.address_df[KVK_KEY] == kvk_nummer]
 
             try:
@@ -579,6 +582,9 @@ class KvKUrlParser(mp.Process):
             except pw.DatabaseError as err:
                 self.logger.warning(f"{err}")
                 self.logger.warning("skipping")
+            else:
+                # succeeded the match. Now update the sql tables atomic
+                self.update_sql_tables(kvk_nummer, company_urls_df, self.url_df)
 
             if pbar:
                 pbar.update()
@@ -592,6 +598,66 @@ class KvKUrlParser(mp.Process):
         # with Timer("Updating tables") as _:
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
+
+    def update_sql_tables(self, kvk_nummer, company_urls_df, url_nl_df):
+        """
+        Transfer the match data from the data frame to the sql tabels
+        """
+        logger.info(f"Updating TABLES for {kvk_nummer}")
+        for index, row in company_urls_df.iterrows():
+            url = row[URL_KEY]
+            ranking = row[RANKING_KEY]
+            if row[BEST_MATCH_KEY]:
+                logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
+                query = self.CompanyTbl.update(
+                    url=url,
+                    ranking=ranking,
+                    core_id=self.i_proc,
+                    datetime=self.current_time
+                ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
+                query.execute()
+
+            logger.debug(f"Updating WebsiteTbl {url}")
+            query = self.WebsiteTbl.update(
+                url=url,
+                getest=True,
+                bestaat=row[BESTAAT_KEY],
+                levenshtein=row[LEVENSHTEIN_KEY],
+                string_match=row[STRING_MATCH_KEY],
+                url_match=row[URL_MATCH],
+                url_rank=row[URL_RANK],
+                best_match=row[BEST_MATCH_KEY],
+                has_postcode=row[HAS_POSTCODE_KEY],
+                has_kvk_nr=row[HAS_KVK_NR],
+                has_btw_nr=row[HAS_BTW_NR_KEY],
+                ranking=row[RANKING_KEY]
+            ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+            query.execute()
+
+            query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
+            if query.exists():
+                row = url_nl_df.loc[url, :]
+                logger.debug(f"Updating UrlNl {url}")
+                query = self.UrlNLTbl.update(
+                    bestaat = row[BESTAAT_KEY],
+                    post_code = row[POSTAL_CODE_KEY2],
+                    kvk_nummer = row[KVK_KEY],
+                    btw_nummer = row[BTW_KEY],
+                    datetime = row[BTW_KEY],
+                    ssl = row[SSL_KEY],
+                    ssl_invalid = row[SSL_VALID_KEY],
+                    subdomain = row[SUBDOMAIN_KEY],
+                    domain = row[DOMAIN_KEY],
+                    suffix = row[SUFFIX_KEY],
+                    category = row[CATEGORY_KEY],
+                    ecommerce = row[ECOMMERCE_KEY],
+                    social_media = row[SOCIAL_MEDIA],
+                    referred_by = row[REFERRED_KEY],
+                    all_psc = row[ALL_PSC_KEY],
+                    all_kvk = row[ALL_KVK_KEY],
+                    all_btw = row[ALL_BTW_KEY],
+                ).where(self.UrlNLTbl.url_id == url)
+                query.execute()
 
     # @profile
     def read_csv_input_file(self,
@@ -1224,6 +1290,7 @@ class CompanyUrlMatch(object):
                                   exclude_extensions=exclude_extension,
                                   filter_urls=self.filter_urls)
 
+        # make a copy link of the company_urls_df from the urls object to here
         self.company_urls_df = self.urls.company_urls_df
         self.find_match_for_company()
 
@@ -1477,17 +1544,17 @@ class UrlCollection(object):
             # one kvk search
             url = web_row[URL_KEY]
 
-            if url is None:
-                logger.debug("Skipping url because it is None")
+            # skip all none uls and also the filtered urls
+            if url is None or url == "":
+                logger.debug("Skipping url because it is None or empty")
+                continue
+            if self.filter_urls and url not in self.filter_urls:
+                logger.debug(f"filter urls is given so skip {url}")
                 continue
 
             # store a list of UrlInfo object with a minimum info the url which was tested
             url_info = UrlInfo(index=i_web, url=url)
             self.collection.append(url_info)
-
-            if self.filter_urls and url not in self.filter_urls:
-                logger.debug(f"filter urls is given so skip {url}")
-                continue
 
             print_banner(f"Processing {url}")
 
@@ -1503,7 +1570,7 @@ class UrlCollection(object):
                 processing_time = self.urls_df.loc[url, DATETIME_KEY]
             except KeyError:
                 processing_time = None
-                logger.wanring(f"Tried to get url info, but {url} does not exist")
+                logger.warning(f"Tried to get url info, but {url} does not exist")
 
             url_needs_update = check_if_url_needs_update(processing_time=processing_time,
                                                          current_time=self.current_time,
