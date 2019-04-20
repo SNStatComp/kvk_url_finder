@@ -1,3 +1,4 @@
+import collections
 import datetime
 import multiprocessing as mp
 import os
@@ -8,15 +9,17 @@ import time
 import pandas as pd
 import progressbar as pb
 import pytz
+import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, standard_postcode, print_banner)
-from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP)
+from cbs_utils.misc import (create_logger, is_postcode, print_banner)
+from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
+                                    get_clean_url)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
 from kvk_url_finder.utils import (Range, check_if_url_needs_update, UrlInfo, UrlCompanyRanking,
-                                  read_sql_table)
+                                  read_sql_table, paste_strings)
 
 try:
     from kvk_url_finder import __version__
@@ -511,7 +514,7 @@ class KvKUrlParser(mp.Process):
     # @profile
     def find_best_matching_url(self):
         """
-        Per company, see which url matches the best the company name
+        Per company, see which url matches the best the company based on the name + the web info
         """
 
         if self.filter_kvks:
@@ -523,7 +526,10 @@ class KvKUrlParser(mp.Process):
         # count the number of none-processed queries (ie in which the processed flag == False
         # we have already imposed the max_entries option in the selection of the ranges
         self.logger.info("Counting all...")
-        max_queries = self.company_df.index.size
+        if self.maximum_entries:
+            max_queries = self.maximum_entries
+        else:
+            max_queries = self.company_df.index.size
         self.logger.info("Start processing {} queries".format(max_queries))
 
         if self.progressbar and self.showbar:
@@ -533,6 +539,7 @@ class KvKUrlParser(mp.Process):
             pbar = None
 
         start = time.time()
+        # loop over all the companies kvk numbers
         for cnt, (index, row) in enumerate(self.company_df.iterrows()):
 
             # first check if we do not have to stop
@@ -584,7 +591,7 @@ class KvKUrlParser(mp.Process):
                 self.logger.warning("skipping")
             else:
                 # succeeded the match. Now update the sql tables atomic
-                self.update_sql_tables(kvk_nummer, company_urls_df, self.url_df)
+                self.update_sql_tables(kvk_nummer, company_url_match, self.url_df)
 
             if pbar:
                 pbar.update()
@@ -599,13 +606,17 @@ class KvKUrlParser(mp.Process):
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
 
-    def update_sql_tables(self, kvk_nummer, company_urls_df, url_nl_df):
+    def update_sql_tables(self, kvk_nummer, company_url_match, url_nl_df):
         """
         Transfer the match data from the data frame to the sql tabels
         """
+        company_urls_df = company_url_match.urls.company_urls_df
+
         logger.info(f"Updating TABLES for {kvk_nummer}")
         for index, row in company_urls_df.iterrows():
             url = row[URL_KEY]
+            url_info = company_url_match.urls.collection[url]
+
             ranking = row[RANKING_KEY]
             if row[BEST_MATCH_KEY]:
                 logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
@@ -639,25 +650,36 @@ class KvKUrlParser(mp.Process):
                 row = url_nl_df.loc[url, :]
                 logger.debug(f"Updating UrlNl {url}")
                 query = self.UrlNLTbl.update(
-                    bestaat = row[BESTAAT_KEY],
-                    post_code = row[POSTAL_CODE_KEY2],
-                    kvk_nummer = row[KVK_KEY],
-                    btw_nummer = row[BTW_KEY],
-                    datetime = row[BTW_KEY],
-                    ssl = row[SSL_KEY],
-                    ssl_invalid = row[SSL_VALID_KEY],
-                    subdomain = row[SUBDOMAIN_KEY],
-                    domain = row[DOMAIN_KEY],
-                    suffix = row[SUFFIX_KEY],
-                    category = row[CATEGORY_KEY],
-                    ecommerce = row[ECOMMERCE_KEY],
-                    social_media = row[SOCIAL_MEDIA],
-                    referred_by = row[REFERRED_KEY],
-                    all_psc = row[ALL_PSC_KEY],
-                    all_kvk = row[ALL_KVK_KEY],
-                    all_btw = row[ALL_BTW_KEY],
-                ).where(self.UrlNLTbl.url_id == url)
+                    bestaat=row[BESTAAT_KEY],
+                    post_code=row[POSTAL_CODE_KEY2],
+                    kvk_nummer=row[KVK_KEY],
+                    btw_nummer=row[BTW_KEY],
+                    datetime=row[DATETIME_KEY],
+                    ssl=row[SSL_KEY],
+                    ssl_invalid=row[SSL_VALID_KEY],
+                    subdomain=row[SUBDOMAIN_KEY],
+                    domain=row[DOMAIN_KEY],
+                    suffix=row[SUFFIX_KEY],
+                    category=row[CATEGORY_KEY],
+                    ecommerce=row[ECOMMERCE_KEY],
+                    social_media=row[SOCIAL_MEDIA_KEY],
+                    referred_by=row[REFERRED_KEY],
+                    all_psc=row[ALL_PSC_KEY],
+                    all_kvk=row[ALL_KVK_KEY],
+                    all_btw=row[ALL_BTW_KEY],
+                ).where(self.UrlNLTbl.url == url)
                 query.execute()
+
+            # loop over the external links in the url
+            if url_info.url_analyse:
+                for ext_url in url_info.url_analyse.external_hrefs:
+                    clean_url = get_clean_url(ext_url)
+                    query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == clean_url)
+                    if not query.exists():
+                        logger.debug(f"Adding a new entry {clean_url}")
+                        self.UrlNLTbl.create(url=clean_url, bestaat=True, referred_by=url)
+                    else:
+                        logger.debug(f"External already  {clean_url}")
 
     # @profile
     def read_csv_input_file(self,
@@ -1259,6 +1281,8 @@ class CompanyUrlMatch(object):
 
         self.company_record = company_record
 
+        self.company_urls_df = company_urls_df
+
         # create a database holding the urls for this company + all the info
 
         # the impose_url_for_kvk dictionary gives all the kvk numbers for which we just want to
@@ -1276,7 +1300,7 @@ class CompanyUrlMatch(object):
                                   self.company_name,
                                   self.kvk_nr,
                                   current_time=self.current_time,
-                                  company_urls_df=company_urls_df,
+                                  company_urls_df=self.company_urls_df,
                                   company_addresses_df=company_addresses_df,
                                   urls_df=urls_df,
                                   threshold_distance=distance_threshold,
@@ -1442,23 +1466,20 @@ class UrlCollection(object):
 
         return url_nl
 
-    def scrape_url_and_store_in_tables(self, url, web, url_nl, url_needs_update):
+    def scrape_url_and_store_in_dataframes(self, url, url_info):
         """
         Start scraping the url and store some info in the tables web and url_df
         Parameters
         ----------
         url: str
             Name of the url
-        web: peewee Table
-            Table with all the url per kvk
-        url_df: peewee Table
-            Table with all the unique urls
-        url_needs_update: bool
-            If true we need to search the url again
+        url_info: 'object':UrlInfo
+            Class with information on the current url
 
         Returns
         -------
-
+        object:
+            :class:UrlSearchString
         """
 
         self.logger.debug("Start Url Search : {}".format(url))
@@ -1473,60 +1494,60 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
-                                       scrape_url=url_needs_update
+                                       scrape_url=url_info.needs_update
                                        )
 
         # TODO: transfer this outside
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
-        # web.getest = True
-        #
-        # if not url_needs_update:
-        #     logger.debug("We skipped the scraping to transfer previous data ")
-        #     url_analyse.exists = True
-        #     # we have not scraped the url, but we want to set the info anyways
-        #     postcodes = url_nl.all_psc
-        #     if postcodes is not None and postcodes != "":
-        #         url_analyse.matches[POSTAL_CODE_KEY] = postcodes.split(",")
-        #     btw_nummers = url_nl.all_btw
-        #     if btw_nummers is not None and btw_nummers != "":
-        #         url_analyse.matches[BTW_KEY] = btw_nummers.split(",")
-        #     kvk_nummers = url_nl.all_kvk
-        #     if kvk_nummers is not None and kvk_nummers != "":
-        #         url_analyse.matches[KVK_KEY] = kvk_nummers.split(",")
-        # else:
-        #     logger.debug("We scraped the web site. Store the social media")
-        #     sm_list = list()
-        #     ec_list = list()
-        #     all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
-        #     all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
-        #     for external_url in url_analyse.external_hrefs:
-        #         dom = tldextract.extract(external_url).domain
-        #         if dom in all_social_media and dom not in sm_list:
-        #             logger.debug(f"Found social media {dom}")
-        #             sm_list.append(dom)
-        #         if dom in all_ecommerce and dom not in ec_list:
-        #             logger.debug(f"Found ecommerce {dom}")
-        #             ec_list.append(dom)
-        #     if ec_list:
-        #         url_nl.ecommerce = paste_strings(ec_list, max_length=MAX_CHARFIELD_LENGTH)
-        #     if sm_list:
-        #         url_nl.social_media = paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
-        #
-        #     if url_analyse.exists:
-        #         url_nl.bestaat = True
-        #         url_nl.ssl = url_analyse.req.ssl
-        #         url_nl.ssl_invalid = url_analyse.req.ssl_invalid
-        #
-        # self.logger.debug(url_analyse)
-        #
-        # if not url_analyse.exists:
-        #     web.bestaat = False
-        # else:
-        #     # if we are here, the web side is tested and exists
-        #     web.bestaat = True
-        #
-        #     for key, matches in url_analyse.matches.items():
-        #         self.logger.debug("Found {}:{} in {}".format(key, matches, url))
+
+        if not url_info.needs_update:
+            logger.debug("We skipped the scraping so get the previous data ")
+            url_analyse.exists = True
+            # we have not scraped the url, but we want to set the info anyways
+            postcodes = self.urls_df.loc[url, ALL_PSC_KEY]
+            if postcodes is not None and postcodes != "":
+                url_analyse.matches[POSTAL_CODE_KEY] = postcodes.split(",")
+            btw_nummers = self.urls_df.loc[url, ALL_BTW_KEY]
+            if btw_nummers is not None and btw_nummers != "":
+                url_analyse.matches[BTW_KEY] = btw_nummers.split(",")
+            kvk_nummers = self.urls_df.loc[url, ALL_KVK_KEY]
+            if kvk_nummers is not None and kvk_nummers != "":
+                url_analyse.matches[KVK_KEY] = kvk_nummers.split(",")
+
+            e_commerce = self.urls_df.loc[url, ECOMMERCE_KEY]
+            if e_commerce is not None and e_commerce != "":
+                url_info.ecommerce = e_commerce.split(",")
+
+            social_media = self.urls_df.loc[url, SOCIAL_MEDIA_KEY]
+            if social_media is not None and social_media != "":
+                url_info.social_media = social_media.split(",")
+        else:
+            logger.debug("We scraped the web site. Store the social media")
+            sm_list = list()
+            ec_list = list()
+            all_social_media = [sm.lower() for sm in SOCIAL_MEDIA]
+            all_ecommerce = [ec.lower() for ec in PAY_OPTIONS]
+            for external_url in url_analyse.external_hrefs:
+                dom = tldextract.extract(external_url).domain
+                if dom in all_social_media and dom not in sm_list:
+                    logger.debug(f"Found social media {dom}")
+                    sm_list.append(dom)
+                if dom in all_ecommerce and dom not in ec_list:
+                    logger.debug(f"Found ecommerce {dom}")
+                    ec_list.append(dom)
+            url_info.ecommerce = ec_list
+            url_info.social_media = sm_list
+            if ec_list:
+                self.urls_df.loc[url, ECOMMERCE_KEY] = \
+                    paste_strings(ec_list, max_length=MAX_CHARFIELD_LENGTH)
+            if sm_list:
+                self.urls_df.loc[url, SOCIAL_MEDIA_KEY] = \
+                    paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
+
+            if url_analyse.exists:
+                self.urls_df.loc[url, BESTAAT_KEY] = True
+                self.urls_df.loc[url, SSL_KEY] = url_analyse.req.ssl
+                self.urls_df.loc[url, SSL_VALID_KEY] = url_analyse.req.ssl_invalid
 
         return url_analyse
 
@@ -1538,7 +1559,7 @@ class UrlCollection(object):
         min_distance = None
         max_sequence_match = None
         index_string_match = index_distance = None
-        self.collection = list()
+        self.collection = collections.OrderedDict()
         for i_web, web_row in self.company_urls_df.iterrows():
             # get the url first from the websites table which list all the urls belonging to
             # one kvk search
@@ -1554,7 +1575,7 @@ class UrlCollection(object):
 
             # store a list of UrlInfo object with a minimum info the url which was tested
             url_info = UrlInfo(index=i_web, url=url)
-            self.collection.append(url_info)
+            self.collection[url] = url_info
 
             print_banner(f"Processing {url}")
 
@@ -1570,45 +1591,20 @@ class UrlCollection(object):
                 processing_time = self.urls_df.loc[url, DATETIME_KEY]
             except KeyError:
                 processing_time = None
-                logger.warning(f"Tried to get url info, but {url} does not exist")
 
-            url_needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                         current_time=self.current_time,
-                                                         older_time=self.older_time)
-            if url_needs_update:
+            url_info.needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                              current_time=self.current_time,
+                                                              older_time=self.older_time)
+            if url_info.needs_update:
+                # if the url needs update, store the current time
                 url_info.processing_time = self.current_time
-                # TODO : need transfer
-                # self.web_df.loc[i_web, DATETIME_KEY] = now
-                # self.web_df.loc[i_web, SUFFIX_KEY] = url_info.url_extract.suffix
-                # self.web_df.loc[i_web, SUBDOMAIN_KEY] = url_info.url_extract.subdomain
-                # self.web_df.loc[i_web, DOMAIN_KEY] = url_info.url_extract.domain
-
-                # TODO: move this outside the clas
-                # url_nl.datetime = now
-                # url_nl.suffix = url_extract.suffix
-                # url_nl.subdomain = url_extract.subdomain
-                # url_nl.domain = url_extract.domain
-
-            # start with storing the name and assume we have not tested the url or it exist
-            # TODO: make sure this is updated
-            # web.naam = self.company_name
-            # web.bestaat = False
-            # web.getest = False
+                self.urls_df.loc[url, DATETIME_KEY] = self.current_time
+            else:
+                url_info.processing_time = processing_time
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
-                url_analyse = UrlSearchStrings(url,
-                                               search_strings={
-                                                   POSTAL_CODE_KEY: ZIP_REGEXP,
-                                                   KVK_KEY: KVK_REGEXP,
-                                                   BTW_KEY: BTW_REGEXP
-                                               },
-                                               sort_order_hrefs=SORT_ORDER_HREFS,
-                                               stop_search_on_found_keys=[BTW_KEY],
-                                               store_page_to_cache=self.store_html_to_cache,
-                                               max_cache_dir_size=self.max_cache_dir_size,
-                                               scrape_url=url_needs_update
-                                               )
+                url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
             else:
                 url_analyse = None
 
@@ -1632,37 +1628,28 @@ class UrlCollection(object):
 
             url_info.match = match
 
-            # store the info in both the dataframe web_df and the url_nl table
-            # self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
-            #
-            # all_kvks = paste_strings(["{:08d}".format(kvk) for kvk in list(match.kvk_set)],
-            #                          max_length=MAX_CHARFIELD_LENGTH)
-            # all_btws = paste_strings(list(match.btw_set), max_length=MAX_CHARFIELD_LENGTH)
-            # all_pscs = paste_strings(list(match.postcode_set), max_length=MAX_CHARFIELD_LENGTH)
-            #
-            # self.web_df.loc[i_web, ALL_KVK_KEY] = all_kvks
-            # self.web_df.loc[i_web, ALL_BTW_KEY] = all_btws
-            # self.web_df.loc[i_web, ALL_PSC_KEY] = all_pscs
+            if url_info.needs_update:
+                all_kvks = paste_strings(["{:08d}".format(kvk) for kvk in list(match.kvk_set)],
+                                         max_length=MAX_CHARFIELD_LENGTH)
+                all_btws = paste_strings(list(match.btw_set), max_length=MAX_CHARFIELD_LENGTH)
+                all_pscs = paste_strings(list(match.postcode_set), max_length=MAX_CHARFIELD_LENGTH)
+                self.urls_df.loc[i_web, ALL_KVK_KEY] = all_kvks
+                self.urls_df.loc[i_web, ALL_BTW_KEY] = all_btws
+                self.urls_df.loc[i_web, ALL_PSC_KEY] = all_pscs
 
             # we have sorted the kvk set with a ranking. The first kvk number in the set has
             # the closest match, store that
-            # try:
-            #     self.web_df.loc[i_web, KVK_KEY] = list(match.kvk_set)[0]
-            #     # TODO: do this transfer outside
-            #     # url_nl.kvk_nummer = list(match.kvk_set)[0]
-            # except IndexError:
-            #     pass
-            #
-            # try:
-            #     self.web_df.loc[i_web, POSTAL_CODE_KEY] = list(match.postcode_set)[0]
-            #     # TODO: do this tranfer outside
-            #     # url_nl.post_code = list(match.postcode_set)[0]
-            # except IndexError:
-            #     pass
+            try:
+                self.urls_df.loc[url, KVK_KEY] = list(match.kvk_set)[0]
+            except IndexError:
+                pass
 
-            # self.web_df.loc[i_web, BTW_KEY] = match.btw_nummer
-            # TODO: do outside
-            # url_nl.btw_nummer = match.btw_nummer
+            try:
+                self.urls_df.loc[url, POSTAL_CODE_KEY] = list(match.postcode_set)[0]
+            except IndexError:
+                pass
+
+            self.urls_df.loc[url, BTW_KEY] = match.btw_nummer
 
             # self.web_df.loc[i_web, STRING_MATCH_KEY] = match.string_match
             # self.web_df.loc[i_web, DISTANCE_KEY] = match.distance
@@ -1748,7 +1735,7 @@ class UrlCollection(object):
         """
 
         # first fill the web_df columns we need for ranking
-        for i_web, url_info in enumerate(self.collection):
+        for i_web, (url_key, url_info) in enumerate(self.collection.items()):
             index = url_info.index
             exists = url_info.url_analyse.exists
             self.company_urls_df.loc[index, URL_KEY] = url_info.url

@@ -190,15 +190,18 @@ class UrlInfo(object):
     """
     def __init__(self, index, url):
         self.index = index
+        self.needs_update = False
         self.url = url
         self.url_extract = tldextract.extract(url)
         self.outside_nl = False
         self.processing_time: datetime.datetime = None
         self.url_analyse: UrlSearchStrings = None
         self.match: UrlCompanyRanking = None
-        self.btws = None
-        self.kvks = None
-        self.pscs = None
+        self.btw_numbers = None
+        self.kvk_numbers = None
+        self.psc_numbers = None
+        self.ecommerce = None
+        self.social_media = None
 
 
 class Range(object):
