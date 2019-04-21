@@ -331,13 +331,20 @@ class KvKUrlParser(mp.Process):
 
         # convert the timezone of the date/time stamp (which is stored in utc in sql) to our time
         # note that you need to use the dt operator before converting the date/times
-        self.company_df[DATETIME_KEY] = self.company_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+        try:
+            self.company_df[DATETIME_KEY] = \
+                self.company_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+        except AttributeError:
+            logger.debug("Could not convert the date times in the company table. Probably empty")
 
         if not only_the_company_df:
             self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
             self.url_df.set_index(URL_KEY, inplace=True, drop=True)
             self.url_df.sort_index(inplace=True)
-            self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+            try:
+                self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+            except AttributeError:
+                logger.debug("Could not convert the date times in the url table. Probably empty")
 
             self.address_df = read_sql_table(table_name="address", connection=self.database)
             self.website_df = read_sql_table(table_name="web_site", variable=COMPANY_ID_KEY,
@@ -358,7 +365,7 @@ class KvKUrlParser(mp.Process):
 
         # set flag for all kvk processed longer than older_time ago
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
-        mask = delta_time >= self.older_time
+        mask = (delta_time >= self.older_time) | delta_time.isna()
         self.company_df = self.company_df[mask]
 
         n_kvk = self.company_df.index.size
