@@ -666,7 +666,7 @@ class KvKUrlParser(mp.Process):
                     btw_nummer=row2[BTW_KEY],
                     datetime=row2[DATETIME_KEY],
                     ssl=row2[SSL_KEY],
-                    ssl_invalid=row2[SSL_VALID_KEY],
+                    ssl_valid=row2[SSL_VALID_KEY],
                     subdomain=row2[SUBDOMAIN_KEY],
                     domain=row2[DOMAIN_KEY],
                     suffix=row2[SUFFIX_KEY],
@@ -1557,7 +1557,7 @@ class UrlCollection(object):
             if url_analyse.exists:
                 self.urls_df.loc[url, BESTAAT_KEY] = True
                 self.urls_df.loc[url, SSL_KEY] = url_analyse.req.ssl
-                self.urls_df.loc[url, SSL_VALID_KEY] = url_analyse.req.ssl_invalid
+                self.urls_df.loc[url, SSL_VALID_KEY] = url_analyse.req.ssl_valid
 
         return url_analyse
 
@@ -1627,6 +1627,9 @@ class UrlCollection(object):
                 self.company_urls_df.loc[i_web, EXISTS_KEY] = False
                 continue
 
+            # we zijn hier dus the web site is getest en bestaat
+            self.company_urls_df.loc[i_web, EXISTS_KEY] = True
+
             # based on the company postcodes and kvknummer and web contents, make a ranking how
             # good the web sides matches the company
             match = UrlCompanyRanking(url, self.company_name_small,
@@ -1663,14 +1666,14 @@ class UrlCollection(object):
 
             self.urls_df.loc[url, BTW_KEY] = match.btw_nummer
 
-            # self.web_df.loc[i_web, STRING_MATCH_KEY] = match.string_match
-            # self.web_df.loc[i_web, DISTANCE_KEY] = match.distance
-            # self.web_df.loc[i_web, URL_MATCH] = match.url_match
-            # self.web_df.loc[i_web, URL_RANK] = match.url_rank
-            # self.web_df.loc[i_web, HAS_POSTCODE_KEY] = match.has_postcode
-            # self.web_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
-            # self.web_df.loc[i_web, HAS_BTW_NR_KEY] = match.has_btw_nummer
-            # self.web_df.loc[i_web, RANKING_KEY] = match.ranking
+            self.company_urls_df.loc[i_web, STRING_MATCH_KEY] = match.string_match
+            self.company_urls_df.loc[i_web, DISTANCE_KEY] = match.distance
+            self.company_urls_df.loc[i_web, URL_MATCH] = match.url_match
+            self.company_urls_df.loc[i_web, URL_RANK] = match.url_rank
+            self.company_urls_df.loc[i_web, HAS_POSTCODE_KEY] = match.has_postcode
+            self.company_urls_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
+            self.company_urls_df.loc[i_web, HAS_BTW_NR_KEY] = match.has_btw_nummer
+            self.company_urls_df.loc[i_web, RANKING_KEY] = match.ranking
 
             # TODO: do outside
             # web.best_match = False

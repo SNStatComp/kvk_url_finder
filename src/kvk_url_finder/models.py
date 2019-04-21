@@ -55,7 +55,7 @@ DATETIME_KEY = "datetime"
 CHECKED_KEY = "getest"
 
 SSL_KEY = "ssl"
-SSL_VALID_KEY = "ssl_invalid"
+SSL_VALID_KEY = "ssl_valid"
 
 
 WEB_DF_COLS = [URL_KEY,
@@ -162,7 +162,7 @@ def init_models(db, reset_tables=False):
         btw_nummer = pw.CharField(null=True)
         datetime = DateTimeTZField(null=True)  # the process time
         ssl = pw.BooleanField(null=True)
-        ssl_invalid = pw.BooleanField(null=True)
+        ssl_valid = pw.BooleanField(null=True)
         subdomain = pw.CharField(null=True)
         domain = pw.CharField(null=True)
         suffix = pw.CharField(null=True)
