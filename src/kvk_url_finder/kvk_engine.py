@@ -636,7 +636,6 @@ class KvKUrlParser(mp.Process):
                 ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
                 query.execute()
 
-
             logger.debug(f"Updating WebsiteTbl {url}")
             query = self.WebsiteTbl.update(
                 url=url,
@@ -1347,9 +1346,9 @@ class CompanyUrlMatch(object):
             # if self.save:
             #    for web in self.company_record.websites:
             #        web.save()
-            self.company_record[URL_KEY] = best_match[URL_KEY]
+            self.company_record[URL_KEY] = best_match.loc[0, URL_KEY]
             self.company_record[CORE_ID] = self.i_proc
-            self.company_record[RANKING_KEY] = int(round(best_match[RANKING_KEY]))
+            self.company_record[RANKING_KEY] = int(round(best_match.loc[0, RANKING_KEY]))
             self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
             # if self.save:
             #    self.company_record.save()
@@ -1616,8 +1615,10 @@ class UrlCollection(object):
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
                 url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
+                self.company_urls_df.loc[i_web, GETEST_KEY] = True
             else:
                 url_analyse = None
+                self.company_urls_df.loc[i_web, GETEST_KEY] = False
 
             url_info.url_analyse = url_analyse
 
