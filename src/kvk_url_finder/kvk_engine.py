@@ -362,6 +362,10 @@ class KvKUrlParser(mp.Process):
         if number_in_range == 0:
             raise ValueError(f"No kvk numbers where found in range")
 
+        if self.filter_kvks:
+            overlap_kvk = self.company_df.index.intersection(set(self.filter_kvks))
+            self.company_df = self.company_df.loc[overlap_kvk]
+
         # set flag for all kvk processed longer than older_time ago
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
         mask = (delta_time >= self.older_time) | delta_time.isna()
