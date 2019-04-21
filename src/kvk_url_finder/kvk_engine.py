@@ -183,7 +183,6 @@ class KvKUrlParser(mp.Process):
                                         file_log_level=log_level_file,
                                         log_file=log_file,
                                         formatter=formatter)
-            self.logger.info("Set up class logger for proc {}".format(i_proc))
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
             self.logger.setLevel(console_log_level)
@@ -1350,7 +1349,7 @@ class CompanyUrlMatch(object):
             #        web.save()
             self.company_record[URL_KEY] = best_match[URL_KEY]
             self.company_record[CORE_ID] = self.i_proc
-            self.company_record[RANKING_KEY] = round(best_match[RANKING_KEY])
+            self.company_record[RANKING_KEY] = int(round(best_match[RANKING_KEY]))
             self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
             # if self.save:
             #    self.company_record.save()
@@ -1749,6 +1748,9 @@ class UrlCollection(object):
         # first fill the web_df columns we need for ranking
         for i_web, (url_key, url_info) in enumerate(self.collection.items()):
             index = url_info.index
+            if url_info.url_analyse is None:
+                logger.warning("url {url_key} yielded None analyse. Skip to next")
+                continue
             exists = url_info.url_analyse.exists
             self.company_urls_df.loc[index, URL_KEY] = url_info.url
             self.company_urls_df.loc[index, EXISTS_KEY] = exists
