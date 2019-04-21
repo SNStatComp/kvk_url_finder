@@ -369,7 +369,8 @@ class KvKUrlParser(mp.Process):
         # set flag for all kvk processed longer than older_time ago
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
         mask = (delta_time >= self.older_time) | delta_time.isna()
-        self.company_df = self.company_df[mask]
+        if not self.force_process:
+            self.company_df = self.company_df[mask]
 
         n_kvk = self.company_df.index.size
         self.logger.debug(f"Found {n_kvk} kvk's to process")
@@ -383,7 +384,10 @@ class KvKUrlParser(mp.Process):
             raise ValueError(f"Found {number_in_range} kvk numbers in range"
                              f"with {n_kvk} to process, with only {self.number_of_processes} cores")
 
-        n_per_proc = int(n_kvk / self.number_of_processes) + n_kvk % self.number_of_processes
+        n_per_proc = int(n_kvk / self.number_of_processes)
+        if n_kvk % self.number_of_processes > 0:
+            # make sure to add one to all processes  to take care the the left overs
+            n_per_proc += 1
         self.logger.debug(f"Number of kvk's per process: {n_per_proc}")
         self.kvk_ranges = list()
 
