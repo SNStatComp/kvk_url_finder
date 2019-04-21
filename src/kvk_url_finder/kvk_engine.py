@@ -588,7 +588,8 @@ class KvKUrlParser(mp.Process):
                                     older_time=self.older_time,
                                     timezone=self.timezone,
                                     exclude_extension=self.exclude_extension,
-                                    filter_urls=self.filter_urls
+                                    filter_urls=self.filter_urls,
+                                    force_process=self.force_process
                                     )
 
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
@@ -657,7 +658,6 @@ class KvKUrlParser(mp.Process):
             row2 = row2.where(row2.notna(), None)
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
-                row = url_nl_df.loc[url, :]
                 logger.debug(f"Updating UrlNl {url}")
                 query = self.UrlNLTbl.update(
                     bestaat=row2[BESTAAT_KEY],
@@ -1275,7 +1275,8 @@ class CompanyUrlMatch(object):
                  older_time: datetime.timedelta = None,
                  timezone=None,
                  exclude_extension=None,
-                 filter_urls: list = None
+                 filter_urls: list = None,
+                 force_process: bool = False
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Company match in debug mode")
@@ -1285,6 +1286,7 @@ class CompanyUrlMatch(object):
         self.timezone = timezone
         self.filter_urls = filter_urls
         self.current_time = current_time
+        self.force_process = force_process
 
         self.kvk_nr = kvk_nr
         self.company_name: str = company_record[NAME_KEY]
@@ -1322,7 +1324,9 @@ class CompanyUrlMatch(object):
                                   older_time=self.older_time,
                                   timezone=self.timezone,
                                   exclude_extensions=exclude_extension,
-                                  filter_urls=self.filter_urls)
+                                  filter_urls=self.filter_urls,
+                                  force_process=self.force_process
+                                  )
 
         # make a copy link of the company_urls_df from the urls object to here
         self.company_urls_df = self.urls.company_urls_df
@@ -1346,9 +1350,10 @@ class CompanyUrlMatch(object):
             # if self.save:
             #    for web in self.company_record.websites:
             #        web.save()
-            self.company_record[URL_KEY] = best_match.loc[0, URL_KEY]
+            self.company_record[URL_KEY] = best_match.loc[web_match_index, URL_KEY]
             self.company_record[CORE_ID] = self.i_proc
-            self.company_record[RANKING_KEY] = int(round(best_match.loc[0, RANKING_KEY]))
+            self.company_record[RANKING_KEY] = int(round(best_match.loc[web_match_index,
+                                                                        RANKING_KEY]))
             self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
             # if self.save:
             #    self.company_record.save()
@@ -1384,12 +1389,14 @@ class UrlCollection(object):
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = None,
                  exclude_extensions: pd.DataFrame = None,
-                 filter_urls: list = None
+                 filter_urls: list = None,
+                 force_process: bool = False,
                  ):
         self.logger = logging.getLogger(LOGGER_BASE_NAME)
         self.logger.debug("Collect urls {}".format(company_name))
 
         self.older_time = older_time
+        self.force_process = force_process
         self.timezone = timezone
         self.exclude_extensions = exclude_extensions
         self.filter_urls = filter_urls
@@ -1602,9 +1609,12 @@ class UrlCollection(object):
             except KeyError:
                 processing_time = None
 
-            url_info.needs_update = check_if_url_needs_update(processing_time=processing_time,
-                                                              current_time=self.current_time,
-                                                              older_time=self.older_time)
+            if self.force_process:
+                url_info.needs_update = True
+            else:
+                url_info.needs_update = check_if_url_needs_update(processing_time=processing_time,
+                                                                  current_time=self.current_time,
+                                                                  older_time=self.older_time)
             if url_info.needs_update:
                 # if the url needs update, store the current time
                 url_info.processing_time = self.current_time
@@ -1624,11 +1634,11 @@ class UrlCollection(object):
 
             if url_analyse and not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
-                self.company_urls_df.loc[i_web, EXISTS_KEY] = False
+                self.company_urls_df.loc[i_web, BESTAAT_KEY] = False
                 continue
 
             # we zijn hier dus the web site is getest en bestaat
-            self.company_urls_df.loc[i_web, EXISTS_KEY] = True
+            self.company_urls_df.loc[i_web, BESTAAT_KEY] = True
 
             # based on the company postcodes and kvknummer and web contents, make a ranking how
             # good the web sides matches the company
@@ -1648,9 +1658,9 @@ class UrlCollection(object):
                                          max_length=MAX_CHARFIELD_LENGTH)
                 all_btws = paste_strings(list(match.btw_set), max_length=MAX_CHARFIELD_LENGTH)
                 all_pscs = paste_strings(list(match.postcode_set), max_length=MAX_CHARFIELD_LENGTH)
-                self.urls_df.loc[i_web, ALL_KVK_KEY] = all_kvks
-                self.urls_df.loc[i_web, ALL_BTW_KEY] = all_btws
-                self.urls_df.loc[i_web, ALL_PSC_KEY] = all_pscs
+                self.urls_df.loc[url, ALL_KVK_KEY] = all_kvks
+                self.urls_df.loc[url, ALL_BTW_KEY] = all_btws
+                self.urls_df.loc[url, ALL_PSC_KEY] = all_pscs
 
             # we have sorted the kvk set with a ranking. The first kvk number in the set has
             # the closest match, store that
@@ -1664,34 +1674,22 @@ class UrlCollection(object):
             except IndexError:
                 self.urls_df.loc[url, POSTAL_CODE_KEY] = None
 
+            # store the info to the url data the
             self.urls_df.loc[url, BTW_KEY] = match.btw_nummer
 
+            self.urls_df.loc[url, DOMAIN_KEY] = match.ext.domain
+            self.urls_df.loc[url, SUBDOMAIN_KEY] = match.ext.subdomain
+            self.urls_df.loc[url, SUFFIX_KEY] = match.ext.suffix
+
             self.company_urls_df.loc[i_web, STRING_MATCH_KEY] = match.string_match
-            self.company_urls_df.loc[i_web, DISTANCE_KEY] = match.distance
+            self.company_urls_df.loc[i_web, LEVENSHTEIN_KEY] = match.distance
             self.company_urls_df.loc[i_web, URL_MATCH] = match.url_match
             self.company_urls_df.loc[i_web, URL_RANK] = match.url_rank
             self.company_urls_df.loc[i_web, HAS_POSTCODE_KEY] = match.has_postcode
             self.company_urls_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
             self.company_urls_df.loc[i_web, HAS_BTW_NR_KEY] = match.has_btw_nummer
             self.company_urls_df.loc[i_web, RANKING_KEY] = match.ranking
-
-            # TODO: do outside
-            # web.best_match = False
-            # web.string_match = match.string_match
-            # web.levenshtein = match.distance
-            # web.url_match = match.url_match
-            # web.url_rank = match.url_rank
-            # web.has_postcode = match.has_postcode
-            # web.has_kvk_nr = match.has_kvk_nummer
-            # web.has_btw_nr = match.has_btw_nummer
-            # web.ranking = match.ranking
-            #
-            # if self.save:
-            #     logger.debug("Saving to the web database")
-            #     web.save()
-            #     if url_nl:
-            #         logger.debug("Saving to the the url database")
-            #         url_nl.save()
+            self.company_urls_df.loc[i_web, BEST_MATCH_KEY] = False
 
             # update the min max
             if min_distance is None or match.distance < min_distance:
