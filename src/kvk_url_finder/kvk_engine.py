@@ -1700,35 +1700,6 @@ class UrlCollection(object):
                 index_string_match = i_web
                 max_sequence_match = match.string_match
 
-            # TODO: store all new external urls to the table
-            # logger.debug(f"Check all external url ")
-            # for external_url in url_analyse.external_hrefs:
-            #     if external_url is None:
-            #         logger.debug("A None external href was stored. Check later why, skip for now")
-            #         continue
-            #     logger.debug(f"Cleaning {external_url}")
-            #     clean_url = get_clean_url(external_url)
-            #     query = self.UrlNlTbl.select().where(self.UrlNlTbl.url == clean_url)
-            #     if not query.exists():
-            #         logger.debug(f"Adding a new entry {clean_url}")
-            #         self.UrlNlTbl.create(url=clean_url, bestaat=True, referred_by=url)
-            #     else:
-            #         logger.debug(f"url is already present {external_url}")
-
-            # TODO: needed for finding best mathc. Do later
-            # self.web_df.loc[i_web, :] = [url,  # url
-            #                              True,  # url bestaat
-            #                              match.distance,  # levenstein distance
-            #                              match.string_match,  # string match
-            #                              match.url_match,  # dist/match
-            #                              match.url_rank,  # dist/match
-            #                              match.has_postcode,  # the web site has the postcode
-            #                              match.has_kvk_nummer,  # the web site has the kvk
-            #                              match.ext.subdomain,  # subdomain of the url
-            #                              match.ext.domain,  # domain of the url
-            #                              match.ext.suffix,  # suffix of the url
-            #                              web.ranking]  # matching score used for order
-
             self.logger.debug("   * {} - {}  - {}".format(url, match.ext.domain,
                                                           match.distance))
 
@@ -1738,9 +1709,9 @@ class UrlCollection(object):
             self.logger.warning(
                 "Found minimal distance for {}: {}\nwhich differs from "
                 "best string match {}: {}".format(index_distance,
-                                                  self.collection[index_distance].url,
+                                                  self.collection[url].url,
                                                   index_string_match,
-                                                  self.collection[index_string_match].url))
+                                                  self.collection[url].url))
 
     def get_best_matching_web_site(self):
         """
