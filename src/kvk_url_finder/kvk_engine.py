@@ -535,6 +535,12 @@ class KvKUrlParser(mp.Process):
             overlap_kvk = self.company_df.index.intersection(set(self.filter_kvks))
             self.company_df = self.company_df.loc[overlap_kvk]
 
+        # set flag for all kvk processed longer than older_time ago
+        delta_time = self.current_time - self.company_df[DATETIME_KEY]
+        mask = (delta_time >= self.older_time) | delta_time.isna()
+        if not self.force_process:
+            self.company_df = self.company_df[mask]
+
         self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
 
         # count the number of none-processed queries (ie in which the processed flag == False
