@@ -227,7 +227,7 @@ class Range(object):
             self.stop = None
 
 
-def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000):
+def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=10000000):
     """ join the string from the list upto a maximum length """
 
     # note that we reverse the list, we can can peel off from the back
@@ -243,6 +243,10 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
             length = len(result)
             cnt += 1
             if cnt > max_cnt:
+                try:
+                    result = result[:max_length]
+                except IndexError:
+                    pass
                 logger.warning("Max count reached. Something wrong ?")
                 break
 
