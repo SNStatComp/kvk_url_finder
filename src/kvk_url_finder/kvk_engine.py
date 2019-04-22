@@ -677,7 +677,7 @@ class KvKUrlParser(mp.Process):
                     url=url,
                     ranking=ranking_int,
                     core_id=self.i_proc,
-                    datetime=self.current_time
+                    datetime=url_analyse.process_time
                 ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
                 query.execute()
 
