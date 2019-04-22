@@ -54,6 +54,8 @@ class UrlCompanyRanking(object):
         self.has_kvk_nummer = False
         self.has_btw_nummer = False
 
+        self.best_match = False
+
         self.kvk_nummer = None
         self.btw_nummer = None
 
@@ -202,6 +204,8 @@ class UrlInfo(object):
         self.psc_numbers = None
         self.ecommerce = None
         self.social_media = None
+        self.category = None
+        self.referred_by = None
 
 
 class Range(object):
@@ -252,6 +256,9 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
 
         # reverse back
         result = result[-1:0:-1]
+
+    if result == "":
+        result = None
 
     return result
 

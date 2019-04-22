@@ -612,7 +612,7 @@ class KvKUrlParser(mp.Process):
                 self.logger.warning("skipping")
             else:
                 # succeeded the match. Now update the sql tables atomic
-                self.update_sql_tables(kvk_nummer, company_url_match, self.url_df)
+                self.update_sql_tables(kvk_nummer, company_url_match)
 
             if pbar:
                 pbar.update()
@@ -627,86 +627,105 @@ class KvKUrlParser(mp.Process):
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
 
-    def update_sql_tables(self, kvk_nummer, company_url_match, url_nl_df):
+    def update_sql_tables(self, kvk_nummer, company_url_match):
         """
         Transfer the match data from the data frame to the sql tabels
         """
-        company_urls_df = company_url_match.urls.company_urls_df
-        if company_urls_df is None:
-            logger.info(f"Skipping table update for {kvk_nummer}; its empty")
-        else:
 
-            logger.info(f"Updating TABLES for {kvk_nummer}")
-            for index, row in company_urls_df.iterrows():
-                url = row[URL_KEY]
-                url_info = company_url_match.urls.collection[url]
+        logger.info(f"Updating TABLES for {kvk_nummer}")
+        for url, url_info in company_url_match.urls.collection.items():
+            logger.debug(f"storing {url}")
 
-                row = row.where(row.notna(), None)
+            url_analyse = url_info.url_analyse
+            match = url_info.match
 
-                ranking = row[RANKING_KEY]
-                if row[BEST_MATCH_KEY]:
-                    logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
-                    query = self.CompanyTbl.update(
-                        url=url,
-                        ranking=ranking,
-                        core_id=self.i_proc,
-                        datetime=self.current_time
-                    ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
-                    query.execute()
+            try:
+                ranking_int = int(round(match.ranking))
+            except (ValueError, TypeError):
+                ranking_int = match.ranking
 
-                logger.debug(f"Updating WebsiteTbl {url}")
-                query = self.WebsiteTbl.update(
+            if match.best_match:
+                logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
+                query = self.CompanyTbl.update(
                     url=url,
-                    getest=True,
-                    bestaat=row[BESTAAT_KEY],
-                    levenshtein=row[LEVENSHTEIN_KEY],
-                    string_match=row[STRING_MATCH_KEY],
-                    url_match=row[URL_MATCH],
-                    url_rank=row[URL_RANK],
-                    best_match=row[BEST_MATCH_KEY],
-                    has_postcode=row[HAS_POSTCODE_KEY],
-                    has_kvk_nr=row[HAS_KVK_NR],
-                    has_btw_nr=row[HAS_BTW_NR_KEY],
-                    ranking=row[RANKING_KEY]
-                ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+                    ranking=ranking_int,
+                    core_id=self.i_proc,
+                    datetime=self.current_time
+                ).where(self.CompanyTbl.kvk_nummer == kvk_nummer)
                 query.execute()
 
-                row2 = self.url_df.loc[url, :]
-                row2 = row2.where(row2.notna(), None)
-                query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
-                if query.exists():
-                    logger.debug(f"Updating UrlNl {url}")
-                    query = self.UrlNLTbl.update(
-                        bestaat=row2[BESTAAT_KEY],
-                        post_code=row2[POSTAL_CODE_KEY2],
-                        kvk_nummer=row2[KVK_KEY],
-                        btw_nummer=row2[BTW_KEY],
-                        datetime=row2[DATETIME_KEY],
-                        ssl=row2[SSL_KEY],
-                        ssl_valid=row2[SSL_VALID_KEY],
-                        subdomain=row2[SUBDOMAIN_KEY],
-                        domain=row2[DOMAIN_KEY],
-                        suffix=row2[SUFFIX_KEY],
-                        category=row2[CATEGORY_KEY],
-                        ecommerce=row2[ECOMMERCE_KEY],
-                        social_media=row2[SOCIAL_MEDIA_KEY],
-                        referred_by=row2[REFERRED_KEY],
-                        all_psc=row2[ALL_PSC_KEY],
-                        all_kvk=row2[ALL_KVK_KEY],
-                        all_btw=row2[ALL_BTW_KEY],
-                    ).where(self.UrlNLTbl.url == url)
-                    query.execute()
+            logger.debug(f"Updating WebsiteTbl {url}")
+            query = self.WebsiteTbl.update(
+                url=url,
+                getest=True,
+                bestaat=url_analyse.exists,
+                levenshtein=match.distance,
+                string_match=match.string_match,
+                url_match=match.url_match,
+                url_rank=match.url_rank,
+                best_match=match.best_match,
+                has_postcode=match.has_postcode,
+                has_kvk_nr=match.has_kvk_nummer,
+                has_btw_nr=match.has_btw_nummer,
+                ranking=match.ranking,
+                datetime=url_analyse.process_time
+            ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+            query.execute()
 
-                # loop over the external links in the url
-                if url_info.url_analyse:
-                    for ext_url in url_info.url_analyse.external_hrefs:
-                        clean_url = get_clean_url(ext_url)
-                        query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == clean_url)
-                        if not query.exists():
-                            logger.debug(f"Adding a new entry {clean_url}")
-                            self.UrlNLTbl.create(url=clean_url, bestaat=True, referred_by=url)
-                        else:
-                            logger.debug(f"External already  {clean_url}")
+            try:
+                all_psc = paste_strings(list(match.postcode_set), max_length=MAX_CHARFIELD_LENGTH)
+            except TypeError:
+                all_psc = None
+            try:
+                all_kvk = paste_strings(list(match.kvk_set), max_length=MAX_CHARFIELD_LENGTH)
+            except TypeError:
+                all_kvk = None
+            ecommerce = paste_strings(url_info.ecommerce, max_length=MAX_CHARFIELD_LENGTH)
+            social_media = paste_strings(url_info.social_media, max_length=MAX_CHARFIELD_LENGTH)
+
+            try:
+                post_code = list(match.postcode_set)[0]
+            except IndexError:
+                post_code = None
+
+            try:
+                kvk = list(match.kvk_set)[0]
+            except IndexError:
+                kvk = None
+
+            query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
+            if query.exists():
+                logger.debug(f"Updating UrlNl {url}")
+                query = self.UrlNLTbl.update(
+                    bestaat=url_analyse.exists,
+                    post_code=post_code,
+                    kvk_nummer=kvk,
+                    btw_nummer=match.btw_nummer,
+                    datetime=url_analyse.process_time,
+                    ssl=url_analyse.req.ssl,
+                    ssl_valid=url_analyse.req.ssl_valid,
+                    subdomain=match.ext.subdomain,
+                    domain=match.ext.domain,
+                    suffix=match.ext.suffix,
+                    category=url_info.category,
+                    ecommerce=ecommerce,
+                    social_media=social_media,
+                    all_psc=all_psc,
+                    all_kvk=all_kvk,
+                    all_btw=match.btw_nummer
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
+
+            # loop over the external links in the url
+            if url_info.url_analyse:
+                for ext_url in url_info.url_analyse.external_hrefs:
+                    clean_url = get_clean_url(ext_url)
+                    query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == clean_url)
+                    if not query.exists():
+                        logger.debug(f"Adding a new entry {clean_url}")
+                        self.UrlNLTbl.create(url=clean_url, bestaat=True, referred_by=url)
+                    else:
+                        logger.debug(f"External already  {clean_url}")
 
     # @profile
     def read_csv_input_file(self,
@@ -1360,20 +1379,13 @@ class CompanyUrlMatch(object):
 
             # store the best matching web site
             web_match_index = best_match.index.values[0]
+
+            # also store the best match in the collection
+            url_best = self.company_urls_df.loc[web_match_index, URL_KEY]
+            self.urls.collection[url_best].match.best_match = True
+
             self.company_urls_df.loc[web_match_index, BEST_MATCH_KEY] = True
             self.logger.debug("Best matching url: {}".format(best_match.url))
-
-            # update all the properties TODO: move outsei
-            # if self.save:
-            #    for web in self.company_record.websites:
-            #        web.save()
-            self.company_record[URL_KEY] = best_match.loc[web_match_index, URL_KEY]
-            self.company_record[CORE_ID] = self.i_proc
-            self.company_record[RANKING_KEY] = int(round(best_match.loc[web_match_index,
-                                                                        RANKING_KEY]))
-            self.company_record[DATETIME_KEY] = datetime.datetime.now(pytz.timezone(self.timezone))
-            # if self.save:
-            #    self.company_record.save()
 
 
 class UrlCollection(object):
@@ -1463,12 +1475,6 @@ class UrlCollection(object):
             self.logger.debug("Best Match".format(self.company_urls_df.head(1)))
         else:
             self.logger.info("No website found for".format(self.company_name))
-            # still set the date time to indicate we have processed this one
-            # TODO: outside
-            # self.company_record.datetime = datetime.datetime.now(pytz.timezone(self.timezone))
-            # self.company_record.ranking = 0
-            # if self.save:
-            #     self.company_record.save()
 
     def get_url_nl_query(self, url):
         """
@@ -1635,27 +1641,20 @@ class UrlCollection(object):
             if url_info.needs_update:
                 # if the url needs update, store the current time
                 url_info.processing_time = self.current_time
-                self.urls_df.loc[url, DATETIME_KEY] = self.current_time
             else:
                 url_info.processing_time = processing_time
 
             # connect to the url and analyse the contents of a static page
             if self.internet_scraping:
                 url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
-                self.company_urls_df.loc[i_web, GETEST_KEY] = True
             else:
                 url_analyse = None
-                self.company_urls_df.loc[i_web, GETEST_KEY] = False
 
             url_info.url_analyse = url_analyse
 
             if url_analyse and not url_analyse.exists:
                 self.logger.debug(f"url '{url}'' does not exist")
-                self.company_urls_df.loc[i_web, BESTAAT_KEY] = False
                 continue
-
-            # we zijn hier dus the web site is getest en bestaat
-            self.company_urls_df.loc[i_web, BESTAAT_KEY] = True
 
             # based on the company postcodes and kvknummer and web contents, make a ranking how
             # good the web sides matches the company
@@ -1669,44 +1668,6 @@ class UrlCollection(object):
                                       logger=self.logger)
 
             url_info.match = match
-
-            if url_info.needs_update:
-                all_kvks = paste_strings(["{:08d}".format(kvk) for kvk in list(match.kvk_set)],
-                                         max_length=MAX_CHARFIELD_LENGTH)
-                all_btws = paste_strings(list(match.btw_set), max_length=MAX_CHARFIELD_LENGTH)
-                all_pscs = paste_strings(list(match.postcode_set), max_length=MAX_CHARFIELD_LENGTH)
-                self.urls_df.loc[url, ALL_KVK_KEY] = all_kvks
-                self.urls_df.loc[url, ALL_BTW_KEY] = all_btws
-                self.urls_df.loc[url, ALL_PSC_KEY] = all_pscs
-
-            # we have sorted the kvk set with a ranking. The first kvk number in the set has
-            # the closest match, store that
-            try:
-                self.urls_df.loc[url, KVK_KEY] = list(match.kvk_set)[0]
-            except IndexError:
-                self.urls_df.loc[url, KVK_KEY] = None
-
-            try:
-                self.urls_df.loc[url, POSTAL_CODE_KEY] = list(match.postcode_set)[0]
-            except IndexError:
-                self.urls_df.loc[url, POSTAL_CODE_KEY] = None
-
-            # store the info to the url data the
-            self.urls_df.loc[url, BTW_KEY] = match.btw_nummer
-
-            self.urls_df.loc[url, DOMAIN_KEY] = match.ext.domain
-            self.urls_df.loc[url, SUBDOMAIN_KEY] = match.ext.subdomain
-            self.urls_df.loc[url, SUFFIX_KEY] = match.ext.suffix
-
-            self.company_urls_df.loc[i_web, STRING_MATCH_KEY] = match.string_match
-            self.company_urls_df.loc[i_web, LEVENSHTEIN_KEY] = match.distance
-            self.company_urls_df.loc[i_web, URL_MATCH] = match.url_match
-            self.company_urls_df.loc[i_web, URL_RANK] = match.url_rank
-            self.company_urls_df.loc[i_web, HAS_POSTCODE_KEY] = match.has_postcode
-            self.company_urls_df.loc[i_web, HAS_KVK_NR] = match.has_kvk_nummer
-            self.company_urls_df.loc[i_web, HAS_BTW_NR_KEY] = match.has_btw_nummer
-            self.company_urls_df.loc[i_web, RANKING_KEY] = match.ranking
-            self.company_urls_df.loc[i_web, BEST_MATCH_KEY] = False
 
             # update the min max
             if min_distance is None or match.distance < min_distance:

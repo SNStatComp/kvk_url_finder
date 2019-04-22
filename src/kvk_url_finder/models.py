@@ -198,6 +198,7 @@ def init_models(db, reset_tables=False):
         has_kvk_nr = pw.BooleanField(null=True)
         has_btw_nr = pw.BooleanField(null=True)
         ranking = pw.FloatField(null=True)
+        datetime = DateTimeTZField(null=True)  # the process time
 
     tables = (UrlNL, Company, Address, WebSite)
 
