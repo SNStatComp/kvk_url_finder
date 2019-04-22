@@ -641,7 +641,7 @@ class KvKUrlParser(mp.Process):
 
             try:
                 ranking_int = int(round(match.ranking))
-            except (ValueError, TypeError):
+            except AttributeError:
                 ranking_int = match.ranking
 
             if match.best_match:
