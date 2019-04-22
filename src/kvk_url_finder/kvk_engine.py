@@ -641,11 +641,17 @@ class KvKUrlParser(mp.Process):
 
             if match is None:
                 logger.debug(f"No match info found  {kvk_nummer} for {url}")
+                if url_analyse is not None:
+                    datetime = url_analyse.process_time
+                    bestaat = url_analyse.exists,
+                else:
+                    datetime = self.current_time
+                    bestaat = None
                 query = self.WebsiteTbl.update(
                     url=url,
                     getest=True,
                     nl_company=False,
-                    datetime=url_analyse.process_time
+                    datetime = datetime
                 ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
                 query.execute()
 
@@ -653,9 +659,9 @@ class KvKUrlParser(mp.Process):
                 if query.exists():
                     logger.debug(f"Updating UrlNl {url}")
                     query = self.UrlNLTbl.update(
-                        bestaat=url_analyse.exists,
+                        bestaat=bestaat,
                         nl_company=False,
-                        datetime=url_analyse.process_time,
+                        datetime = datetime
                     ).where(self.UrlNLTbl.url == url)
                     query.execute()
                 continue
