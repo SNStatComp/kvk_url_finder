@@ -709,6 +709,12 @@ class KvKUrlParser(mp.Process):
                 all_kvk = None
             ecommerce = paste_strings(url_info.ecommerce, max_length=MAX_CHARFIELD_LENGTH)
             social_media = paste_strings(url_info.social_media, max_length=MAX_CHARFIELD_LENGTH)
+            if url_analyse.req is not None:
+                ssl=url_analyse.req.ssl
+                ssl_valid=url_analyse.req.ssl_valid
+            else:
+                ssl=None
+                ssl_valid=None
 
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
@@ -720,8 +726,8 @@ class KvKUrlParser(mp.Process):
                     kvk_nummer=match.matched_kvk_nummer,
                     btw_nummer=match.btw_nummer,
                     datetime=url_analyse.process_time,
-                    ssl=url_analyse.req.ssl,
-                    ssl_valid=url_analyse.req.ssl_valid,
+                    ssl=ssl,
+                    ssl_valid=ssl_valid,
                     subdomain=match.ext.subdomain,
                     domain=match.ext.domain,
                     suffix=match.ext.suffix,
