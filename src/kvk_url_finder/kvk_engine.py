@@ -639,10 +639,31 @@ class KvKUrlParser(mp.Process):
             url_analyse = url_info.url_analyse
             match = url_info.match
 
+            if match is None:
+                logger.debug(f"No match info found  {kvk_nummer} for {url}")
+                query = self.WebsiteTbl.update(
+                    url=url,
+                    getest=True,
+                    nl_company=False,
+                    datetime=url_analyse.process_time
+                ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+                query.execute()
+
+                query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
+                if query.exists():
+                    logger.debug(f"Updating UrlNl {url}")
+                    query = self.UrlNLTbl.update(
+                        bestaat=url_analyse.exists,
+                        nl_company=False,
+                        datetime=url_analyse.process_time,
+                    ).where(self.UrlNLTbl.url == url)
+                    query.execute()
+                continue
+
             try:
                 ranking_int = int(round(match.ranking))
             except AttributeError:
-                ranking_int = match.ranking
+                ranking_int = None
 
             if match.best_match:
                 logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
@@ -698,6 +719,7 @@ class KvKUrlParser(mp.Process):
                 logger.debug(f"Updating UrlNl {url}")
                 query = self.UrlNLTbl.update(
                     bestaat=url_analyse.exists,
+                    nl_company=match.nl_company,
                     post_code=post_code,
                     kvk_nummer=kvk,
                     btw_nummer=match.btw_nummer,

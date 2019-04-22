@@ -157,6 +157,7 @@ def init_models(db, reset_tables=False):
         # maak url unique, maar gebruik geen primary key voor de url. Dat is minder efficient
         url = pw.CharField(null=True, unique=True, primary_key=True)
         bestaat = pw.BooleanField(null=True)
+        nl_company = pw.BooleanField(null=True)
         post_code = pw.CharField(null=True)
         kvk_nummer = pw.IntegerField(null=True)
         btw_nummer = pw.CharField(null=True)
@@ -189,6 +190,7 @@ def init_models(db, reset_tables=False):
         naam = pw.CharField(null=False)
         getest = pw.BooleanField(null=True)
         bestaat = pw.BooleanField(null=True)
+        nl_company = pw.BooleanField(null=True)
         levenshtein = pw.IntegerField(null=True)
         string_match = pw.FloatField(null=True)
         url_match = pw.FloatField(null=True)

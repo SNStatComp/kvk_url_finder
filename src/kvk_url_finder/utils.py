@@ -54,6 +54,8 @@ class UrlCompanyRanking(object):
         self.has_kvk_nummer = False
         self.has_btw_nummer = False
 
+        self.nl_company = None
+
         self.best_match = False
 
         self.kvk_nummer = None
@@ -184,6 +186,12 @@ class UrlCompanyRanking(object):
 
         # add the url matching score
         self.ranking += self.url_rank
+
+        if self.has_btw_nummer or self.has_kvk_nummer or self.has_postcode:
+            # if the side contains any company info, set the nl_company_flag to true
+            self.nl_company = True
+        else:
+            self.nl_company = False
 
 
 class UrlInfo(object):
