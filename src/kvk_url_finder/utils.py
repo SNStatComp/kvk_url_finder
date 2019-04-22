@@ -181,14 +181,14 @@ class UrlCompanyRanking(object):
         self.url_rank = self.max_url_score * rel_score ** 2  # quick drop off for lower scores
 
         if self.ext.suffix in ("com", "org", "eu"):
-            self.url_rank += 0.5
+            self.url_rank += 0.1
         elif self.ext.suffix == "nl":
-            self.url_rank += 1
+            self.url_rank += 0.2
 
         if self.ext.subdomain == "www":
-            self.url_rank += 0.5
+            self.url_rank += 0.1
         elif self.ext.subdomain == "":
-            self.url_rank += 0.5
+            self.url_rank += 0.1
 
         # add the url matching score
         self.ranking += self.url_rank
