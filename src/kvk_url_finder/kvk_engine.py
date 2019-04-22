@@ -704,24 +704,14 @@ class KvKUrlParser(mp.Process):
             ecommerce = paste_strings(url_info.ecommerce, max_length=MAX_CHARFIELD_LENGTH)
             social_media = paste_strings(url_info.social_media, max_length=MAX_CHARFIELD_LENGTH)
 
-            try:
-                post_code = list(match.postcode_set)[0]
-            except IndexError:
-                post_code = None
-
-            try:
-                kvk = list(match.kvk_set)[0]
-            except IndexError:
-                kvk = None
-
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
                 logger.debug(f"Updating UrlNl {url}")
                 query = self.UrlNLTbl.update(
                     bestaat=url_analyse.exists,
                     nl_company=match.nl_company,
-                    post_code=post_code,
-                    kvk_nummer=kvk,
+                    post_code=match.matched_postcode,
+                    kvk_nummer=match.matched_kvk_nummer,
                     btw_nummer=match.btw_nummer,
                     datetime=url_analyse.process_time,
                     ssl=url_analyse.req.ssl,

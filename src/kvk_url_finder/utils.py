@@ -28,6 +28,8 @@ class UrlCompanyRanking(object):
         self.company_name = company_name
         self.url = url
 
+        self.matched_postcode = None
+        self.matched_kvk_nummer = None
         self.company_postcodes = company_postcodes
         self.company_kvk_nummer = company_kvk_nummer
         self.company_btw_nummer = company_btw_nummer
@@ -147,15 +149,19 @@ class UrlCompanyRanking(object):
         self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
         self.btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
 
-        if self.company_postcodes and self.company_postcodes.intersection(self.postcode_set):
-            self.has_postcode = True
-            self.ranking += 3
-            self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
+        if self.company_postcodes:
+            post_codes_on_side = self.company_postcodes.intersection(self.postcode_set)
+            if post_codes_on_side:
+                self.has_postcode = True
+                self.matched_postcode = list(post_codes_on_side)[0]
+                self.ranking += 3
+                self.logger.debug(f"Found matching postcode. Added to ranking {self.ranking}")
         else:
             self.has_postcode = False
 
         if self.company_kvk_nummer in self.kvk_set:
             self.has_kvk_nummer = True
+            self.matched_kvk_nummer = self.company_kvk_nummer
             self.ranking += 3
             self.logger.debug(f"Found matching kvknummer code {self.company_kvk_nummer}. "
                               f"Added to ranking {self.ranking}")
