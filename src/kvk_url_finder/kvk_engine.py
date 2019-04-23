@@ -1,6 +1,7 @@
 import collections
 import datetime
 import multiprocessing as mp
+import logging
 import os
 import re
 import sys
@@ -600,7 +601,8 @@ class KvKUrlParser(mp.Process):
                                     timezone=self.timezone,
                                     exclude_extension=self.exclude_extension,
                                     filter_urls=self.filter_urls,
-                                    force_process=self.force_process
+                                    force_process=self.force_process,
+                                    logger=self.logger
                                     )
 
                 self.logger.debug("Done with {}".format(company_url_match.company_name))
@@ -1379,9 +1381,13 @@ class CompanyUrlMatch(object):
                  timezone=None,
                  exclude_extension=None,
                  filter_urls: list = None,
-                 force_process: bool = False
+                 force_process: bool = False,
+                 logger: logging.Logger = None
                  ):
-        self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        if logger is None:
+            self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        else:
+            self.logger = logger
         self.logger.debug("Company match in debug mode")
         self.save = save
         self.i_proc = i_proc
