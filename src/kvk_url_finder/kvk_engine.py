@@ -189,8 +189,17 @@ class KvKUrlParser(mp.Process):
             self.logger.setLevel(console_log_level)
             self.logger.info("Set up class logger for main {}".format(__name__))
 
-        self.logger.debug("With debug on?")
-        print_banner("Starting the main class here with a banner")
+        if progressbar:
+            # switch off all logging because we are showing the progress bar via the print statement
+            # logger.disabled = True
+            # logger.disabled = True
+            # logger.setLevel(logging.CRITICAL)
+            for handle in self.logger.handlers:
+                try:
+                    getattr(handle, "baseFilename")
+                except AttributeError:
+                    # this is the stream handle because we get an AtrributeError. Set it to critical
+                    handle.setLevel(logging.CRITICAL)
 
         # a list of all country url extension which we want to exclude
         self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
@@ -214,18 +223,6 @@ class KvKUrlParser(mp.Process):
         self.filter_urls = filter_urls
         self.filter_kvks = filter_kvks
         self.current_time = datetime.datetime.now(pytz.timezone(self.timezone))
-
-        if progressbar:
-            # switch off all logging because we are showing the progress bar via the print statement
-            # logger.disabled = True
-            # logger.disabled = True
-            # logger.setLevel(logging.CRITICAL)
-            for handle in self.logger.handlers:
-                try:
-                    getattr(handle, "baseFilename")
-                except AttributeError:
-                    # this is the stream handle because we get an AtrributeError. Set it to critical
-                    handle.setLevel(logging.CRITICAL)
 
         self.kvk_selection_input_file_name = kvk_selection_input_file_name
         self.kvk_selection_kvk_key = kvk_selection_kvk_key
@@ -652,7 +649,7 @@ class KvKUrlParser(mp.Process):
                     url=url,
                     getest=True,
                     nl_company=False,
-                    datetime = datetime
+                    datetime=datetime
                 ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
                 query.execute()
 
@@ -662,7 +659,7 @@ class KvKUrlParser(mp.Process):
                     query = self.UrlNLTbl.update(
                         bestaat=bestaat,
                         nl_company=False,
-                        datetime = datetime
+                        datetime=datetime
                     ).where(self.UrlNLTbl.url == url)
                     query.execute()
                 continue
@@ -711,11 +708,11 @@ class KvKUrlParser(mp.Process):
             ecommerce = paste_strings(url_info.ecommerce, max_length=MAX_CHARFIELD_LENGTH)
             social_media = paste_strings(url_info.social_media, max_length=MAX_CHARFIELD_LENGTH)
             if url_analyse.req is not None:
-                ssl=url_analyse.req.ssl
-                ssl_valid=url_analyse.req.ssl_valid
+                ssl = url_analyse.req.ssl
+                ssl_valid = url_analyse.req.ssl_valid
             else:
-                ssl=None
-                ssl_valid=None
+                ssl = None
+                ssl_valid = None
 
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
             if query.exists():
