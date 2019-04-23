@@ -1456,8 +1456,13 @@ class CompanyUrlMatch(object):
 
             # also store the best match in the collection
             url_best = self.company_urls_df.loc[web_match_index, URL_KEY]
-            self.urls.collection[url_best].match.best_match = True
+            for url, url_info in self.urls.collection.items():
+                if url == url_best:
+                    url_info.match.best_match = True
+                else:
+                    url_info.match.best_match = False
 
+            self.company_urls_df.loc[:, BEST_MATCH_KEY] = False
             self.company_urls_df.loc[web_match_index, BEST_MATCH_KEY] = True
             self.logger.debug("Best matching url: {}".format(best_match.url))
 
