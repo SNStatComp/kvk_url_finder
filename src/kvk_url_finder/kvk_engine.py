@@ -625,12 +625,17 @@ class KvKUrlParser(mp.Process):
         #    query = (Company.update(dict(url=Company.url, processed=Company.processed)))
         #    query.execute()
 
-    def update_for_url_info_without_match(self, kvk_nummer, url_info,
-                                          update_company_table: bool = False):
-        url = url_info.url
-        logger.debug(f"No match info found  {kvk_nummer} for {url}")
+    def update_for_url_info_without_match(self, kvk_nummer, url_info: UrlInfo = None,
+                                          update_company_table: bool = True):
 
-        url_analyse = url_info.url_analyse
+        if url_info is not None:
+            url = url_info.url
+            url_analyse = url_info.url_analyse
+            logger.debug(f"No match info found  {kvk_nummer} for {url}, but we have urls")
+        else:
+            url = None
+            url_analyse = None
+            logger.debug(f"No match info found  {kvk_nummer} because we do not have urls")
 
         if url_analyse is not None:
             datetime = url_analyse.process_time
@@ -638,23 +643,25 @@ class KvKUrlParser(mp.Process):
         else:
             datetime = self.current_time
             bestaat = None
-        query = self.WebsiteTbl.update(
-            url=url,
-            getest=True,
-            nl_company=False,
-            datetime=datetime
-        ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
-        query.execute()
 
-        query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
-        if query.exists():
-            logger.debug(f"Updating UrlNl {url}")
-            query = self.UrlNLTbl.update(
-                bestaat=bestaat,
+        if url is not None:
+            query = self.WebsiteTbl.update(
+                url=url,
+                getest=True,
                 nl_company=False,
                 datetime=datetime
-            ).where(self.UrlNLTbl.url == url)
+            ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
             query.execute()
+
+            query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
+            if query.exists():
+                logger.debug(f"Updating UrlNl {url}")
+                query = self.UrlNLTbl.update(
+                    bestaat=bestaat,
+                    nl_company=False,
+                    datetime=datetime
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
 
         if update_company_table:
             logger.debug(f"Updating CompanyTbl {kvk_nummer} for {url}")
@@ -765,7 +772,7 @@ class KvKUrlParser(mp.Process):
                     logger.debug(f"Adding a new entry {clean_url}")
                     self.UrlNLTbl.create(url=clean_url, bestaat=True, referred_by=url)
                 else:
-                        logger.debug(f"External already  {clean_url}")
+                    logger.debug(f"External already  {clean_url}")
 
     def update_sql_tables(self, kvk_nummer, company_url_match):
         """
@@ -774,15 +781,19 @@ class KvKUrlParser(mp.Process):
 
         logger.info(f"Updating TABLES for {kvk_nummer}")
         update_company = True
-        for url, url_info in company_url_match.urls.collection.items():
-            logger.debug(f"storing {url}")
+        if not company_url_match.urls.collection:
+            self.update_for_url_info_without_match(kvk_nummer)
+        else:
+            for url, url_info in company_url_match.urls.collection.items():
+                logger.debug(f"storing {url}")
 
-            if url_info.match is None:
-                self.update_for_url_info_without_match(self, kvk_nummer, url_info,
-                                                       update_company_table=update_company)
-                update_company = False
-            else:
-                self.update_for_url_info_with_match(self, kvk_nummer, url_info, url)
+                if url_info.match is None:
+                    self.update_for_url_info_without_match(kvk_nummer,
+                                                           url_info=url_info,
+                                                           update_company_table=update_company)
+                    update_company = False
+                else:
+                    self.update_for_url_info_with_match(kvk_nummer, url_info, url)
 
     # @profile
     def read_csv_input_file(self,
