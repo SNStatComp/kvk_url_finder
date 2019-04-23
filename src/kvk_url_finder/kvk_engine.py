@@ -12,7 +12,7 @@ import pytz
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, print_banner)
+from cbs_utils.misc import (create_logger, is_postcode, print_banner, merge_loggers)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
@@ -183,6 +183,7 @@ class KvKUrlParser(mp.Process):
                                         file_log_level=log_level_file,
                                         log_file=log_file,
                                         formatter=formatter)
+            merge_loggers(self.logger, "cbs_utils", logger_level_to_merge=log_level_file)
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
             self.logger.setLevel(console_log_level)
