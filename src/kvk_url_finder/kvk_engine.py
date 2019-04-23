@@ -1434,7 +1434,8 @@ class CompanyUrlMatch(object):
                                   timezone=self.timezone,
                                   exclude_extensions=exclude_extension,
                                   filter_urls=self.filter_urls,
-                                  force_process=self.force_process
+                                  force_process=self.force_process,
+                                  logger=self.logger
                                   )
 
         # make a copy link of the company_urls_df from the urls object to here
