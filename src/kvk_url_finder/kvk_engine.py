@@ -183,7 +183,8 @@ class KvKUrlParser(mp.Process):
                                         file_log_level=log_level_file,
                                         log_file=log_file,
                                         formatter=formatter)
-            merge_loggers(self.logger, "cbs_utils", logger_level_to_merge=log_level_file)
+            self.logger = merge_loggers(self.logger, "cbs_utils",
+                                        logger_level_to_merge=log_level_file)
         else:
             self.logger = logging.getLogger(LOGGER_BASE_NAME)
             self.logger.setLevel(console_log_level)
