@@ -1493,8 +1493,12 @@ class UrlCollection(object):
                  exclude_extensions: pd.DataFrame = None,
                  filter_urls: list = None,
                  force_process: bool = False,
+                 logger: logging.Logger = None
                  ):
-        self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        if logger is None:
+            self.logger = logging.getLogger(LOGGER_BASE_NAME)
+        else:
+            self.logger = logger
         self.logger.debug("Collect urls {}".format(company_name))
 
         self.older_time = older_time
