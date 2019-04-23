@@ -649,7 +649,17 @@ class KvKUrlParser(mp.Process):
             query = self.WebsiteTbl.update(
                 url=url,
                 getest=True,
+                bestaat=bestaat,
+                levenshtein=None,
+                string_match=None,
+                url_match=None,
+                url_rank=None,
+                has_postcode=None,
+                has_kvk_nr=None,
+                has_btw_nr=None,
+                ranking=None,
                 nl_company=False,
+                best_match=False,
                 datetime=datetime
             ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
             query.execute()
@@ -1439,7 +1449,6 @@ class CompanyUrlMatch(object):
                                   )
 
         # make a copy link of the company_urls_df from the urls object to here
-        self.company_urls_df = self.urls.company_urls_df
         self.find_match_for_company()
 
     def find_match_for_company(self):
@@ -1447,23 +1456,27 @@ class CompanyUrlMatch(object):
         Get the best matching url based on the already calculated levensteihn distance and string
         match
         """
-        if self.company_urls_df is not None:
+        if self.urls.company_urls_df is not None:
             # the first row in the data frame is the best matching web site
-            best_match = self.company_urls_df.head(1)
+            best_match = self.urls.company_urls_df.head(1)
 
             # store the best matching web site
             web_match_index = best_match.index.values[0]
 
+            # store in the df itself
+            self.urls.company_urls_df.loc[:, BEST_MATCH_KEY] = False
+            self.urls.company_urls_df.loc[web_match_index, BEST_MATCH_KEY] = True
+
             # also store the best match in the collection
-            url_best = self.company_urls_df.loc[web_match_index, URL_KEY]
+            url_best = self.urls.company_urls_df.loc[web_match_index, URL_KEY]
             for url, url_info in self.urls.collection.items():
+                if url_info is None or url_info.match is None:
+                    continue
                 if url == url_best:
                     url_info.match.best_match = True
                 else:
                     url_info.match.best_match = False
 
-            self.company_urls_df.loc[:, BEST_MATCH_KEY] = False
-            self.company_urls_df.loc[web_match_index, BEST_MATCH_KEY] = True
             self.logger.debug("Best matching url: {}".format(best_match.url))
 
 
