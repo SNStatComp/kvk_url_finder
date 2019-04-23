@@ -19,7 +19,8 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 PLOT_TYPES = ["process_time", "web_ranking", "all", "company_ranking"]
-KVK_KEY = "NhrVestKvkNummer"
+KVK_KEY_2 = "NhrVestKvkNummer"
+KVK_KEY = "kvk_nummer"
 
 
 def _parse_the_command_line_arguments(args):
@@ -65,6 +66,7 @@ class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
                  reset=False, input_file=None):
 
+        self.reset = reset
         if input_file is not None:
             self.input_file = Path(input_file)
         else:
@@ -101,6 +103,8 @@ class KvkPlotter(object):
 
         # set keep_default_na to false other the NA string by Arjen are replaced with nan
         df = pd.read_excel(self.input_file, keep_default_na=False, na_values="")
+        df = df.rename(columns={KVK_KEY_2: KVK_KEY})
+
         is_nummeric = df[KVK_KEY].astype(str).str.isdigit()
         df = df[is_nummeric]
         df.drop_duplicates([KVK_KEY], inplace=True)
@@ -108,45 +112,44 @@ class KvkPlotter(object):
 
         return df
 
-    def plot_company_ranking(self):
-
-        df_sel = self.read_input_file()
-        df_sel.info()
-
-        table_name = 'company'
-        df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
-        # df[df["datetime"].isnull]
-        df.dropna(axis=0, subset=["datetime"], inplace=True)
-
-        df.set_axis()
-
+    def make_plot(self, df, ax1):
         count = pd.value_counts(df["ranking"]).sort_index()
         count.index = count.index.astype(int)
-        print(count)
+        ax1.set_ylabel("% kvks")
 
         tot = count.sum()
 
         count = 100 * (count / tot)
 
-        fig, axis = plt.subplots()
-        axis.set_xlabel("Ranking [-]")
-        axis.set_ylabel("% kvks")
-
-        count.plot(kind="bar", ax=axis, label="# kvks", rot=0)
+        count.plot(kind="bar", ax=ax1, label="# kvks", rot=0)
 
         color = "tab:red"
-        ax2 = axis.twinx()
+        ax2 = ax1.twinx()
         ax2.set_ylabel("cumulative %", color=color)
 
         cum_sum = count.cumsum()
         cum_sum.plot(ax=ax2, style="-o", color=color, label="cdf")
         ax2.tick_params(axis="y", labelcolor=color)
 
-        # fig.tight_layout()
+    def plot_company_ranking(self):
 
-        #lines = axis.get_lines() + ax2.get_lines()
-        #axis.legend(lines, [line.get_label() for line in lines], loc='top right')
+        df_sel = self.read_input_file()
+        df_sel.info()
 
+        table_name = 'company'
+        data_df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
+        # df[df["datetime"].isnull]
+        data_df.dropna(axis=0, subset=["datetime"], inplace=True)
+
+        data_df.set_index(KVK_KEY, inplace=True, drop=True)
+
+        df_sel = pd.concat([data_df, df_sel], axis=1, join="inner")
+
+        fig, axis = plt.subplots(nrows=2, sharex=True)
+        axis[1].set_xlabel("Ranking [-]")
+
+        self.make_plot(data_df, axis[0])
+        self.make_plot(df_sel, axis[1])
 
     def plot_processing_time(self):
         table_name = 'company'

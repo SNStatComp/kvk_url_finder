@@ -640,7 +640,7 @@ class KvKUrlParser(mp.Process):
 
         if url_analyse is not None:
             datetime = url_analyse.process_time
-            bestaat = url_analyse.exists,
+            bestaat = url_analyse.exists
         else:
             datetime = self.current_time
             bestaat = None
