@@ -1172,6 +1172,13 @@ class KvKUrlParser(mp.Process):
 
         urls.drop_duplicates([URL_KEY], inplace=True)
 
+        urls.set_index(URL_KEY, inplace=True, drop=True)
+
+        urls_in_db = [q.url for q in self.UrlNLTbl.select()]
+
+        urls.drop(urls_in_db, inplace=True)
+        urls.reset_index(inplace=True)
+
         self.logger.info("Convert url dataframe to to list of dicts. This may take some time... ")
         record_list = list(urls.to_dict(orient="index").values())
         self.logger.info("Start writing table urls")
