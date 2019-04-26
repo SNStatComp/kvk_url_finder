@@ -103,7 +103,7 @@ def clean_name(naam):
     # alle & tekens verwijderen
     naam_small = re.sub("[&\"]", "", naam_small)
 
-    # all spacies verwijderen
+    # alle  spaties verwijderen
     naam_small = re.sub("\s+", "", naam_small)
 
     return naam_small
@@ -537,7 +537,7 @@ class KvKUrlParser(mp.Process):
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
         mask = (delta_time >= self.older_time) | delta_time.isna()
         if not self.force_process:
-            self.company_df = self.company_df[mask]
+            self.company_df = self.company_df[mask.values]
 
         self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
 
@@ -558,7 +558,8 @@ class KvKUrlParser(mp.Process):
 
         start = time.time()
         # loop over all the companies kvk numbers
-        for cnt, (index, row) in enumerate(self.company_df.iterrows()):
+        cnt = 0
+        for index, row in self.company_df.iterrows():
 
             # first check if we do not have to stop
             if self.maximum_entries is not None and cnt == self.maximum_entries:
@@ -571,6 +572,7 @@ class KvKUrlParser(mp.Process):
 
             kvk_nummer = index
             company_name = row[NAME_KEY]
+            cnt +=1
 
             self.logger.info("Processing {} ({})".format(kvk_nummer, company_name))
 
