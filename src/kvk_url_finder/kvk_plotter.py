@@ -51,6 +51,8 @@ def _parse_the_command_line_arguments(args):
                         help="Password of the postgres database")
     parser.add_argument("--reset", action="store_true",
                         help="If true reset the cache and reread the data")
+    parser.add_argument("--dump_to_file", action="store_true",
+                        help="If true dump the sql table to csv file")
     parser.add_argument("--hostname", action="store",
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
@@ -64,9 +66,10 @@ def _parse_the_command_line_arguments(args):
 
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
-                 reset=False, input_file=None):
+                 reset=False, input_file=None, dump_to_file=False):
 
         self.reset = reset
+        self.dump_to_file = dump_to_file
         if input_file is not None:
             self.input_file = Path(input_file)
         else:
@@ -79,6 +82,9 @@ class KvkPlotter(object):
     def plot_website_ranking(self):
         table_name = 'web_site'
         df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
+
+        if self.dump_to_file:
+            df.to_csv(table_name+".csv")
 
         df["url_match"] = df.levenshtein * (1 - df.string_match)
         max_match = 10
@@ -105,14 +111,18 @@ class KvkPlotter(object):
         df = pd.read_excel(self.input_file, keep_default_na=False, na_values="")
         df = df.rename(columns={KVK_KEY_2: KVK_KEY})
 
-        is_nummeric = df[KVK_KEY].astype(str).str.isdigit()
-        df = df[is_nummeric]
-        df.drop_duplicates([KVK_KEY], inplace=True)
+        df = df[~(df["Zelf"] == "NA")]
+
+        #is_nummeric = df[KVK_KEY].astype(str).str.isdigit()
+        #df = df[is_nummeric]
+        #df.drop_duplicates([KVK_KEY], inplace=True)
         df.set_index(KVK_KEY, inplace=True, drop=True)
 
         return df
 
-    def make_plot(self, df, ax1):
+    @staticmethod
+    def make_plot(df, ax1, bar_color="tab:blue", line_color="tab:red", add_ticks=True):
+
         count = pd.value_counts(df["ranking"]).sort_index()
         count.index = count.index.astype(int)
         ax1.set_ylabel("% kvks")
@@ -120,21 +130,23 @@ class KvkPlotter(object):
         tot = count.sum()
 
         count = 100 * (count / tot)
+        count.plot(kind="bar", ax=ax1, label="# kvks", rot=0, color=bar_color)
 
-        count.plot(kind="bar", ax=ax1, label="# kvks", rot=0)
-
-        color = "tab:red"
         ax2 = ax1.twinx()
-        ax2.set_ylabel("cumulative %", color=color)
+        if add_ticks:
+            ax2.set_ylabel("cumulative %")
+
+        ax2.set_ylim([0, 100])
 
         cum_sum = count.cumsum()
-        cum_sum.plot(ax=ax2, style="-o", color=color, label="cdf")
-        ax2.tick_params(axis="y", labelcolor=color)
+        cum_sum.plot(ax=ax2, style="-o", color=line_color, label="cdf")
+        if add_ticks:
+            ax2.tick_params(axis="y", labelcolor=line_color)
 
     def plot_company_ranking(self):
 
+        # df sel contains the data of the subset of arjen
         df_sel = self.read_input_file()
-        df_sel.info()
 
         table_name = 'company'
         data_df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
@@ -143,13 +155,61 @@ class KvkPlotter(object):
 
         data_df.set_index(KVK_KEY, inplace=True, drop=True)
 
+        if self.dump_to_file:
+            data_df.to_csv(table_name + ".csv")
+
         df_sel = pd.concat([data_df, df_sel], axis=1, join="inner")
 
-        fig, axis = plt.subplots(nrows=2, sharex=True)
-        axis[1].set_xlabel("Ranking [-]")
+        count_sel = pd.value_counts(df_sel["ranking"]).sort_index()
+        count_sel.index = count_sel.index.astype(int)
+        tot_sel = count_sel.sum()
+        count_sel = 100 * (count_sel / tot_sel)
+        print("counted sel {}".format(tot_sel))
 
-        self.make_plot(data_df, axis[0])
-        self.make_plot(df_sel, axis[1])
+        count_all = pd.value_counts(data_df["ranking"]).sort_index()
+        count_all.index = count_all.index.astype(int)
+        tot_all = count_all.sum()
+        count_all = 100 * (count_all / tot_all)
+        print("counted all {}".format(tot_all))
+
+        count_all = pd.concat([count_all, count_sel], axis=1)
+
+        count_all.columns = [f"All (N={tot_all})",
+                             f"Sel (N={tot_sel}"]
+
+        fig, axis = plt.subplots(figsize=(7.5, 5))
+        plt.subplots_adjust(left=0.1, right=0.75)
+        axis.set_xlabel("Ranking [-]")
+        axis.set_ylim([0, 25])
+        axis.set_ylabel("% kvks")
+
+        count_all.plot(kind="bar", ax=axis, label="# kvks", rot=0)
+        axis.set_xlim([-1, 10])
+
+        ax2 = axis.twinx()
+        ax2.set_ylabel("cumulative %")
+
+        cum_sum_all = count_all.cumsum()
+        cum_sum_sel = pd.DataFrame(index=count_sel.index, data=count_sel.cumsum().values,
+                                   columns=[count_all.columns[1]])
+#
+        cum_sum_all.plot(y=[cum_sum_all.columns[0]], ax=ax2, style="--o", color="tab:red",
+                         legend=False)
+        cum_sum_sel.plot(y=[cum_sum_sel.columns[0]], ax=ax2, style="--x", color="tab:green",
+                         legend=False)
+
+        ax2.set_ylim([0, 110])
+        ax2.set_xlim([-1, 10])
+#
+        ax2.tick_params(axis="y", labelcolor="black")
+        axis.legend(bbox_to_anchor=(1.39, 1.05), title="KVK")
+        ax2.legend(bbox_to_anchor=(1.39, 0.85), title="Cumulative")
+
+        plt.savefig("url_score_DH.jpg")
+#
+        # self.make_plot(data_df, axis)
+        # self.make_plot(df_sel, axis, bar_color="tab:green", line_color="tab:orange",
+        #               add_ticks=False)
 
     def plot_processing_time(self):
         table_name = 'company'
@@ -188,7 +248,8 @@ def main(args_in):
                              password=args.password,
                              hostname=args.hostname,
                              reset=args.reset,
-                             input_file=args.input_file
+                             input_file=args.input_file,
+                             dump_to_file=args.dump_to_file
                              )
 
     if args.type in ("process_time", "all"):
