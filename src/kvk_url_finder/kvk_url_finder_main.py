@@ -126,6 +126,8 @@ def _parse_the_command_line_arguments(args):
                              "the yaml file if given")
     parser.add_argument("--n_processes", type=check_positive, help="Number of processes to run",
                         default=1)
+    parser.add_argument("--max_entries", type=check_positive,
+                        help="Maximum number of kvk entries to process")
     parser.add_argument("--process_nr", type=check_not_negative,
                         help="Impose the default process number", default=0)
     parser.add_argument("--database_type", default=None, choices=DATABASE_TYPES,
@@ -230,6 +232,8 @@ def main(args_in):
         kvk_range_process["start"] = args.kvk_start
     if args.kvk_stop is not None:
         kvk_range_process["stop"] = args.kvk_stop
+    if args.max_entries is not None:
+        maximum_entries = args.max_entries
 
     if (args.n_processes > 1 and platform.system() == "Windows") or args.subprocess:
         use_subprocess = True

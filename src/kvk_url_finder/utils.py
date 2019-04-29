@@ -409,7 +409,7 @@ def read_sql_table(table_name, connection, sql_command=None,
 
     if df is None:
         logger.info("Connecting to database")
-        logger.info(f"Start reading table from postgres table {table_name}.pkl")
+        logger.info(f"Start reading table from postgres table {table_name}")
         df = pd.read_sql(sql_command, con=connection)
         logger.info(f"Dumping to pickle file {cache_file}")
         df.to_pickle(cache_file)
