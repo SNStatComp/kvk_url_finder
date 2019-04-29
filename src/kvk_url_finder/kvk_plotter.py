@@ -61,6 +61,9 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--input_file", action="store", help="Name of the input excel file")
     parser.add_argument("--all_cores", action="store_true", help="Include all the cores in the "
                                                                  "process time plot")
+    parser.add_argument("--last_date", action="store", help="Last date of fit. Default last time")
+    parser.add_argument("--number_of_points", action="store", type=int,
+                        help="Number of points to use for fit", default=1000)
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -71,12 +74,13 @@ def _parse_the_command_line_arguments(args):
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
                  reset=False, input_file=None, dump_to_file=False, all_cores=False,
-                 n_point_from_end=1000
+                 n_point_from_end=1000, last_date=None
                  ):
 
         self.reset = reset
         self.all_cores = all_cores
         self.n_point_from_end = n_point_from_end
+        self.last_date = last_date
         self.dump_to_file = dump_to_file
         if input_file is not None:
             self.input_file = Path(input_file)
@@ -92,7 +96,7 @@ class KvkPlotter(object):
         df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
 
         if self.dump_to_file:
-            df.to_csv(table_name+".csv")
+            df.to_csv(table_name + ".csv")
 
         df["url_match"] = df.levenshtein * (1 - df.string_match)
         max_match = 10
@@ -121,9 +125,9 @@ class KvkPlotter(object):
 
         df = df[~(df["Zelf"] == "NA")]
 
-        #is_nummeric = df[KVK_KEY].astype(str).str.isdigit()
-        #df = df[is_nummeric]
-        #df.drop_duplicates([KVK_KEY], inplace=True)
+        # is_nummeric = df[KVK_KEY].astype(str).str.isdigit()
+        # df = df[is_nummeric]
+        # df.drop_duplicates([KVK_KEY], inplace=True)
         df.set_index(KVK_KEY, inplace=True, drop=True)
 
         return df
@@ -200,7 +204,7 @@ class KvkPlotter(object):
         cum_sum_all = count_all.cumsum()
         cum_sum_sel = pd.DataFrame(index=count_sel.index, data=count_sel.cumsum().values,
                                    columns=[count_all.columns[1]])
-#
+        #
         cum_sum_all.plot(y=[cum_sum_all.columns[0]], ax=ax2, style="--o", color="tab:red",
                          legend=False)
         cum_sum_sel.plot(y=[cum_sum_sel.columns[0]], ax=ax2, style="--x", color="tab:green",
@@ -208,16 +212,17 @@ class KvkPlotter(object):
 
         ax2.set_ylim([0, 110])
         ax2.set_xlim([-1, 10])
-#
+        #
         ax2.tick_params(axis="y", labelcolor="black")
         axis.legend(bbox_to_anchor=(1.39, 1.05), title="KVK")
         ax2.legend(bbox_to_anchor=(1.39, 0.85), title="Cumulative")
 
         plt.savefig("url_score_DH.jpg")
-#
-        # self.make_plot(data_df, axis)
-        # self.make_plot(df_sel, axis, bar_color="tab:green", line_color="tab:orange",
-        #               add_ticks=False)
+
+    #
+    # self.make_plot(data_df, axis)
+    # self.make_plot(df_sel, axis, bar_color="tab:green", line_color="tab:orange",
+    #               add_ticks=False)
 
     def plot_processing_time(self):
         table_name = 'company'
@@ -231,7 +236,10 @@ class KvkPlotter(object):
         df["datetime_num"] = pd.to_numeric(df.index)
         df["tot_predict"] = None
 
-        df_sel = df.tail(n=self.n_point_from_end)
+        if self.last_date is None:
+            df_sel = df.tail(self.n_point_from_end).copy()
+        else:
+            last_date = df[df.index <= self.last_date]
 
         logger.info("Fitting line")
         fit = np.polyfit(df_sel["datetime_num"], df_sel["tot_count"], 1)
@@ -273,7 +281,9 @@ def main(args_in):
                              reset=args.reset,
                              input_file=args.input_file,
                              dump_to_file=args.dump_to_file,
-                             all_cores=args.all_cores
+                             all_cores=args.all_cores,
+                             n_point_from_end=args.number_of_points,
+                             last_date=args.last_date,
                              )
 
     if args.type in ("process_time", "all"):
