@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+import statsmodels.api as sm
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -57,6 +58,8 @@ def _parse_the_command_line_arguments(args):
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
     parser.add_argument("--input_file", action="store", help="Name of the input excel file")
+    parser.add_argument("--all_cores", action="store_true", help="Include all the cores in the "
+                                                                 "process time plot")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -66,9 +69,11 @@ def _parse_the_command_line_arguments(args):
 
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
-                 reset=False, input_file=None, dump_to_file=False):
+                 reset=False, input_file=None, dump_to_file=False, all_cores=False
+                 ):
 
         self.reset = reset
+        self.all_cores = all_cores
         self.dump_to_file = dump_to_file
         if input_file is not None:
             self.input_file = Path(input_file)
@@ -223,17 +228,24 @@ class KvkPlotter(object):
 
         df["tot_count"] = range(1, len(df) + 1)
 
-        fig, ax = plt.subplots(figsize=(10, 12))
+        df_sub = df[~df["datetime"].isnull]
+
+        model = sm.OLS(df_sub["tot_count"], df_sub["datetime"]).fit()
+        model.summary()
+
+
+        fig, ax = plt.subplots(figsize=(8, 8))
         line_labels = list()
 
         df.plot(y=["tot_count"], style="-", ax=ax)
         line_labels.append("total")
 
-        for core_id, core_df in df.groupby("core_id"):
-            logger.info(f"plotting core {core_id}")
-            core_df["count"] = range(1, len(core_df) + 1)
-            core_df.plot(y=["count"], style="-", ax=ax)
-            line_labels.append(int(core_id))
+        if self.all_cores:
+            for core_id, core_df in df.groupby("core_id"):
+                logger.info(f"plotting core {core_id}")
+                core_df["count"] = range(1, len(core_df) + 1)
+                core_df.plot(y=["count"], style="-", ax=ax)
+                line_labels.append(int(core_id))
 
         ax.legend(line_labels, title="Core")
 
@@ -249,7 +261,8 @@ def main(args_in):
                              hostname=args.hostname,
                              reset=args.reset,
                              input_file=args.input_file,
-                             dump_to_file=args.dump_to_file
+                             dump_to_file=args.dump_to_file,
+                             all_cores=args.all_cores
                              )
 
     if args.type in ("process_time", "all"):
