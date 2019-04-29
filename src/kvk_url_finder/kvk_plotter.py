@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+import numpy as np
 import statsmodels.api as sm
 
 import matplotlib.pyplot as plt
@@ -69,11 +70,13 @@ def _parse_the_command_line_arguments(args):
 
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
-                 reset=False, input_file=None, dump_to_file=False, all_cores=False
+                 reset=False, input_file=None, dump_to_file=False, all_cores=False,
+                 n_point_from_end=1000
                  ):
 
         self.reset = reset
         self.all_cores = all_cores
+        self.n_point_from_end = n_point_from_end
         self.dump_to_file = dump_to_file
         if input_file is not None:
             self.input_file = Path(input_file)
@@ -219,26 +222,34 @@ class KvkPlotter(object):
     def plot_processing_time(self):
         table_name = 'company'
         df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
-        # df[df["datetime"].isnull]
         df.dropna(axis=0, subset=["datetime"], inplace=True)
         df.sort_values(["datetime"], inplace=True)
-        df["delta_t"] = (df["datetime"] - df["datetime"].min()) / pd.to_timedelta(1, "s")
         df.reset_index(inplace=True)
         df.set_index("datetime", drop=True, inplace=True)
 
         df["tot_count"] = range(1, len(df) + 1)
+        df["datetime_num"] = pd.to_numeric(df.index)
+        df["tot_predict"] = None
 
-        df_sub = df[~df["datetime"].isnull]
+        df_sel = df.tail(n=self.n_point_from_end)
 
-        model = sm.OLS(df_sub["tot_count"], df_sub["datetime"]).fit()
-        model.summary()
+        logger.info("Fitting line")
+        fit = np.polyfit(df_sel["datetime_num"], df_sel["tot_count"], 1)
+        comp_per_sec = fit[0] * 1e9
+        sec_per_comp = 1 / comp_per_sec
+        logger.info(f"Company scraping rate: {comp_per_sec} Comp/sec")
+        logger.info(f"Time per company: {sec_per_comp} Sec/comp")
 
+        poly = np.poly1d(fit)
+        df_sel.loc[:, "tot_predict"] = poly(df_sel["datetime_num"])
 
         fig, ax = plt.subplots(figsize=(8, 8))
         line_labels = list()
 
         df.plot(y=["tot_count"], style="-", ax=ax)
         line_labels.append("total")
+        df_sel.plot(y=["tot_predict"], style="--", ax=ax)
+        line_labels.append("predict")
 
         if self.all_cores:
             for core_id, core_df in df.groupby("core_id"):
