@@ -9,7 +9,7 @@ import pandas as pd
 from cbs_utils.misc import (create_logger, merge_loggers, standard_postcode)
 from cbs_utils.web_scraping import UrlSearchStrings
 from kvk_url_finder import LOGGER_BASE_NAME
-from kvk_url_finder.models import (POSTAL_CODE_KEY, KVK_KEY, BTW_KEY)
+from kvk_url_finder.models import (POSTAL_CODE_KEY, KVK_KEY, BTW_KEY, NAME_KEY)
 
 logger = logging.getLogger(LOGGER_BASE_NAME)
 
@@ -416,3 +416,32 @@ def read_sql_table(table_name, connection, sql_command=None,
         logger.info("Done")
 
     return df
+
+
+def get_string_name_from_df(column_name, row, index, dataframe):
+    """
+    In case a name in a row has the form of a datetime, it is automatically converted to a
+    datestring, which is not what we want.
+
+    Parameters
+    ----------
+    column_name: str
+        Name of the column to extract
+    row: Series
+        Row from the dataframe from iterows
+    dataframe: DataFrame
+        Full DataFrma from the dataframe from iterows
+
+    Returns
+    -------
+    str:
+        Name obtained from the column
+
+    """
+    col_str = row[column_name]
+    if not isinstance(col_str, str):
+        # in case a name has the form of a date/time, it is automatically converted by
+        # iterows. Convert to original
+        col_str = dataframe.loc[index, column_name]
+
+    return col_str

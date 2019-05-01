@@ -20,7 +20,7 @@ from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
 from kvk_url_finder.utils import (Range, check_if_url_needs_update, UrlInfo, UrlCompanyRanking,
-                                  read_sql_table, paste_strings)
+                                  read_sql_table, paste_strings, get_string_name_from_df)
 
 try:
     from kvk_url_finder import __version__
@@ -571,10 +571,10 @@ class KvKUrlParser(mp.Process):
                 break
 
             kvk_nummer = index
-            company_name = row[NAME_KEY]
-            cnt +=1
-
+            company_name = get_string_name_from_df(NAME_KEY, row, index, self.company_df)
             self.logger.info("Processing {} ({})".format(kvk_nummer, company_name))
+
+            cnt +=1
 
             if self.search_urls:
                 self.logger.info("Start a URL search for this company first")
@@ -588,6 +588,7 @@ class KvKUrlParser(mp.Process):
                 company_url_match = \
                     CompanyUrlMatch(company_record=row,
                                     kvk_nr=kvk_nummer,
+                                    company_name=company_name,
                                     current_time=self.current_time,
                                     company_urls_df=company_urls_df,
                                     company_addresses_df=company_addresses_df,
@@ -1384,6 +1385,7 @@ class CompanyUrlMatch(object):
     def __init__(self,
                  company_record,
                  kvk_nr: int = None,
+                 company_name: str = None,
                  current_time: datetime.datetime = None,
                  company_urls_df: pd.DataFrame = None,
                  company_addresses_df: pd.DataFrame = None,
@@ -1417,7 +1419,7 @@ class CompanyUrlMatch(object):
         self.force_process = force_process
 
         self.kvk_nr = kvk_nr
-        self.company_name: str = company_record[NAME_KEY]
+        self.company_name = company_name
 
         self.company_record = company_record
 
