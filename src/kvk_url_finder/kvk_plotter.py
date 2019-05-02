@@ -62,6 +62,11 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--all_cores", action="store_true", help="Include all the cores in the "
                                                                  "process time plot")
     parser.add_argument("--last_date", action="store", help="Last date of fit. Default last time")
+    parser.add_argument("--save_image", action="store_true", help="If true, the image is saved to file")
+    parser.add_argument("--show_image", action="store_true", help="If true, show the image", default=True)
+    parser.add_argument("--noshow_image", action="store_false", help="If true, do not show the image", 
+            dest="show_image")
+    parser.add_argument("--image_type", action="store", help="Type of the image", default="png")
     parser.add_argument("--number_of_points", action="store", type=int,
                         help="Number of points to use for fit", default=1000)
 
@@ -74,13 +79,15 @@ def _parse_the_command_line_arguments(args):
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
                  reset=False, input_file=None, dump_to_file=False, all_cores=False,
-                 n_point_from_end=1000, last_date=None
+                 n_point_from_end=1000, last_date=None, save_image=False, image_type="png"
                  ):
 
         self.reset = reset
         self.all_cores = all_cores
         self.n_point_from_end = n_point_from_end
         self.last_date = last_date
+        self.save_image = save_image
+        self.image_type = image_type
         self.dump_to_file = dump_to_file
         if input_file is not None:
             self.input_file = Path(input_file)
@@ -115,7 +122,11 @@ class KvkPlotter(object):
         # df.plot.scatter(x="levenshtein", y="url_rank", c="blue")
         # df.plot.scatter(x="levenshtein", y="url_rank2", c="red")
         # df.plot.scatter(x="url_rank", y="url_rank2", c="green")
-        df.plot(y=["url_rank", "url_rank2"], style=".")
+        ax = df.plot(y=["url_rank", "url_rank2"], style=".")
+
+        if self.save_image:
+            ax.save_image("."join([table_name, self.image_type]))
+
 
     def read_input_file(self):
 
@@ -268,6 +279,9 @@ class KvkPlotter(object):
 
         ax.legend(line_labels, title="Core")
 
+        if self.save_image:
+            fig.save_image("."join([table_name, self.image_type]))
+
 
 def main(args_in):
     args, parser = _parse_the_command_line_arguments(args_in)
@@ -284,6 +298,7 @@ def main(args_in):
                              all_cores=args.all_cores,
                              n_point_from_end=args.number_of_points,
                              last_date=args.last_date,
+                             save_image=args.save_image,
                              )
 
     if args.type in ("process_time", "all"):
@@ -296,7 +311,8 @@ def main(args_in):
         logger.info("Plotting company ranking")
         kvk_plotter.plot_company_ranking()
 
-    plt.show()
+    if args.show_image:
+        plt.show()
 
 
 def _run():
