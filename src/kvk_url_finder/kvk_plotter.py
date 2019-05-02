@@ -125,7 +125,9 @@ class KvkPlotter(object):
         ax = df.plot(y=["url_rank", "url_rank2"], style=".")
 
         if self.save_image:
-            ax.save_image("."join([table_name, self.image_type]))
+            image_name = ".".join([table_name, self.image_type])
+            logger.info(f"Saving to  {image_name}")
+            ax.save_image(image_name)
 
 
     def read_input_file(self):
@@ -280,7 +282,9 @@ class KvkPlotter(object):
         ax.legend(line_labels, title="Core")
 
         if self.save_image:
-            fig.save_image("."join([table_name, self.image_type]))
+            image_name = ".".join([table_name, self.image_type])
+            logger.info(f"Saving to  {image_name}")
+            fig.save_image(image_name)
 
 
 def main(args_in):
