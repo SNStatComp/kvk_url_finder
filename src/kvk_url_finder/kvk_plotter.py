@@ -127,7 +127,7 @@ class KvkPlotter(object):
         if self.save_image:
             image_name = ".".join([table_name, self.image_type])
             logger.info(f"Saving to  {image_name}")
-            ax.save_image(image_name)
+            ax.figure.savefig(image_name)
 
 
     def read_input_file(self):
@@ -262,11 +262,13 @@ class KvkPlotter(object):
         logger.info(f"Time per company: {sec_per_comp} Sec/comp")
 
         poly = np.poly1d(fit)
+        logger.info(f"Adding new column")
         df_sel.loc[:, "tot_predict"] = poly(df_sel["datetime_num"])
 
         fig, ax = plt.subplots(figsize=(8, 8))
         line_labels = list()
 
+        logger.info(f"Plotting lines...")
         df.plot(y=["tot_count"], style="-", ax=ax)
         line_labels.append("total")
         df_sel.plot(y=["tot_predict"], style="--", ax=ax)
@@ -282,9 +284,9 @@ class KvkPlotter(object):
         ax.legend(line_labels, title="Core")
 
         if self.save_image:
-            image_name = ".".join([table_name, self.image_type])
+            image_name = ".".join([table_name + "process_time", self.image_type])
             logger.info(f"Saving to  {image_name}")
-            fig.save_image(image_name)
+            ax.figure.savefig(image_name)
 
 
 def main(args_in):
