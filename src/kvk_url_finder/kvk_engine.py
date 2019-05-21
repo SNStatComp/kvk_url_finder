@@ -322,15 +322,11 @@ class KvKUrlParser(mp.Process):
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
 
-        self.company_df = read_sql_table(table_name="company", connection=self.database,
-                                         variable=KVK_KEY,
-                                         datetime_key=DATETIME_KEY,
-                                         lower=start,
-                                         upper=stop,
-                                         max_query=self.maximum_entries,
-                                         force_process=self.force_process,
-                                         older_time=self.older_time,
-                                         )
+        self.table = read_sql_table(table_name="company", connection=self.database,
+                                    variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
+                                    upper=stop, max_query=self.maximum_entries,
+                                    force_process=self.force_process, older_time=self.older_time)
+        self.company_df = self.table
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
 

@@ -332,7 +332,8 @@ def main(args_in):
             user=user,
             older_time=older_time,
             filter_urls=filter_urls,
-            filter_kvks=filter_kvks
+            filter_kvks=filter_kvks,
+            rescan_missing_urls=args.rescan_missing_urls
         )
 
         if args.dumpdb:
