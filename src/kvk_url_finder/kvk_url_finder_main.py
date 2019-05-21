@@ -137,11 +137,15 @@ def _parse_the_command_line_arguments(args):
                         help="Username of the postgres database. By default use current user")
     parser.add_argument("--password", action="store",
                         help="Password of the postgres database")
+    parser.add_argument("--older_time", action="store",
+                        help="Only process queries if older than this")
     parser.add_argument("--hostname", action="store",
                         help="Name of the host. Leave empty on th cluster. "
                              "Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
+    parser.add_argument("--rescane_missing_urls", action="store",
+                        help="Set true in order to process only the kvk entries with missing urls")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -168,7 +172,10 @@ def main(args_in):
     certificate = general.get("certificate")
     if certificate is not None:
         os.environ["REQUEST_CA_BUNDLE"] = certificate
-    older_time_str = general.get("older_time", None)
+    if args.older_time is None:
+        older_time_str = general.get("older_time", None)
+    else:
+        older_time_str = args.older_time
     if older_time_str:
         # use pytimeparse to allow general string notition of delta time, 1 h, 3 days, etc
         older_time_in_secs = pytimeparse.parse(older_time_str)

@@ -1,7 +1,6 @@
 import collections
 import datetime
 import multiprocessing as mp
-import logging
 import os
 import re
 import sys
@@ -13,7 +12,7 @@ import pytz
 import tldextract
 from tqdm import tqdm
 
-from cbs_utils.misc import (create_logger, is_postcode, print_banner, merge_loggers)
+from cbs_utils.misc import (create_logger, is_postcode, print_banner)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
                                     get_clean_url)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
@@ -165,7 +164,8 @@ class KvKUrlParser(mp.Process):
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = 'Europe/Amsterdam',
                  filter_urls: list = None,
-                 filter_kvks: list = None
+                 filter_kvks: list = None,
+                 rescan_missing_urls=False,
                  ):
 
         # launch the process
@@ -201,6 +201,7 @@ class KvKUrlParser(mp.Process):
                     # this is the stream handle because we get an AtrributeError. Set it to critical
                     handle.setLevel(logging.CRITICAL)
 
+        self.rescan_missing_urls = rescan_missing_urls
         # a list of all country url extension which we want to exclude
         self.exclude_extension = pd.DataFrame(COUNTRY_EXTENSIONS,
                                               columns=["include", "country", "suffix"])
@@ -321,8 +322,15 @@ class KvKUrlParser(mp.Process):
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
 
-        self.company_df = read_sql_table(table_name="company", variable=KVK_KEY, lower=start,
-                                         upper=stop, connection=self.database)
+        self.company_df = read_sql_table(table_name="company", connection=self.database,
+                                         variable=KVK_KEY,
+                                         datetime_key=DATETIME_KEY,
+                                         lower=start,
+                                         upper=stop,
+                                         max_query=self.maximum_entries,
+                                         force_process=self.force_process,
+                                         older_time=self.older_time,
+                                         )
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
 
@@ -336,6 +344,7 @@ class KvKUrlParser(mp.Process):
 
         if not only_the_company_df:
             self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
+
             self.url_df.set_index(URL_KEY, inplace=True, drop=True)
             self.url_df.sort_index(inplace=True)
             try:
@@ -343,9 +352,13 @@ class KvKUrlParser(mp.Process):
             except AttributeError:
                 logger.debug("Could not convert the date times in the url table. Probably empty")
 
-            self.address_df = read_sql_table(table_name="address", connection=self.database)
-            self.website_df = read_sql_table(table_name="web_site", variable=COMPANY_ID_KEY,
-                                             lower=start, upper=stop, connection=self.database)
+            self.address_df = read_sql_table(table_name="address", connection=self.database,
+                                             variable=KVK_KEY,
+                                             selection=list(self.company_df.index))
+            self.website_df = read_sql_table(table_name="web_site", connection=self.database,
+                                             variable=COMPANY_ID_KEY,
+                                             lower=start, upper=stop,
+                                             selection=list(self.company_df.index))
             self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
                                    inplace=True)
 
@@ -353,7 +366,7 @@ class KvKUrlParser(mp.Process):
 
     def get_kvk_list_per_process(self):
         """
-        The company_df contains all the kvk to process. Devide them here into range per processor
+        The company_df contains all the kvk to process. Divide them here into range per processor
         """
         # we dont have to filter the kvk range; already done with reading
         number_in_range = self.company_df.index.size
@@ -574,7 +587,7 @@ class KvKUrlParser(mp.Process):
             company_name = get_string_name_from_df(NAME_KEY, row, index, self.company_df)
             self.logger.info("Processing {} ({})".format(kvk_nummer, company_name))
 
-            cnt +=1
+            cnt += 1
 
             if self.search_urls:
                 self.logger.info("Start a URL search for this company first")
@@ -1438,26 +1451,21 @@ class CompanyUrlMatch(object):
 
         # first collect all the urls and obtain the match properties
         self.logger.debug("Get Url collection....")
-        self.urls = UrlCollection(company_record,
-                                  self.company_name,
-                                  self.kvk_nr,
-                                  current_time=self.current_time,
-                                  company_urls_df=self.company_urls_df,
-                                  company_addresses_df=company_addresses_df,
-                                  urls_df=urls_df,
-                                  threshold_distance=distance_threshold,
-                                  threshold_string_match=string_match_threshold,
-                                  impose_url=impose_url,
-                                  store_html_to_cache=store_html_to_cache,
-                                  max_cache_dir_size=max_cache_dir_size,
-                                  internet_scraping=internet_scraping,
-                                  older_time=self.older_time,
-                                  timezone=self.timezone,
-                                  exclude_extensions=exclude_extension,
-                                  filter_urls=self.filter_urls,
-                                  force_process=self.force_process,
-                                  logger=self.logger
-                                  )
+        self.collection = UrlCollection(company_record, self.company_name, self.kvk_nr,
+                                        current_time=self.current_time,
+                                        company_urls_df=self.company_urls_df,
+                                        company_addresses_df=company_addresses_df, urls_df=urls_df,
+                                        threshold_distance=distance_threshold,
+                                        threshold_string_match=string_match_threshold,
+                                        impose_url=impose_url,
+                                        store_html_to_cache=store_html_to_cache,
+                                        max_cache_dir_size=max_cache_dir_size,
+                                        internet_scraping=internet_scraping,
+                                        older_time=self.older_time, timezone=self.timezone,
+                                        exclude_extensions=exclude_extension,
+                                        filter_urls=self.filter_urls,
+                                        force_process=self.force_process, logger=self.logger)
+        self.urls = self.collection
 
         # make a copy link of the company_urls_df from the urls object to here
         self.find_match_for_company()
