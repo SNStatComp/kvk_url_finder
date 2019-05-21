@@ -144,7 +144,7 @@ def _parse_the_command_line_arguments(args):
                              "Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
-    parser.add_argument("--rescane_missing_urls", action="store",
+    parser.add_argument("--rescan_missing_urls", action="store_true",
                         help="Set true in order to process only the kvk entries with missing urls")
 
     # parse the command line
@@ -409,7 +409,8 @@ def main(args_in):
                         hostname=args.hostname,
                         older_time=older_time,
                         filter_urls=filter_urls,
-                        filter_kvks=filter_kvks
+                        filter_kvks=filter_kvks,
+                        rescan_missing_urls=args.rescan_missing_urls
                     )
                     # populate the dataframes again, now including all tables
                     kvk_sub_parser.populate_dataframes()

@@ -392,7 +392,8 @@ def read_sql_table(table_name, connection, sql_command=None,
                    reset=True,
                    force_process=False,
                    older_time=None,
-                   selection=None):
+                   selection=None,
+                   group_by=None):
 
     cache_file = table_name + ".pkl"
     if sql_command is None:
@@ -400,19 +401,19 @@ def read_sql_table(table_name, connection, sql_command=None,
 
     if variable is not None:
         # column  name is given. See if we need to filter on a range of this column
-        if lower is not None or upper is not None:
+        if selection is not None:
+            # if  a selection is given over ride the lower/upper range
+            sql_command += " " + "where {} in ({})".format(variable,
+                                                           ",".join([str(_) for _ in selection]))
+        elif lower is not None or upper is not None:
             if lower is not None and upper is not None:
                 sql_command += " " + f"where {variable} between {lower} and {upper}"
             elif lower is None and upper is not None:
                 sql_command += " " + f"where {variable} <= {upper}"
             elif lower is not None and upper is None:
                 sql_command += " " + f"where {variable} >= {lower}"
-        elif selection is not None:
-            # if no lower and upper range is given, perhaps we have an explicit list of values
-            sql_command += " " + "where {} in ({})".format(variable,
-                                                           ",".join([str(_) for _ in selection]))
 
-    if not force_process and datetime_key is not None:
+    elif not force_process and datetime_key is not None:
         if older_time is not None:
             # only select the rows processed longer the 'older_time' ago
             start_time = datetime.datetime.now() - older_time
@@ -420,6 +421,9 @@ def read_sql_table(table_name, connection, sql_command=None,
         else:
             # only select the non processed rows
             sql_command += f" and {datetime_key} is null"
+
+    if group_by is not None:
+        sql_command += f" group by {group_by}"
 
     if max_query is not None:
         sql_command += f" limit {max_query}"
@@ -435,6 +439,7 @@ def read_sql_table(table_name, connection, sql_command=None,
     if df is None:
         logger.info("Connecting to database")
         logger.info(f"Start reading table from postgres table {table_name}")
+        logger.info(f"execute: {sql_command}")
         df = pd.read_sql(sql_command, con=connection)
         logger.info(f"Dumping to pickle file {cache_file}")
         df.to_pickle(cache_file)

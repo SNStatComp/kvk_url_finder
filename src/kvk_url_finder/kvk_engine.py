@@ -322,11 +322,24 @@ class KvKUrlParser(mp.Process):
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
 
-        self.table = read_sql_table(table_name="company", connection=self.database,
-                                    variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
-                                    upper=stop, max_query=self.maximum_entries,
-                                    force_process=self.force_process, older_time=self.older_time)
-        self.company_df = self.table
+        if self.rescan_missing_urls:
+            sql_command = f"select {COMPANY_ID_KEY}, count(*)-count({BESTAAT_KEY}) as missing "
+            sql_command += "from web_site"
+            sel = read_sql_table(table_name="web_site", connection=self.database,
+                                 variable=COMPANY_ID_KEY, lower=start, upper=stop,
+                                 sql_command=sql_command, group_by=COMPANY_ID_KEY)
+            missing = sel[sel["missing"] > 0]
+            selection = list(missing[COMPANY_ID_KEY].values)
+        else:
+            selection = None
+
+        sql_table = read_sql_table(table_name="company", connection=self.database,
+                                   variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
+                                   upper=stop, max_query=self.maximum_entries,
+                                   force_process=self.force_process,
+                                   older_time=self.older_time,
+                                   selection=selection)
+        self.company_df = sql_table
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
 
@@ -376,7 +389,7 @@ class KvKUrlParser(mp.Process):
         # set flag for all kvk processed longer than older_time ago
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
         mask = (delta_time >= self.older_time) | delta_time.isna()
-        if not self.force_process:
+        if not self.force_process and not self.rescan_missing_urls:
             self.company_df = self.company_df[mask]
 
         n_kvk = self.company_df.index.size
@@ -545,7 +558,7 @@ class KvKUrlParser(mp.Process):
         # set flag for all kvk processed longer than older_time ago
         delta_time = self.current_time - self.company_df[DATETIME_KEY]
         mask = (delta_time >= self.older_time) | delta_time.isna()
-        if not self.force_process:
+        if not self.force_process and not self.rescan_missing_urls:
             self.company_df = self.company_df[mask.values]
 
         self.logger.info("Start finding best matching urls for proc {}".format(self.i_proc))
