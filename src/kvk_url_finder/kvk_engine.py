@@ -1753,8 +1753,7 @@ class UrlCollection(object):
             suffix = url_info.url_extract.suffix
             if suffix in self.exclude_extensions.index:
                 url_info.outside_nl = True
-                logger.info(f"Web site {url} has suffix '.{suffix}' Skipping")
-                continue
+                logger.info(f"Web site {url} has suffix '.{suffix}' Continue ")
 
             # get the processing time of the last time you did this url from the table
             try:
