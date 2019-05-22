@@ -425,10 +425,9 @@ def read_sql_table(table_name, connection, sql_command=None,
     if group_by is not None:
         sql_command += f" group by {group_by}"
 
-    if variable is not None:
-        sql_command += f" order by {variable}"
-
     if max_query is not None:
+        if variable is not None:
+            sql_command += f" order by {variable}"
         sql_command += f" limit {max_query}"
 
     df = None
