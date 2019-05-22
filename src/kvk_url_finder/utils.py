@@ -204,6 +204,7 @@ class UrlInfo(object):
     """
     Class to hold all the properties of one single web site
     """
+
     def __init__(self, index, url):
         self.index = index
         self.needs_update = False
@@ -384,20 +385,50 @@ def setup_logging(logger_name=None,
 
 def read_sql_table(table_name, connection, sql_command=None,
                    variable=None,
+                   datetime_key=None,
                    lower=None,
                    upper=None,
-                   reset=True):
+                   max_query=None,
+                   reset=True,
+                   force_process=False,
+                   older_time=None,
+                   selection=None,
+                   group_by=None):
 
     cache_file = table_name + ".pkl"
     if sql_command is None:
         sql_command = f"select * from {table_name}"
-    if variable is not None and (lower is not None or upper is not None):
-        if lower is not None and upper is not None:
-            sql_command += " " + f"where {variable} between {lower} and {upper}"
-        elif lower is None and upper is not None:
-            sql_command += " " + f"where {variable} <= {upper}"
-        elif lower is not None and upper is  None:
-            sql_command += " " + f"where {variable} >= {lower}"
+
+    if variable is not None:
+        # column  name is given. See if we need to filter on a range of this column
+        if selection is not None:
+            # if  a selection is given over ride the lower/upper range
+            sql_command += " " + "where {} in ({})".format(variable,
+                                                           ",".join([str(_) for _ in selection]))
+        elif lower is not None or upper is not None:
+            if lower is not None and upper is not None:
+                sql_command += " " + f"where {variable} between {lower} and {upper}"
+            elif lower is None and upper is not None:
+                sql_command += " " + f"where {variable} <= {upper}"
+            elif lower is not None and upper is None:
+                sql_command += " " + f"where {variable} >= {lower}"
+
+    elif not force_process and datetime_key is not None:
+        if older_time is not None:
+            # only select the rows processed longer the 'older_time' ago
+            start_time = datetime.datetime.now() - older_time
+            sql_command += f" and ({datetime_key} < '{start_time}' or {datetime_key} is null)"
+        else:
+            # only select the non processed rows
+            sql_command += f" and {datetime_key} is null"
+
+    if group_by is not None:
+        sql_command += f" group by {group_by}"
+
+    if max_query is not None:
+        if variable is not None:
+            sql_command += f" order by {variable}"
+        sql_command += f" limit {max_query}"
 
     df = None
     if not reset:
@@ -410,6 +441,7 @@ def read_sql_table(table_name, connection, sql_command=None,
     if df is None:
         logger.info("Connecting to database")
         logger.info(f"Start reading table from postgres table {table_name}")
+        logger.info(f"execute: {sql_command}")
         df = pd.read_sql(sql_command, con=connection)
         logger.info(f"Dumping to pickle file {cache_file}")
         df.to_pickle(cache_file)
