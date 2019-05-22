@@ -62,10 +62,13 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--all_cores", action="store_true", help="Include all the cores in the "
                                                                  "process time plot")
     parser.add_argument("--last_date", action="store", help="Last date of fit. Default last time")
-    parser.add_argument("--save_image", action="store_true", help="If true, the image is saved to file")
-    parser.add_argument("--show_image", action="store_true", help="If true, show the image", default=True)
-    parser.add_argument("--noshow_image", action="store_false", help="If true, do not show the image", 
-            dest="show_image")
+    parser.add_argument("--save_image", action="store_true",
+                        help="If true, the image is saved to file")
+    parser.add_argument("--show_image", action="store_true", help="If true, show the image",
+                        default=True)
+    parser.add_argument("--noshow_image", action="store_false",
+                        help="If true, do not show the image",
+                        dest="show_image")
     parser.add_argument("--image_type", action="store", help="Type of the image", default="png")
     parser.add_argument("--number_of_points", action="store", type=int,
                         help="Number of points to use for fit", default=1000)
@@ -128,7 +131,6 @@ class KvkPlotter(object):
             image_name = ".".join([table_name, self.image_type])
             logger.info(f"Saving to  {image_name}")
             ax.figure.savefig(image_name)
-
 
     def read_input_file(self):
 
@@ -205,7 +207,7 @@ class KvkPlotter(object):
         fig, axis = plt.subplots(figsize=(7.5, 5))
         plt.subplots_adjust(left=0.1, right=0.75)
         axis.set_xlabel("Ranking [-]")
-        axis.set_ylim([0, 25])
+        axis.set_ylim([0, 50])
         axis.set_ylabel("% kvks")
 
         count_all.plot(kind="bar", ax=axis, label="# kvks", rot=0)
