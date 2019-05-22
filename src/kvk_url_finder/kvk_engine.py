@@ -160,12 +160,11 @@ class KvKUrlParser(mp.Process):
                  i_proc=None,
                  log_file_base="log",
                  log_level_file=logging.DEBUG,
-                 write_log_to_file=False,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = 'Europe/Amsterdam',
                  filter_urls: list = None,
                  filter_kvks: list = None,
-                 rescan_missing_urls=False,
+                 rescan_missing_urls: bool = False,
                  ):
 
         # launch the process
@@ -627,6 +626,7 @@ class KvKUrlParser(mp.Process):
                                     exclude_extension=self.exclude_extension,
                                     filter_urls=self.filter_urls,
                                     force_process=self.force_process,
+                                    rescan_missing_urls=self.rescan_missing_urls,
                                     logger=self.logger
                                     )
 
@@ -1425,6 +1425,7 @@ class CompanyUrlMatch(object):
                  exclude_extension=None,
                  filter_urls: list = None,
                  force_process: bool = False,
+                 rescan_missing_urls: bool = False,
                  logger: logging.Logger = None
                  ):
         if logger is None:
@@ -1439,6 +1440,7 @@ class CompanyUrlMatch(object):
         self.filter_urls = filter_urls
         self.current_time = current_time
         self.force_process = force_process
+        self.rescan_missing_urls = rescan_missing_urls
 
         self.kvk_nr = kvk_nr
         self.company_name = company_name
@@ -1473,7 +1475,9 @@ class CompanyUrlMatch(object):
                                         older_time=self.older_time, timezone=self.timezone,
                                         exclude_extensions=exclude_extension,
                                         filter_urls=self.filter_urls,
-                                        force_process=self.force_process, logger=self.logger)
+                                        force_process=self.force_process,
+                                        rescan_missing_urls=self.rescan_missing_urls,
+                                        logger=self.logger)
         self.urls = self.collection
 
         # make a copy link of the company_urls_df from the urls object to here
@@ -1540,6 +1544,7 @@ class UrlCollection(object):
                  exclude_extensions: pd.DataFrame = None,
                  filter_urls: list = None,
                  force_process: bool = False,
+                 rescan_missing_urls: bool = False,
                  logger: logging.Logger = None
                  ):
         if logger is None:
@@ -1550,6 +1555,7 @@ class UrlCollection(object):
 
         self.older_time = older_time
         self.force_process = force_process
+        self.rescan_missing_urls = rescan_missing_urls
         self.timezone = timezone
         self.exclude_extensions = exclude_extensions
         self.filter_urls = filter_urls
@@ -1756,7 +1762,7 @@ class UrlCollection(object):
             except KeyError:
                 processing_time = None
 
-            if self.force_process:
+            if self.force_process or self.rescan_missing_urls:
                 url_info.needs_update = True
             else:
                 url_info.needs_update = check_if_url_needs_update(processing_time=processing_time,

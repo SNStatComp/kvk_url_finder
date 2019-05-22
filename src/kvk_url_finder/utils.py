@@ -413,6 +413,8 @@ def read_sql_table(table_name, connection, sql_command=None,
             elif lower is not None and upper is None:
                 sql_command += " " + f"where {variable} >= {lower}"
 
+        sql_command += f" order by {variable}"
+
     elif not force_process and datetime_key is not None:
         if older_time is not None:
             # only select the rows processed longer the 'older_time' ago
