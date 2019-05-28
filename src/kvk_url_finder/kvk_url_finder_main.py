@@ -354,11 +354,13 @@ def main(args_in):
             kvk_parser.generate_sql_tables()
 
         if args.export_dataframes:
+            # in case we do export, we have to import all data frames
             only_comp_df = False
         else:
+            # in case we are not export but processing, in the first round only load the company dataframe
             only_comp_df = True
 
-        kvk_parser.populate_dataframes(only_the_company_df=only_comp_df, skip_url_df=True)
+        kvk_parser.populate_dataframes(only_the_company_df=only_comp_df, only_found_urls=True)
 
         if args.export_dataframes:
             logger.info("Exporting dataframes to {}".format(args.dumpdb))

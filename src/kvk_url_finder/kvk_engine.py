@@ -299,7 +299,7 @@ class KvKUrlParser(mp.Process):
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
 
-    def populate_dataframes(self, only_the_company_df=False, skip_url_df=False):
+    def populate_dataframes(self, only_the_company_df=False, only_found_urls=False):
         """
         Read the sql tables into pandas dataframes
 
@@ -352,18 +352,6 @@ class KvKUrlParser(mp.Process):
 
         if not only_the_company_df:
 
-            if not skip_url_df:
-                self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
-
-                self.url_df.set_index(URL_KEY, inplace=True, drop=True)
-                self.url_df.sort_index(inplace=True)
-                try:
-                    self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
-                except AttributeError:
-                    logger.debug("Could not convert the date times in the url table. Probably empty")
-            else:
-                self.url_df = None
-
             self.address_df = read_sql_table(table_name="address", connection=self.database,
                                              variable=KVK_KEY,
                                              selection=list(self.company_df.index))
@@ -375,6 +363,22 @@ class KvKUrlParser(mp.Process):
                                    inplace=True)
 
             self.website_df.loc[:, DISTANCE_STRING_MATCH_KEY] = None
+
+            if not only_found_urls:
+                url_selection = list(self.website_df[URL_KEY])
+            else:
+                url_selection = None
+
+            self.url_df = read_sql_table(table_name="url_nl", connection=self.database,
+                                         variable=URL_KEY, selection=url_selection)
+
+            self.url_df.set_index(URL_KEY, inplace=True, drop=True)
+            self.url_df.sort_index(inplace=True)
+            try:
+                self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+            except AttributeError:
+                logger.debug("Could not convert the date times in the url table. Probably empty")
+
 
     def get_kvk_list_per_process(self):
         """
@@ -484,10 +488,14 @@ class KvKUrlParser(mp.Process):
                 for cnt, (naam, df) in enumerate(zip(
                         ["company_df", "address_df", "website_df", "url_df"],
                         [self.company_df, self.address_df, self.website_df, self.url_df])):
-                    self.logger.info(f"Appending sheet {naam}")
                     if df is not None:
+                        self.logger.info(f"Appending sheet {naam}")
+                        try:
+                            df[DATETIME_KEY] = df[DATETIME_KEY].astype(str)
+                        except KeyError:
+                            pass
                         df.to_excel(writer, sheet_name=naam)
-        elif export_file.suffix in (".csv"):
+        elif export_file.suffix == ".csv":
             for cnt, (naam, df) in enumerate(zip(
                     ["company_df", "address_df", "website_df", "url_df"],
                     [self.company_df, self.address_df, self.website_df, self.url_df])):
