@@ -365,7 +365,7 @@ class KvKUrlParser(mp.Process):
             self.website_df.loc[:, DISTANCE_STRING_MATCH_KEY] = None
 
             if only_found_urls:
-                url_selection = list(self.website_df[URL_KEY])
+                url_selection = list(self.website_df[URL_KEY].values)
             else:
                 url_selection = None
 

@@ -402,9 +402,13 @@ def read_sql_table(table_name, connection, sql_command=None,
     if variable is not None:
         # column  name is given. See if we need to filter on a range of this column
         if selection is not None:
-            # if  a selection is given over ride the lower/upper range
-            sql_command += " " + "where {} in ({})".format(variable,
-                                                           ",".join([str(_) for _ in selection]))
+            sql_command += " " + "where {} in ".format(variable)
+            if isinstance(selection[0], str):
+                # for string, add '' to the list
+                sql_command += "({})".format(",".join(["'{}'".format(_) for _ in selection]))
+            else:
+                # if  a selection is given over ride the lower/upper range
+                sql_command += "({})".format(",".join([str(_) for _ in selection]))
         elif lower is not None or upper is not None:
             if lower is not None and upper is not None:
                 sql_command += " " + f"where {variable} between {lower} and {upper}"
