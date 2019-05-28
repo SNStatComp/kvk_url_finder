@@ -144,8 +144,12 @@ def _parse_the_command_line_arguments(args):
                              "Or set localhost at your own machine")
     parser.add_argument("--dumpdb", action="store",
                         help="Filename to dump the database to")
+    parser.add_argument("--export_dataframes", action="store",
+                        help="Filename of the base of all the dataframes to dump to")
     parser.add_argument("--rescan_missing_urls", action="store_true",
                         help="Set true in order to process only the kvk entries with missing urls")
+    parser.add_argument("--apply_selection", action="store_true",
+                        help="Force to apply the selection")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -205,7 +209,7 @@ def main(args_in):
     kvk_url_keys = kvk_urls_db["keys"]
 
     selection_db = databases.get("kvk_selection_data_base")
-    if selection_db and selection_db.get("apply_selection", True):
+    if selection_db and (selection_db.get("apply_selection", True) or args.apply_selection):
         kvk_selection_file_name = selection_db["file_name"]
         kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
         kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
@@ -336,6 +340,9 @@ def main(args_in):
             rescan_missing_urls=args.rescan_missing_urls
         )
 
+        if kvk_parser.kvk_selection_input_file_name:
+            kvk_parser.read_database_selection()
+
         if args.dumpdb:
             logger.info("Dumping database to {}".format(args.dumpdb))
             kvk_parser.export_db(args.dumpdb)
@@ -345,7 +352,18 @@ def main(args_in):
         # given, update the sql data base from the input files
         if args.update_sql_tables:
             kvk_parser.generate_sql_tables()
-        kvk_parser.populate_dataframes(only_the_company_df=True)
+
+        if args.export_dataframes:
+            only_comp_df = False
+        else:
+            only_comp_df = True
+
+        kvk_parser.populate_dataframes(only_the_company_df=only_comp_df, skip_url_df=True)
+
+        if args.export_dataframes:
+            logger.info("Exporting dataframes to {}".format(args.dumpdb))
+            kvk_parser.export_df(args.export_dataframes)
+            sys.exit(0)
 
         kvk_parser.get_kvk_list_per_process()
         logger.debug("Found list\n{}".format(kvk_parser.kvk_ranges))

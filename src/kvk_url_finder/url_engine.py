@@ -223,7 +223,7 @@ class UrlParser(mp.Process):
         export_file = Path(file_name)
         if export_file.suffix in (".xls", ".xlsx"):
             with pd.ExcelWriter(file_name) as writer:
-                for cnt, table in enumerate([self.company, self.address, self.website]):
+                for cnt, table in enumerate([self.company, self.address, self.website, self.url_df]):
                     query = table.select()
                     df = pd.DataFrame(list(query.dicts()))
                     try:
@@ -234,7 +234,7 @@ class UrlParser(mp.Process):
                     self.logger.info(f"Appending sheet {sheetname}")
                     df.to_excel(writer, sheet_name=sheetname)
         elif export_file.suffix in (".csv"):
-            for cnt, table in enumerate([self.company, self.address, self.website]):
+            for cnt, table in enumerate([self.company, self.address, self.website, self.url_df]):
                 this_name = export_file.stem + "_" + table.__name__.lower() + ".csv"
                 query = table.select()
                 df = pd.DataFrame(list(query.dicts()))

@@ -290,8 +290,6 @@ class KvKUrlParser(mp.Process):
         self.find_best_matching_url()
 
     def generate_sql_tables(self):
-        if self.kvk_selection_input_file_name:
-            self.read_database_selection()
         self.read_database_addresses()
         self.read_database_urls()
         self.merge_data_base_kvks()
@@ -301,7 +299,7 @@ class KvKUrlParser(mp.Process):
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
 
-    def populate_dataframes(self, only_the_company_df=False):
+    def populate_dataframes(self, only_the_company_df=False, skip_url_df=False):
         """
         Read the sql tables into pandas dataframes
 
@@ -329,6 +327,8 @@ class KvKUrlParser(mp.Process):
                                  sql_command=sql_command, group_by=COMPANY_ID_KEY)
             missing = sel[sel["missing"] > 0]
             selection = list(missing[COMPANY_ID_KEY].values)
+        elif self.kvk_selection_kvk_key is not None:
+            selection = list(self.kvk_selection.values)
         else:
             selection = None
 
@@ -351,14 +351,18 @@ class KvKUrlParser(mp.Process):
             logger.debug("Could not convert the date times in the company table. Probably empty")
 
         if not only_the_company_df:
-            self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
 
-            self.url_df.set_index(URL_KEY, inplace=True, drop=True)
-            self.url_df.sort_index(inplace=True)
-            try:
-                self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
-            except AttributeError:
-                logger.debug("Could not convert the date times in the url table. Probably empty")
+            if not skip_url_df:
+                self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
+
+                self.url_df.set_index(URL_KEY, inplace=True, drop=True)
+                self.url_df.sort_index(inplace=True)
+                try:
+                    self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
+                except AttributeError:
+                    logger.debug("Could not convert the date times in the url table. Probably empty")
+            else:
+                self.url_df = None
 
             self.address_df = read_sql_table(table_name="address", connection=self.database,
                                              variable=KVK_KEY,
@@ -471,6 +475,28 @@ class KvKUrlParser(mp.Process):
         df.drop_duplicates([self.kvk_selection_kvk_key], inplace=True)
 
         self.kvk_selection = df[self.kvk_selection_kvk_key].dropna().astype(int)
+
+    def export_df(self, file_name):
+        export_file = Path(file_name)
+        if export_file.suffix in (".xls", ".xlsx"):
+            self.logger.info(f"Export dataframes to {export_file}")
+            with pd.ExcelWriter(file_name) as writer:
+                for cnt, (naam, df) in enumerate(zip(
+                        ["company_df", "address_df", "website_df", "url_df"],
+                        [self.company_df, self.address_df, self.website_df, self.url_df])):
+                    self.logger.info(f"Appending sheet {naam}")
+                    if df is not None:
+                        df.to_excel(writer, sheet_name=naam)
+        elif export_file.suffix in (".csv"):
+            for cnt, (naam, df) in enumerate(zip(
+                    ["company_df", "address_df", "website_df", "url_df"],
+                    [self.company_df, self.address_df, self.website_df, self.url_df])):
+                this_name = export_file.stem + "_" + naam + ".csv"
+                self.logger.info(f"Writing to {naam}")
+                if df is not None:
+                    df.to_csv(this_name)
+        else:
+            self.logger.warning(f"Extension {export_file.suffix} not recognised")
 
     def export_db(self, file_name):
 
