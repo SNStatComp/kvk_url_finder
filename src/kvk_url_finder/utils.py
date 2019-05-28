@@ -241,9 +241,11 @@ class Range(object):
         if range_dict is not None:
             self.start = range_dict["start"]
             self.stop = range_dict["stop"]
+            self.selection = range_dict["selection"]
         else:
             self.start = None
             self.stop = None
+            self.selection = None
 
 
 def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=10000000):

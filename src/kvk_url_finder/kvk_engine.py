@@ -318,6 +318,12 @@ class KvKUrlParser(mp.Process):
         """
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        if self.kvk_range_process.selection is not None:
+            kvk_selection = self.kvk_range_process.selection
+        elif self.kvk_selection is not None:
+            kvk_selection = list(self.kvk_selection.values)
+        else:
+            kvk_selection = None
 
         if self.rescan_missing_urls:
             sql_command = f"select {COMPANY_ID_KEY}, count(*)-count({BESTAAT_KEY}) as missing "
@@ -327,10 +333,8 @@ class KvKUrlParser(mp.Process):
                                  sql_command=sql_command, group_by=COMPANY_ID_KEY)
             missing = sel[sel["missing"] > 0]
             selection = list(missing[COMPANY_ID_KEY].values)
-        elif self.kvk_selection_kvk_key is not None:
-            selection = list(self.kvk_selection.values)
         else:
-            selection = None
+            selection = kvk_selection
 
         sql_table = read_sql_table(table_name="company", connection=self.database,
                                    variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
@@ -424,11 +428,17 @@ class KvKUrlParser(mp.Process):
                 kvk_proc = self.company_df.index.values[
                            i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
+            if self.kvk_selection_input_file_name is not None:
+                # we have passed a selection file. So explicity add this selection
+                kvk_selection = kvk_proc
+            else:
+                kvk_selection = None
+
             if kvk_proc.size > 0:
                 logger.info("Getting range")
                 kvk_first = kvk_proc[0]
                 kvk_last = kvk_proc[-1]
-                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
+                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last, selection=kvk_selection))
 
     def merge_external_database(self):
         """

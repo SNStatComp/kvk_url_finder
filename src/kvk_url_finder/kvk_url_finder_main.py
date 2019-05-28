@@ -222,6 +222,8 @@ def main(args_in):
     n_url_count_threshold = process_settings["n_url_count_threshold"]
     kvk_range_read = process_settings["kvk_range_read"]
     kvk_range_process = process_settings["kvk_range_process"]
+    kvk_range_read["selection"] = None
+    kvk_range_process["selection"] = None
     maximum_entries = process_settings["maximum_entries"]
     impose_url_for_kvk = process_settings["impose_url_for_kvk"]
     threshold_distance = process_settings["threshold_distance"]
