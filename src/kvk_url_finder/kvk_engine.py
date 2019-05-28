@@ -379,7 +379,6 @@ class KvKUrlParser(mp.Process):
             except AttributeError:
                 logger.debug("Could not convert the date times in the url table. Probably empty")
 
-
     def get_kvk_list_per_process(self):
         """
         The company_df contains all the kvk to process. Divide them here into range per processor
