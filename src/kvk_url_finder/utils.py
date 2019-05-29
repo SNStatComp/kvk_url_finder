@@ -112,7 +112,7 @@ class UrlCompanyRanking(object):
                     df[url] = 0
                 df.loc[key, url] += 1
 
-        # clip the count per item to 0 or 1 (no or at least one occurance)
+        # clip the count per item to 0 or 1 (no or at least one occurrence)
         contact_hits_per_url = df.astype(bool).sum()
 
         # create a data frame for all urls per match in which we have the match and number of url

@@ -788,6 +788,7 @@ class KvKUrlParser(mp.Process):
             url=url,
             getest=True,
             bestaat=url_analyse.exists,
+            nl_company=match.nl_company,
             levenshtein=match.distance,
             string_match=match.string_match,
             url_match=match.url_match,
