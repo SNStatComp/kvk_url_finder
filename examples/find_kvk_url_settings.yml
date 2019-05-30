@@ -35,7 +35,6 @@ databases:
       url: 4
   kvk_selection_data_base:
     # the abr database which we use to make a selection of kvk numbers to read and process
-    apply_selection: true
     file_name: Cbspersoon_Regio47url.xlsx
     kvk_nummer: NhrVestKvkNummer
     kvk_sub_nummer: CpVestigingsNummer
@@ -43,6 +42,23 @@ databases:
     straat: CpVestStraat
     postcode: CPVestPostcode6
     plaats: CpVestWoonplaats
+kvk_selection:
+  apply_selection: true
+  selection:
+    type: database  # or list if an explicit list is given
+    database: kvk_selection_data_base  # reference to the database in 'databases'  to use
+    kvk_list:
+      - 11030894
+      - 17204342
+      - 24041199
+      - 27011394
+      - 30023353
+      - 50225588
+      - 52910563
+      - 65865138
+      - 66050537
+      - 66312728
+      - 68762291
 process_settings:
   n_url_count_threshold: 10000
   kvk_range_read:
