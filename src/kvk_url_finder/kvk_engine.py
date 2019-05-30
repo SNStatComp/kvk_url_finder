@@ -129,6 +129,7 @@ class KvKUrlParser(mp.Process):
                  database_type=None,
                  store_html_to_cache=False,
                  internet_scraping=True,
+                 force_ssl_check=False,
                  search_urls=False,
                  max_cache_dir_size=None,
                  user=None,
@@ -210,6 +211,7 @@ class KvKUrlParser(mp.Process):
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
         self.internet_scraping = internet_scraping
+        self.force_ssl_check = force_ssl_check
         self.search_urls = search_urls
 
         self.address_keys = address_keys
@@ -433,7 +435,8 @@ class KvKUrlParser(mp.Process):
                 logger.info("Getting range")
                 kvk_first = kvk_proc[0]
                 kvk_last = kvk_proc[-1]
-                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last, selection=kvk_selection))
+                self.kvk_ranges.append(
+                    dict(start=kvk_first, stop=kvk_last, selection=kvk_selection))
 
     def export_df(self, file_name):
         export_file = Path(file_name)
@@ -610,6 +613,7 @@ class KvKUrlParser(mp.Process):
                                     store_html_to_cache=self.store_html_to_cache,
                                     max_cache_dir_size=self.max_cache_dir_size,
                                     internet_scraping=self.internet_scraping,
+                                    force_ssl_check=self.force_ssl_check,
                                     older_time=self.older_time,
                                     timezone=self.timezone,
                                     exclude_extension=self.exclude_extension,
@@ -675,7 +679,7 @@ class KvKUrlParser(mp.Process):
                 nl_company=False,
                 best_match=False,
                 datetime=datetime
-            ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+            ).where((self.WebsiteTbl.company_id == kvk_nummer) & (self.WebsiteTbl.url_id == url))
             query.execute()
 
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
@@ -1410,6 +1414,7 @@ class CompanyUrlMatch(object):
                  store_html_to_cache: bool = False,
                  max_cache_dir_size: int = None,
                  internet_scraping: bool = True,
+                 force_ssl_check=False,
                  older_time: datetime.timedelta = None,
                  timezone=None,
                  exclude_extension=None,
@@ -1462,6 +1467,7 @@ class CompanyUrlMatch(object):
                                         store_html_to_cache=store_html_to_cache,
                                         max_cache_dir_size=max_cache_dir_size,
                                         internet_scraping=internet_scraping,
+                                        force_ssl_check=force_ssl_check,
                                         older_time=self.older_time, timezone=self.timezone,
                                         exclude_extensions=exclude_extension,
                                         filter_urls=self.filter_urls,
@@ -1529,6 +1535,7 @@ class UrlCollection(object):
                  store_html_to_cache=False,
                  max_cache_dir_size=None,
                  internet_scraping: bool = True,
+                 force_ssl_check: bool = True,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = None,
                  exclude_extensions: pd.DataFrame = None,
@@ -1556,6 +1563,7 @@ class UrlCollection(object):
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
         self.internet_scraping = internet_scraping
+        self.force_ssl_check = force_ssl_check
 
         self.kvk_nr = kvk_nr
         self.company_record = company_record
@@ -1646,6 +1654,18 @@ class UrlCollection(object):
 
         scrape_url = url_info.needs_update and self.internet_scraping
 
+        url_prop = None
+        schema = None
+        ssl_valid = None
+        if not self.force_ssl_check or not scrape_url:
+            url_prop = self.urls_df.loc[url, :]
+            if not self.force_ssl_check and url_prop[SSL_KEY] is not None:
+                if url_prop[SSL_KEY]:
+                    schema = "https"
+                else:
+                    schema = "http"
+                ssl_valid = url_prop[SSL_VALID_KEY]
+
         url_analyse = UrlSearchStrings(url,
                                        search_strings={
                                            POSTAL_CODE_KEY: ZIP_REGEXP,
@@ -1656,14 +1676,15 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
-                                       scrape_url=scrape_url
+                                       scrape_url=scrape_url,
+                                       schema=schema,
+                                       ssl_valid=ssl_valid
                                        )
 
         # TODO: transfer this outside
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
-        if not scrape_url:
-            url_prop = self.urls_df.loc[url, :]
+        if url_prop is not None:
             logger.debug("We skipped the scraping so get the previous data ")
             url_analyse.exists = url_prop[BESTAAT_KEY]
             # we have not scraped the url, but we want to set the info anyways

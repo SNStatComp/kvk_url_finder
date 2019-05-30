@@ -6,6 +6,7 @@ general:
   cache_directory: cache
   store_html_to_cache: true
   internet_scraping: true
+  force_ssl_check: false
   search_urls: true
   max_cache_dir_size: 0  # altenatively: 1 GB or 1 MB 
   older_time: 1 s

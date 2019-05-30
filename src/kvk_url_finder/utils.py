@@ -128,7 +128,9 @@ class UrlCompanyRanking(object):
 
             # overwrite the match list of the current column postcode, kvk, btw such that the
             # values with many other items is on top
-            self.url_analyse.matches[key] = list(match_df["match"].values)
+            match_list = list(match_df["match"].values)
+            if len(match_list) == len(self.url_analyse.matches[key]):
+                self.url_analyse.matches[key] = match_list
 
         self.logger.debug("got sorted url {}".format(self.url_analyse))
 
@@ -254,7 +256,10 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
 
     # note that we reverse the list, we can can peel off from the back
     try:
-        result = separator.join(string_list)
+        try:
+            result = separator.join(string_list)
+        except TypeError:
+            result = separator.join([str(_) for _ in string_list])
     except TypeError:
         result = None
     else:

@@ -154,6 +154,9 @@ def _parse_the_command_line_arguments(args):
                                            " such as  1,2,3 or just on number")
     parser.add_argument("--no_internet", action="store_true",
                         help="Run the whole process with connecting to intennet")
+    parser.add_argument("--force_ssl_check", action="store_true",
+                        help="Force to check the ssl https schame. If false (default) try"
+                             "to get it from previous run")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -175,6 +178,9 @@ def main(args_in):
     database_name = general.get("database_name", "kvk_db")
     store_html_to_cache = general.get("store_html_to_cache", False)
     internet_scraping = general.get("internet_scraping", True)
+    force_ssl_check = general.get("force_ssl_check", False)
+    if args.force_ssl_check:
+        force_ssl_check = True
     if args.no_internet:
         internet_scraping = False
     search_urls = general.get("search_urls", False)
@@ -451,6 +457,7 @@ def main(args_in):
                     max_cache_dir_size=max_cache_dir_size,
                     search_urls=search_urls,
                     internet_scraping=internet_scraping,
+                    force_ssl_check=force_ssl_check,
                     store_html_to_cache=store_html_to_cache,
                     progressbar=args.progressbar,
                     kvk_range_process=kvk_range,
