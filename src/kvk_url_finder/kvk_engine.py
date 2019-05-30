@@ -772,12 +772,24 @@ class KvKUrlParser(mp.Process):
         query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
         if query.exists():
             logger.debug(f"Updating UrlNl {url}")
+            if match.matched_postcode:
+                query = self.UrlNLTbl.update(
+                    post_code=match.matched_postcode
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
+            if match.matched_kvk_nummer:
+                query = self.UrlNLTbl.update(
+                    kvk_nummer=match.matched_kvk_nummer,
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
+            #if match.matched_btw_nummer:
+            #    query = self.UrlNLTbl.update(
+            #        btw_nummer=match.btw_nummer,
+            #    ).where(self.UrlNLTbl.url == url)
+            #    query.execute()
             query = self.UrlNLTbl.update(
                 bestaat=url_analyse.exists,
                 nl_company=match.nl_company,
-                post_code=match.matched_postcode,
-                kvk_nummer=match.matched_kvk_nummer,
-                btw_nummer=match.btw_nummer,
                 datetime=url_analyse.process_time,
                 ssl=ssl,
                 ssl_valid=ssl_valid,
@@ -1654,17 +1666,20 @@ class UrlCollection(object):
 
         scrape_url = url_info.needs_update and self.internet_scraping
 
-        url_prop = None
         schema = None
         ssl_valid = None
-        if not self.force_ssl_check or not scrape_url:
-            url_prop = self.urls_df.loc[url, :]
-            if not self.force_ssl_check and url_prop[SSL_KEY] is not None:
-                if url_prop[SSL_KEY]:
-                    schema = "https"
-                else:
-                    schema = "http"
-                ssl_valid = url_prop[SSL_VALID_KEY]
+        url_prop = self.urls_df.loc[url, :]
+        if url_prop[BESTAAT_KEY] is not None and not url_prop[BESTAAT_KEY]:
+            logger.warning(f"Url {url} does not exist based on the previous run. Donot scrape")
+            scrape_url = False
+            schema = "https"
+
+        if not self.force_ssl_check and url_prop[SSL_KEY] is not None:
+            if url_prop[SSL_KEY]:
+                schema = "https"
+            else:
+                schema = "http"
+            ssl_valid = url_prop[SSL_VALID_KEY]
 
         url_analyse = UrlSearchStrings(url,
                                        search_strings={
@@ -1684,7 +1699,7 @@ class UrlCollection(object):
         # TODO: transfer this outside
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
-        if url_prop is not None:
+        if not scrape_url:
             logger.debug("We skipped the scraping so get the previous data ")
             url_analyse.exists = url_prop[BESTAAT_KEY]
             # we have not scraped the url, but we want to set the info anyways
