@@ -709,10 +709,10 @@ class KvKUrlParser(mp.Process):
         """
         # url = url_info.url
 
-        logger.debug(f"No match info found  {kvk_nummer} for {url}")
-
         url_analyse = url_info.url_analyse
         match = url_info.match
+
+        logger.debug(f"Updating for url info with match  {kvk_nummer} for {url}")
 
         try:
             ranking_int = int(round(match.ranking))
@@ -745,7 +745,7 @@ class KvKUrlParser(mp.Process):
             has_btw_nr=match.has_btw_nummer,
             ranking=match.ranking,
             datetime=url_analyse.process_time
-        ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+        ).where((self.WebsiteTbl.company_id == kvk_nummer) & (self.WebsiteTbl.url_id == url))
         query.execute()
 
         try:

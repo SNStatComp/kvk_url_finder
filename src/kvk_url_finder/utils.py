@@ -552,13 +552,16 @@ def read_database_selection(kvk_selection_input_file_name, kvk_selection_kvk_key
         List with kvk number to select
 
     """
-    logger.info("Reading selection data base")
+    logger.info(f"Reading selection data base from {kvk_selection_input_file_name}")
     df = pd.read_excel(kvk_selection_input_file_name)
 
+    logger.debug(f"Dropping duplicates")
     df.drop_duplicates([kvk_selection_kvk_key], inplace=True)
 
+    logger.debug(f"Converting to series")
     kvk_selection = df[kvk_selection_kvk_key].dropna().astype(int)
 
+    logger.debug(f"Converting to list")
     kvk_selection_list = list(kvk_selection.values)
 
     return kvk_selection_list

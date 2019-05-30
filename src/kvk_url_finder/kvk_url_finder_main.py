@@ -210,46 +210,10 @@ def main(args_in):
     kvk_url_file_name = kvk_urls_db["file_name"]
     kvk_url_keys = kvk_urls_db["keys"]
 
-    selection_db = databases.get("kvk_selection_data_base")
-    selection_settings = databases.get("kvk_selection")
+    selection_settings = settings.get("kvk_selection")
     kvk_selection_file_name = None
     kvk_selection_kvk_nummer = None
     kvk_selection_kvk_sub_nummer = None
-
-    # check if we want to take a selection by either looking in the selection section of the yaml
-    # file of by looking at the command line arguments
-    if (selection_settings and selection_settings["apply_selection"]) or args.apply_selection:
-        # get the selection type: either list (if we give a list) or database (in case we
-        # get the numbers from an excel file
-        if selection_settings:
-            selection_type = selection_settings.get("type", 'kvk_list')
-        else:
-            selection_type = 'kvk_list'
-        assert selection_type in ("database", "kvk_list")
-
-        if selection_type == "database":
-            if selection_db is None:
-                raise ValueError("database selection is requested but no database is defined")
-            kvk_selection_file_name = selection_db["file_name"]
-            kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
-            kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
-            kvk_selection = read_database_selection(kvk_selection_file_name,
-                                                    kvk_selection_kvk_nummer)
-        else:
-            if args.kvk_list:
-                kvk_selection_str = args.kvk_list
-                try:
-                    kvk_selection = [int(_) for _ in kvk_selection_str.split(",")]
-                except ValueError:
-                    kvk_selection = int(kvk_selection_str)
-            else:
-                kvk_selection = selection_settings["kvk_list"]
-
-        # make sure we have a list
-        if not isinstance(kvk_selection, list):
-            kvk_selection = [kvk_selection]
-    else:
-        kvk_selection = None
 
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
@@ -302,6 +266,41 @@ def main(args_in):
         args_str = ["{}:{}".format(at, getattr(args, at)) for at in dir(args) if
                     not None and not at.startswith("_")]
         logger.debug("ARGV: {}".format(" ".join(args_str)))
+
+        # check if we want to take a selection by looking in the selection section of the yaml
+        # file or by looking at the command line arguments
+        if (selection_settings and selection_settings["apply_selection"]) or args.apply_selection:
+            # get the selection type: either list (if we give a list) or database (in case we
+            # get the numbers from an excel file
+            if selection_settings:
+                selection_type = selection_settings.get("type", 'kvk_list')
+            else:
+                selection_type = 'kvk_list'
+            assert selection_type in ("database", "kvk_list")
+
+            if selection_type == "database":
+                selection_db_name = selection_settings["database"]
+                selection_db = databases[selection_db_name]
+                kvk_selection_file_name = selection_db["file_name"]
+                kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
+                kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
+                kvk_selection = read_database_selection(kvk_selection_file_name,
+                                                        kvk_selection_kvk_nummer)
+            else:
+                if args.kvk_list:
+                    kvk_selection_str = args.kvk_list
+                    try:
+                        kvk_selection = [int(_) for _ in kvk_selection_str.split(",")]
+                    except ValueError:
+                        kvk_selection = int(kvk_selection_str)
+                else:
+                    kvk_selection = selection_settings["kvk_list"]
+
+            # make sure we have a list
+            if not isinstance(kvk_selection, list):
+                kvk_selection = [kvk_selection]
+        else:
+            kvk_selection = None
 
         # with the global statement line we make sure to change the global variable at the top
 
