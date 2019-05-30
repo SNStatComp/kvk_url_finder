@@ -5,6 +5,7 @@ import Levenshtein
 import tldextract
 import difflib
 import pandas as pd
+from pathlib import Path
 
 from cbs_utils.misc import (create_logger, merge_loggers, standard_postcode)
 from cbs_utils.web_scraping import UrlSearchStrings
@@ -483,3 +484,81 @@ def get_string_name_from_df(column_name, row, index, dataframe):
         col_str = dataframe.loc[index, column_name]
 
     return col_str
+
+
+def merge_external_database(CompanyTbl, kvk_selection_input_file_name,
+                            kvk_selection_kvk_key, kvk_selection_kvk_sub_key
+                            ):
+    """
+    Merge an external database with the sql table and export
+
+    Parameters
+    ----------
+    CompanyTbl: object
+        Object with the company sql table
+    kvk_selection_input_file_name: str
+        Name of the exel file to merge with the table
+    kvk_selection_kvk_key: str
+        key in the excel file referring to the kvk key
+    kvk_selection_kvk_sub_key: str
+        key in the excel file referring to the kvk sub key
+
+    """
+    logger.debug("Start merging..")
+
+    infile = Path(kvk_selection_input_file_name)
+    outfile_ext = infile.suffix
+    outfile_base = infile.resolve().stem
+
+    outfile = Path(outfile_base + "_merged" + outfile_ext)
+
+    query = CompanyTbl.select()
+    df_sql = pd.DataFrame(list(query.dicts()))
+    df_sql.set_index(KVK_KEY, inplace=True)
+
+    df = pd.read_excel(kvk_selection_input_file_name)
+
+    df.rename(columns={kvk_selection_kvk_key: KVK_KEY}, inplace=True)
+
+    df[KVK_KEY] = df[KVK_KEY].fillna(0).astype(int)
+
+    df.set_index([KVK_KEY, kvk_selection_kvk_sub_key], inplace=True)
+
+    result = df.merge(df_sql, left_on=KVK_KEY, right_on=KVK_KEY)
+
+    result.reset_index(inplace=True)
+    result.rename(columns={KVK_KEY: kvk_selection_kvk_key}, inplace=True)
+
+    logger.info("Writing merged data base to {}".format(outfile.name))
+    result.to_excel(outfile.name)
+
+    logger.debug("Merged them")
+
+
+def read_database_selection(kvk_selection_input_file_name, kvk_selection_kvk_key):
+    """
+    Read the external data base that contains a selection of kvk number we want to process
+
+    Parameters
+    ----------
+    kvk_selection_input_file_name: str
+        Name of the kvk selection excel file
+    kvk_selection_kvk_key: str
+        Name of the column containing the kvk numbers
+
+    Returns
+    -------
+    list:
+        List with kvk number to select
+
+    """
+    logger.info("Reading selection data base")
+    df = pd.read_excel(kvk_selection_input_file_name)
+
+    df.drop_duplicates([kvk_selection_kvk_key], inplace=True)
+
+    kvk_selection = df[kvk_selection_kvk_key].dropna().astype(int)
+
+    kvk_selection_list = list(kvk_selection.values)
+
+    return kvk_selection_list

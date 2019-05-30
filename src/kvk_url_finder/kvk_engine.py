@@ -136,9 +136,7 @@ class KvKUrlParser(mp.Process):
                  hostname=None,
                  address_input_file_name=None,
                  url_input_file_name=None,
-                 kvk_selection_input_file_name=None,
-                 kvk_selection_kvk_key=None,
-                 kvk_selection_kvk_sub_key=None,
+                 kvk_selection=None,
                  address_keys=None,
                  kvk_url_keys=None,
                  reset_database=False,
@@ -224,10 +222,7 @@ class KvKUrlParser(mp.Process):
         self.filter_kvks = filter_kvks
         self.current_time = datetime.datetime.now(pytz.timezone(self.timezone))
 
-        self.kvk_selection_input_file_name = kvk_selection_input_file_name
-        self.kvk_selection_kvk_key = kvk_selection_kvk_key
-        self.kvk_selection_kvk_sub_key = kvk_selection_kvk_sub_key
-        self.kvk_selection = None
+        self.kvk_selection = kvk_selection
 
         self.impose_url_for_kvk = impose_url_for_kvk
 
@@ -321,7 +316,7 @@ class KvKUrlParser(mp.Process):
         if self.kvk_range_process.selection is not None:
             kvk_selection = self.kvk_range_process.selection
         elif self.kvk_selection is not None:
-            kvk_selection = list(self.kvk_selection.values)
+            kvk_selection = self.kvk_selection
         else:
             kvk_selection = None
 
@@ -428,8 +423,8 @@ class KvKUrlParser(mp.Process):
                 kvk_proc = self.company_df.index.values[
                            i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
-            if self.kvk_selection_input_file_name is not None:
-                # we have passed a selection file. So explicity add this selection
+            if self.kvk_selection is not None:
+                # we have passed a selection file. So explicitly add this selection
                 kvk_selection = kvk_proc
             else:
                 kvk_selection = None
@@ -439,55 +434,6 @@ class KvKUrlParser(mp.Process):
                 kvk_first = kvk_proc[0]
                 kvk_last = kvk_proc[-1]
                 self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last, selection=kvk_selection))
-
-    def merge_external_database(self):
-        """
-        Merge the external database
-
-        Returns
-        -------
-
-        """
-        self.logger.debug("Start merging..")
-
-        infile = Path(self.kvk_selection_input_file_name)
-        outfile_ext = infile.suffix
-        outfile_base = infile.resolve().stem
-
-        outfile = Path(outfile_base + "_merged" + outfile_ext)
-
-        query = self.CompanyTbl.select()
-        df_sql = pd.DataFrame(list(query.dicts()))
-        df_sql.set_index(KVK_KEY, inplace=True)
-
-        df = pd.read_excel(self.kvk_selection_input_file_name)
-
-        df.rename(columns={self.kvk_selection_kvk_key: KVK_KEY}, inplace=True)
-
-        df[KVK_KEY] = df[KVK_KEY].fillna(0).astype(int)
-
-        df.set_index([KVK_KEY, self.kvk_selection_kvk_sub_key], inplace=True)
-
-        result = df.merge(df_sql, left_on=KVK_KEY, right_on=KVK_KEY)
-
-        result.reset_index(inplace=True)
-        result.rename(columns={KVK_KEY: self.kvk_selection_kvk_key}, inplace=True)
-
-        self.logger.info("Writing merged data base to {}".format(outfile.name))
-        result.to_excel(outfile.name)
-
-        self.logger.debug("Merge them")
-
-    def read_database_selection(self):
-        """
-        Read the external data base that contains a selection of kvk number we want to process
-        """
-        self.logger.info("Reading selection data base")
-        df = pd.read_excel(self.kvk_selection_input_file_name)
-
-        df.drop_duplicates([self.kvk_selection_kvk_key], inplace=True)
-
-        self.kvk_selection = df[self.kvk_selection_kvk_key].dropna().astype(int)
 
     def export_df(self, file_name):
         export_file = Path(file_name)

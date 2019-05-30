@@ -45,7 +45,7 @@ from cbs_utils.misc import (Chdir, make_directory)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.kvk_engine import KvKUrlParser
 from kvk_url_finder.models import DATABASE_TYPES
-from kvk_url_finder.utils import setup_logging
+from kvk_url_finder.utils import (setup_logging, merge_external_database, read_database_selection)
 
 try:
     from kvk_url_finder import __version__
@@ -150,6 +150,8 @@ def _parse_the_command_line_arguments(args):
                         help="Set true in order to process only the kvk entries with missing urls")
     parser.add_argument("--apply_selection", action="store_true",
                         help="Force to apply the selection")
+    parser.add_argument("--kvk_list", help="Give a comman separated list of kvk numbers to process"
+                                           " such as  1,2,3 or just on number")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -209,14 +211,45 @@ def main(args_in):
     kvk_url_keys = kvk_urls_db["keys"]
 
     selection_db = databases.get("kvk_selection_data_base")
-    if selection_db and (selection_db.get("apply_selection", True) or args.apply_selection):
-        kvk_selection_file_name = selection_db["file_name"]
-        kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
-        kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
+    selection_settings = databases.get("kvk_selection")
+    kvk_selection_file_name = None
+    kvk_selection_kvk_nummer = None
+    kvk_selection_kvk_sub_nummer = None
+
+    # check if we want to take a selection by either looking in the selection section of the yaml
+    # file of by looking at the command line arguments
+    if (selection_settings and selection_settings["apply_selection"]) or args.apply_selection:
+        # get the selection type: either list (if we give a list) or database (in case we
+        # get the numbers from an excel file
+        if selection_settings:
+            selection_type = selection_settings.get("type", 'kvk_list')
+        else:
+            selection_type = 'kvk_list'
+        assert selection_type in ("database", "kvk_list")
+
+        if selection_type == "database":
+            if selection_db is None:
+                raise ValueError("database selection is requested but no database is defined")
+            kvk_selection_file_name = selection_db["file_name"]
+            kvk_selection_kvk_nummer = selection_db["kvk_nummer"]
+            kvk_selection_kvk_sub_nummer = selection_db["kvk_sub_nummer"]
+            kvk_selection = read_database_selection(kvk_selection_file_name,
+                                                    kvk_selection_kvk_nummer)
+        else:
+            if args.kvk_list:
+                kvk_selection_str = args.kvk_list
+                try:
+                    kvk_selection = [int(_) for _ in kvk_selection_str.split(",")]
+                except ValueError:
+                    kvk_selection = int(kvk_selection_str)
+            else:
+                kvk_selection = selection_settings["kvk_list"]
+
+        # make sure we have a list
+        if not isinstance(kvk_selection, list):
+            kvk_selection = [kvk_selection]
     else:
-        kvk_selection_file_name = None
-        kvk_selection_kvk_nummer = None
-        kvk_selection_kvk_sub_nummer = None
+        kvk_selection = None
 
     process_settings = settings["process_settings"]
     n_url_count_threshold = process_settings["n_url_count_threshold"]
@@ -322,9 +355,7 @@ def main(args_in):
             progressbar=args.progressbar,
             address_input_file_name=address_input_file_name,
             url_input_file_name=kvk_url_file_name,
-            kvk_selection_input_file_name=kvk_selection_file_name,
-            kvk_selection_kvk_key=kvk_selection_kvk_nummer,
-            kvk_selection_kvk_sub_key=kvk_selection_kvk_sub_nummer,
+            kvk_selection=kvk_selection,
             address_keys=address_keys,
             kvk_url_keys=kvk_url_keys,
             reset_database=args.reset_database,
@@ -342,9 +373,6 @@ def main(args_in):
             rescan_missing_urls=args.rescan_missing_urls
         )
 
-        if kvk_parser.kvk_selection_input_file_name:
-            kvk_parser.read_database_selection()
-
         if args.dumpdb:
             logger.info("Dumping database to {}".format(args.dumpdb))
             kvk_parser.export_db(args.dumpdb)
@@ -359,7 +387,8 @@ def main(args_in):
             # in case we do export, we have to import all data frames
             only_comp_df = False
         else:
-            # in case we are not export but processing, in the first round only load the company dataframe
+            # in case we are not export but processing, in the first round only load the company
+            # dataframe
             only_comp_df = True
 
         kvk_parser.populate_dataframes(only_the_company_df=only_comp_df, only_found_urls=True)
@@ -378,97 +407,103 @@ def main(args_in):
         # either merge the database with an external database (if the merge option is given) or
         # process all the urls
         if args.merge_database:
-            kvk_parser.merge_external_database()
-        else:
+            if kvk_selection_kvk_sub_nummer is None:
+                raise ValueError("You want to merge but did not defined a database selection with"
+                                 "proper kvk selection sub numme")
+            logger.info("Merge kvk selection database  {}".format(kvk_selection_file_name))
+            merge_external_database(kvk_parser.CompanyTbl, kvk_selection_file_name,
+                                    kvk_selection_kvk_nummer, kvk_selection_kvk_sub_nummer)
+            logger.info("Goodbye for now:-)")
+            sys.exit(0)
 
-            # create the object and do you thing
-            jobs = list()
-            for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
+        # create the object and do you thing
+        jobs = list()
+        for i_proc, kvk_range in enumerate(kvk_parser.kvk_ranges):
 
-                if use_subprocess:
-                    logger.info("Do not make object again for multiprocessing on windows")
-                    # for multiprocessing on windows, we create a command line call to the
-                    # utility with the proper ranges
-                    cmd = list()
-                    cmd.append(script_name)
-                    cmd.append(str(Path(sys.argv[1]).absolute()))
-                    cmd.extend(["--kvk_start", str(kvk_range["start"])])
-                    cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
-                    cmd.extend(sys.argv[2:])
-                    cmd.extend(["--n_processes", "1"])
-                    cmd.extend(["--nosubprocess"])
-                    cmd.extend(["--process_nr", str(i_proc)])
-                    cmd.extend(["--write_log"])
-                    cmd.extend(["--log_file_base", "{}_{:02d}".format(args.log_file_base,
-                                                                      i_proc)])
-                    logger.debug(cmd)
-                    process = subprocess.Popen(cmd, shell=False)
-                    jobs.append(process)
+            if use_subprocess:
+                logger.info("Do not make object again for multiprocessing on windows")
+                # for multiprocessing on windows, we create a command line call to the
+                # utility with the proper ranges
+                cmd = list()
+                cmd.append(script_name)
+                cmd.append(str(Path(sys.argv[1]).absolute()))
+                cmd.extend(["--kvk_start", str(kvk_range["start"])])
+                cmd.extend(["--kvk_stop", str(kvk_range["stop"])])
+                cmd.extend(sys.argv[2:])
+                cmd.extend(["--n_processes", "1"])
+                cmd.extend(["--nosubprocess"])
+                cmd.extend(["--process_nr", str(i_proc)])
+                cmd.extend(["--write_log"])
+                cmd.extend(["--log_file_base", "{}_{:02d}".format(args.log_file_base,
+                                                                  i_proc)])
+                logger.debug(cmd)
+                process = subprocess.Popen(cmd, shell=False)
+                jobs.append(process)
+            else:
+                # for linux -or- for single processing on windows, create a new object which
+                # we are going to launch
+                kvk_sub_parser = KvKUrlParser(
+                    database_name=database_name,
+                    database_type=database_type,
+                    max_cache_dir_size=max_cache_dir_size,
+                    search_urls=search_urls,
+                    internet_scraping=internet_scraping,
+                    store_html_to_cache=store_html_to_cache,
+                    progressbar=args.progressbar,
+                    kvk_range_process=kvk_range,
+                    maximum_entries=maximum_entries,
+                    force_process=args.force_process,
+                    impose_url_for_kvk=impose_url_for_kvk,
+                    threshold_distance=threshold_distance,
+                    threshold_string_match=threshold_string_match,
+                    i_proc=i_proc + args.process_nr,
+                    number_of_processes=args.n_processes,
+                    log_file_base=args.log_file_base,
+                    log_level_file=args.log_level_file,
+                    singlebar=args.singlebar,
+                    password=args.password,
+                    user=user,
+                    hostname=args.hostname,
+                    older_time=older_time,
+                    filter_urls=filter_urls,
+                    filter_kvks=filter_kvks,
+                    rescan_missing_urls=args.rescan_missing_urls
+                )
+                # populate the dataframes again, now including all tables
+                kvk_sub_parser.populate_dataframes()
+
+                if args.n_processes > 1:
+                    # we should not be running on windows if we are here
+                    assert platform.system() != "Windows"
+                    kvk_sub_parser.start()
                 else:
-                    # for linux -or- for single processing on windows, create a new object which
-                    # we are going to launch
-                    kvk_sub_parser = KvKUrlParser(
-                        database_name=database_name,
-                        database_type=database_type,
-                        max_cache_dir_size=max_cache_dir_size,
-                        search_urls=search_urls,
-                        internet_scraping=internet_scraping,
-                        store_html_to_cache=store_html_to_cache,
-                        progressbar=args.progressbar,
-                        kvk_range_process=kvk_range,
-                        maximum_entries=maximum_entries,
-                        force_process=args.force_process,
-                        impose_url_for_kvk=impose_url_for_kvk,
-                        threshold_distance=threshold_distance,
-                        threshold_string_match=threshold_string_match,
-                        i_proc=i_proc + args.process_nr,
-                        number_of_processes=args.n_processes,
-                        log_file_base=args.log_file_base,
-                        log_level_file=args.log_level_file,
-                        singlebar=args.singlebar,
-                        password=args.password,
-                        user=user,
-                        hostname=args.hostname,
-                        older_time=older_time,
-                        filter_urls=filter_urls,
-                        filter_kvks=filter_kvks,
-                        rescan_missing_urls=args.rescan_missing_urls
-                    )
-                    # populate the dataframes again, now including all tables
-                    kvk_sub_parser.populate_dataframes()
+                    # for one cpu we can directly call run
+                    kvk_sub_parser.run()
 
-                    if args.n_processes > 1:
-                        # we should not be running on windows if we are here
-                        assert platform.system() != "Windows"
-                        kvk_sub_parser.start()
-                    else:
-                        # for one cpu we can directly call run
-                        kvk_sub_parser.run()
+                jobs.append(kvk_sub_parser)
 
-                    jobs.append(kvk_sub_parser)
+        if args.n_processes > 1:
+            if not use_subprocess:
+                # this will block the script until all jobs are done
+                for job in jobs:
+                    job.join()
 
-            if args.n_processes > 1:
-                if not use_subprocess:
-                    # this will block the script until all jobs are done
-                    for job in jobs:
-                        job.join()
+                for i_proc, process in enumerate(jobs):
+                    db = process.database
+                    if not db.is_closed():
+                        logger.info(f"Closing process {i_proc} ")
+                        db.close()
+            else:
+                for ip, process in enumerate(jobs):
+                    logger.info("Waiting for process {} : {}".format(ip, process.pid))
+                    try:
+                        os.waitpid(process.pid, 0)
+                        logger.debug("DONE: {} : {}".format(ip, process.pid))
+                    except ChildProcessError:
+                        logger.debug("NoMore: {} : {}".format(ip, process.pid))
 
-                    for i_proc, process in enumerate(jobs):
-                        db = process.database
-                        if not db.is_closed():
-                            logger.info(f"Closing process {i_proc} ")
-                            db.close()
-                else:
-                    for ip, process in enumerate(jobs):
-                        logger.info("Waiting for process {} : {}".format(ip, process.pid))
-                        try:
-                            os.waitpid(process.pid, 0)
-                            logger.debug("DONE: {} : {}".format(ip, process.pid))
-                        except ChildProcessError:
-                            logger.debug("NoMore: {} : {}".format(ip, process.pid))
-
-            logger.info("Goodbye!")
-            logger.debug("Really:-)")
+        logger.info("Goodbye!")
+        logger.debug("Really:-)")
 
 
 def _run():
