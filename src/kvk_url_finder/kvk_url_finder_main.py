@@ -152,6 +152,8 @@ def _parse_the_command_line_arguments(args):
                         help="Force to apply the selection")
     parser.add_argument("--kvk_list", help="Give a comman separated list of kvk numbers to process"
                                            " such as  1,2,3 or just on number")
+    parser.add_argument("--no_internet", action="store_true",
+                        help="Run the whole process with connecting to intennet")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -173,6 +175,8 @@ def main(args_in):
     database_name = general.get("database_name", "kvk_db")
     store_html_to_cache = general.get("store_html_to_cache", False)
     internet_scraping = general.get("internet_scraping", True)
+    if args.no_internet:
+        internet_scraping = False
     search_urls = general.get("search_urls", False)
     max_cache_dir_size_str = general.get("max_cache_dir_size", None)
     certificate = general.get("certificate")
@@ -272,7 +276,7 @@ def main(args_in):
         if (selection_settings and selection_settings["apply_selection"]) or args.apply_selection:
             # get the selection type: either list (if we give a list) or database (in case we
             # get the numbers from an excel file
-            if selection_settings:
+            if selection_settings and args.kvk_list is None:
                 selection_type = selection_settings.get("type", 'kvk_list')
             else:
                 selection_type = 'kvk_list'

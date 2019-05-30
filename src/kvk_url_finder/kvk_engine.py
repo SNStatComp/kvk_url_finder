@@ -1644,6 +1644,8 @@ class UrlCollection(object):
 
         self.logger.debug("Start Url Search : {}".format(url))
 
+        scrape_url = url_info.needs_update and self.internet_scraping
+
         url_analyse = UrlSearchStrings(url,
                                        search_strings={
                                            POSTAL_CODE_KEY: ZIP_REGEXP,
@@ -1654,31 +1656,32 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
-                                       scrape_url=url_info.needs_update
+                                       scrape_url=scrape_url
                                        )
 
         # TODO: transfer this outside
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
-        if not url_info.needs_update:
+        if not scrape_url:
+            url_prop = self.urls_df.loc[url, :]
             logger.debug("We skipped the scraping so get the previous data ")
-            url_analyse.exists = True
+            url_analyse.exists = url_prop[BESTAAT_KEY]
             # we have not scraped the url, but we want to set the info anyways
-            postcodes = self.urls_df.loc[url, ALL_PSC_KEY]
+            postcodes = url_prop[ALL_PSC_KEY]
             if postcodes is not None and postcodes != "":
                 url_analyse.matches[POSTAL_CODE_KEY] = postcodes.split(",")
-            btw_nummers = self.urls_df.loc[url, ALL_BTW_KEY]
+            btw_nummers = url_prop[ALL_BTW_KEY]
             if btw_nummers is not None and btw_nummers != "":
                 url_analyse.matches[BTW_KEY] = btw_nummers.split(",")
-            kvk_nummers = self.urls_df.loc[url, ALL_KVK_KEY]
+            kvk_nummers = url_prop[ALL_KVK_KEY]
             if kvk_nummers is not None and kvk_nummers != "":
                 url_analyse.matches[KVK_KEY] = kvk_nummers.split(",")
 
-            e_commerce = self.urls_df.loc[url, ECOMMERCE_KEY]
+            e_commerce = url_prop[ECOMMERCE_KEY]
             if e_commerce is not None and e_commerce != "":
                 url_info.ecommerce = e_commerce.split(",")
 
-            social_media = self.urls_df.loc[url, SOCIAL_MEDIA_KEY]
+            social_media = url_prop[SOCIAL_MEDIA_KEY]
             if social_media is not None and social_media != "":
                 url_info.social_media = social_media.split(",")
         else:
@@ -1704,7 +1707,7 @@ class UrlCollection(object):
                 self.urls_df.loc[url, SOCIAL_MEDIA_KEY] = \
                     paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
 
-            if url_analyse.exists:
+            if url_analyse.exists is not None and url_analyse.exists:
                 self.urls_df.loc[url, BESTAAT_KEY] = True
                 self.urls_df.loc[url, SSL_KEY] = url_analyse.req.ssl
                 self.urls_df.loc[url, SSL_VALID_KEY] = url_analyse.req.ssl_valid
@@ -1763,11 +1766,7 @@ class UrlCollection(object):
             else:
                 url_info.processing_time = processing_time
 
-            # connect to the url and analyse the contents of a static page
-            if self.internet_scraping:
-                url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
-            else:
-                url_analyse = None
+            url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
 
             url_info.url_analyse = url_analyse
 
