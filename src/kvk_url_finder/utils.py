@@ -459,7 +459,7 @@ def read_sql_table(table_name, connection, sql_command=None,
         df.to_pickle(cache_file)
         logger.info("Done")
 
-    return df
+    return df, sql_command
 
 
 def get_string_name_from_df(column_name, row, index, dataframe):

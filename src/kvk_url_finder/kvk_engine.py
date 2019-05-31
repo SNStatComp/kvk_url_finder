@@ -333,12 +333,13 @@ class KvKUrlParser(mp.Process):
         else:
             selection = kvk_selection
 
-        sql_table = read_sql_table(table_name="company", connection=self.database,
-                                   variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
-                                   upper=stop, max_query=self.maximum_entries,
-                                   force_process=self.force_process,
-                                   older_time=self.older_time,
-                                   selection=selection)
+        sql_table, sql_command = read_sql_table(table_name="company", connection=self.database,
+                                                variable=KVK_KEY, datetime_key=DATETIME_KEY,
+                                                lower=start,
+                                                upper=stop, max_query=self.maximum_entries,
+                                                force_process=self.force_process,
+                                                older_time=self.older_time,
+                                                selection=selection)
         self.company_df = sql_table
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
@@ -352,14 +353,15 @@ class KvKUrlParser(mp.Process):
             logger.debug("Could not convert the date times in the company table. Probably empty")
 
         if not only_the_company_df:
+            sql = re.sub("from company", "from address", sql_command)
 
-            self.address_df = read_sql_table(table_name="address", connection=self.database,
-                                             variable=KVK_KEY,
-                                             selection=list(self.company_df.index))
-            self.website_df = read_sql_table(table_name="web_site", connection=self.database,
-                                             variable=COMPANY_ID_KEY,
-                                             lower=start, upper=stop,
-                                             selection=list(self.company_df.index))
+            self.address_df, sc = read_sql_table(table_name="address", connection=self.database,
+                                                 sql_command=sql)
+            sql = re.sub("from company", "from web_site", sql_command)
+            sql = re.sub(f"where {KVK_KEY}", f"where {COMPANY_ID_KEY}", sql)
+            sql = re.sub(f"order by {KVK_KEY}", f"order by {COMPANY_ID_KEY}", sql)
+            self.website_df, sc = read_sql_table(table_name="web_site", connection=self.database,
+                                                 sql_command=sql)
             self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
                                    inplace=True)
 
@@ -370,8 +372,8 @@ class KvKUrlParser(mp.Process):
             else:
                 url_selection = None
 
-            self.url_df = read_sql_table(table_name="url_nl", connection=self.database,
-                                         variable=URL_KEY, selection=url_selection)
+            self.url_df, sc = read_sql_table(table_name="url_nl", connection=self.database,
+                                             variable=URL_KEY, selection=url_selection)
 
             self.url_df.set_index(URL_KEY, inplace=True, drop=True)
             self.url_df.sort_index(inplace=True)
@@ -782,7 +784,7 @@ class KvKUrlParser(mp.Process):
                     kvk_nummer=match.matched_kvk_nummer,
                 ).where(self.UrlNLTbl.url == url)
                 query.execute()
-            #if match.matched_btw_nummer:
+            # if match.matched_btw_nummer:
             #    query = self.UrlNLTbl.update(
             #        btw_nummer=match.btw_nummer,
             #    ).where(self.UrlNLTbl.url == url)
