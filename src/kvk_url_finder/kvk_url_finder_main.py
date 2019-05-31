@@ -492,6 +492,7 @@ def main(args_in):
                     rescan_missing_urls=args.rescan_missing_urls
                 )
                 # populate the dataframes again, now including all tables
+                logger.debug("Populating dataframes for second time")
                 kvk_sub_parser.populate_dataframes()
 
                 if args.n_processes > 1:

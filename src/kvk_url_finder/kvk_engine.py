@@ -325,9 +325,9 @@ class KvKUrlParser(mp.Process):
         if self.rescan_missing_urls:
             sql_command = f"select {COMPANY_ID_KEY}, count(*)-count({BESTAAT_KEY}) as missing "
             sql_command += "from web_site"
-            sel = read_sql_table(table_name="web_site", connection=self.database,
-                                 variable=COMPANY_ID_KEY, lower=start, upper=stop,
-                                 sql_command=sql_command, group_by=COMPANY_ID_KEY)
+            sel, sql = read_sql_table(table_name="web_site", connection=self.database,
+                                      variable=COMPANY_ID_KEY, lower=start, upper=stop,
+                                      sql_command=sql_command, group_by=COMPANY_ID_KEY)
             missing = sel[sel["missing"] > 0]
             selection = list(missing[COMPANY_ID_KEY].values)
         else:
@@ -353,15 +353,25 @@ class KvKUrlParser(mp.Process):
             logger.debug("Could not convert the date times in the company table. Probably empty")
 
         if not only_the_company_df:
-            sql = re.sub("from company", "from address", sql_command)
+            sql = None
+            var = None
+            if selection is None:
+                sql = re.sub("from company", "from address", sql_command)
+                logger.debug(f"External sql command: {sql}")
+            else:
+                var = KVK_KEY
 
             self.address_df, sc = read_sql_table(table_name="address", connection=self.database,
-                                                 sql_command=sql)
-            sql = re.sub("from company", "from web_site", sql_command)
-            sql = re.sub(f"where {KVK_KEY}", f"where {COMPANY_ID_KEY}", sql)
-            sql = re.sub(f"order by {KVK_KEY}", f"order by {COMPANY_ID_KEY}", sql)
+                                                 sql_command=sql, variable=var, selection=selection)
+            if selection is None:
+                sql = re.sub("from company", "from web_site", sql_command)
+                sql = re.sub(f"where {KVK_KEY}", f"where {COMPANY_ID_KEY}", sql)
+                sql = re.sub(f"order by {KVK_KEY}", f"order by {COMPANY_ID_KEY}", sql)
+                logger.debug(f"External sql command: {sql}")
+            else:
+                var = COMPANY_ID_KEY
             self.website_df, sc = read_sql_table(table_name="web_site", connection=self.database,
-                                                 sql_command=sql)
+                                                 sql_command=sql, variable=var)
             self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
                                    inplace=True)
 
