@@ -26,6 +26,7 @@ not to profiling
 
 import argparse
 import datetime
+import dateutil
 import getpass
 import logging
 import logging.config
@@ -35,6 +36,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import pytz
 
 import pandas as pd
 import pytimeparse
@@ -157,6 +159,7 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--force_ssl_check", action="store_true",
                         help="Force to check the ssl https schame. If false (default) try"
                              "to get it from previous run")
+    parser.add_argument("--timezone", default="Europe/Amsterdam", help="Specify the time zone")
 
     # parse the command line
     parsed_arguments = parser.parse_args(args)
@@ -195,7 +198,16 @@ def main(args_in):
     if older_time_str:
         # use pytimeparse to allow general string notition of delta time, 1 h, 3 days, etc
         older_time_in_secs = pytimeparse.parse(older_time_str)
+        if older_time_in_secs is None:
+            # parse gave none, perhaps we have a normal time. Convert to calculate the time diff
+            timezone = pytz.timezone(args.timezone)
+            current_time = datetime.datetime.now(timezone)
+            other_time = dateutil.parser.parse(older_time_str).astimezone(timezone)
+            delta_time = current_time - other_time
+            older_time_in_secs = delta_time / pd.to_timedelta(1, 's')
+        # convert delta time to differnce in seconds
         older_time = datetime.timedelta(seconds=older_time_in_secs)
+
     else:
         older_time = None
 
