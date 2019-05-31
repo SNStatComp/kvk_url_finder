@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger, is_postcode, print_banner)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
-                                    get_clean_url)
+                                    get_clean_url, RequestUrl)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
@@ -1670,7 +1670,7 @@ class UrlCollection(object):
         ssl_valid = None
         url_prop = self.urls_df.loc[url, :]
         if url_prop[BESTAAT_KEY] is not None and not url_prop[BESTAAT_KEY]:
-            logger.warning(f"Url {url} does not exist based on the previous run. Donot scrape")
+            logger.warning(f"Url {url} does not exist based on the previous run. Don't scrape")
             scrape_url = False
             schema = "https"
 
@@ -1680,6 +1680,10 @@ class UrlCollection(object):
             else:
                 schema = "http"
             ssl_valid = url_prop[SSL_VALID_KEY]
+            req = RequestUrl(url, schema=schema, ssl_valid=ssl_valid)
+            if req.status_code != 200:
+                logger.warning(f"The status code of {url} was not 200. Do not scrape")
+                scrape_url = False
 
         url_analyse = UrlSearchStrings(url,
                                        search_strings={
