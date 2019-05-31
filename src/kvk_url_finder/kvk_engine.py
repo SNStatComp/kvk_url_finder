@@ -355,14 +355,16 @@ class KvKUrlParser(mp.Process):
         if not only_the_company_df:
             sql = None
             var = None
+            sel = None
             if selection is None:
                 sql = re.sub("from company", "from address", sql_command)
                 logger.debug(f"External sql command: {sql}")
             else:
                 var = KVK_KEY
+                sel = list(self.company_df.index.values)
 
             self.address_df, sc = read_sql_table(table_name="address", connection=self.database,
-                                                 sql_command=sql, variable=var, selection=selection)
+                                                 sql_command=sql, variable=var, selection=sel)
             if selection is None:
                 sql = re.sub("from company", "from web_site", sql_command)
                 sql = re.sub(f"where {KVK_KEY}", f"where {COMPANY_ID_KEY}", sql)
@@ -371,7 +373,8 @@ class KvKUrlParser(mp.Process):
             else:
                 var = COMPANY_ID_KEY
             self.website_df, sc = read_sql_table(table_name="web_site", connection=self.database,
-                                                 sql_command=sql, variable=var)
+                                                 sql_command=sql, variable=var,
+                                                 lower=start, upper=stop, selection=sel)
             self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
                                    inplace=True)
 
