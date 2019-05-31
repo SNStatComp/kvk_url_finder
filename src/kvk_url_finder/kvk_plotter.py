@@ -3,12 +3,13 @@ import logging
 import os
 import sys
 from pathlib import Path
-import numpy as np
-import statsmodels.api as sm
 
+import dateutil
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import psycopg2
+import pytz
 
 from kvk_url_finder.utils import read_sql_table
 
@@ -62,10 +63,13 @@ def _parse_the_command_line_arguments(args):
     parser.add_argument("--all_cores", action="store_true", help="Include all the cores in the "
                                                                  "process time plot")
     parser.add_argument("--last_date", action="store", help="Last date of fit. Default last time")
-    parser.add_argument("--save_image", action="store_true", help="If true, the image is saved to file")
-    parser.add_argument("--show_image", action="store_true", help="If true, show the image", default=True)
-    parser.add_argument("--noshow_image", action="store_false", help="If true, do not show the image", 
-            dest="show_image")
+    parser.add_argument("--start_datetime", action="store", help="Start counting from this date")
+    parser.add_argument("--save_image", action="store_true",
+                        help="If true, the image is saved to file")
+    parser.add_argument("--show_image", action="store_true",
+                        help="If true, show the image", default=True)
+    parser.add_argument("--noshow_image", action="store_false",
+                        help="If true, do not show the image", dest="show_image")
     parser.add_argument("--image_type", action="store", help="Type of the image", default="png")
     parser.add_argument("--number_of_points", action="store", type=int,
                         help="Number of points to use for fit", default=1000)
@@ -79,13 +83,16 @@ def _parse_the_command_line_arguments(args):
 class KvkPlotter(object):
     def __init__(self, database="kvk_db", user="evlt", password=None, hostname="localhost",
                  reset=False, input_file=None, dump_to_file=False, all_cores=False,
-                 n_point_from_end=1000, last_date=None, save_image=False, image_type="png"
+                 n_point_from_end=1000, last_date=None, save_image=False, image_type="png",
+                 start_datetime=None, timezone="Europe/Amsterdam"
                  ):
 
         self.reset = reset
         self.all_cores = all_cores
         self.n_point_from_end = n_point_from_end
         self.last_date = last_date
+        self.start_datetime = start_datetime
+        self.timezone = timezone
         self.save_image = save_image
         self.image_type = image_type
         self.dump_to_file = dump_to_file
@@ -100,7 +107,7 @@ class KvkPlotter(object):
 
     def plot_website_ranking(self):
         table_name = 'web_site'
-        df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
+        df, = read_sql_table(table_name, connection=self.connection, reset=self.reset)
 
         if self.dump_to_file:
             df.to_csv(table_name + ".csv")
@@ -128,7 +135,6 @@ class KvkPlotter(object):
             image_name = ".".join([table_name, self.image_type])
             logger.info(f"Saving to  {image_name}")
             ax.figure.savefig(image_name)
-
 
     def read_input_file(self):
 
@@ -174,7 +180,7 @@ class KvkPlotter(object):
         df_sel = self.read_input_file()
 
         table_name = 'company'
-        data_df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
+        data_df, = read_sql_table(table_name, connection=self.connection, reset=self.reset)
         # df[df["datetime"].isnull]
         data_df.dropna(axis=0, subset=["datetime"], inplace=True)
 
@@ -239,7 +245,16 @@ class KvkPlotter(object):
 
     def plot_processing_time(self):
         table_name = 'company'
-        df = read_sql_table(table_name, connection=self.connection, reset=self.reset)
+        if self.start_datetime:
+            timezone = pytz.timezone(self.timezone)
+            start_date = dateutil.parser.parse(self.start_datetime).astimezone(timezone)
+            sql_command = f"select * from {table_name} where datetime >= '{start_date.isoformat()}'"
+        else:
+            sql_command = None
+
+        df, slq = read_sql_table(table_name, connection=self.connection, reset=self.reset,
+                                 sql_command=sql_command)
+
         df.dropna(axis=0, subset=["datetime"], inplace=True)
         df.sort_values(["datetime"], inplace=True)
         df.reset_index(inplace=True)
@@ -305,6 +320,7 @@ def main(args_in):
                              n_point_from_end=args.number_of_points,
                              last_date=args.last_date,
                              save_image=args.save_image,
+                             start_datetime=args.start_datetime,
                              )
 
     if args.type in ("process_time", "all"):
