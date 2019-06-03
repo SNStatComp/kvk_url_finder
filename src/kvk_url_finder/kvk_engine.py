@@ -1690,6 +1690,9 @@ class UrlCollection(object):
             schema = "https"
 
         if not self.force_ssl_check and url_prop[SSL_KEY] is not None:
+            # in case we already have a ssl key of the previous run stored in the database, use
+            # this value. However, if force_ssl_check was set, we must retrieve the ssl key again,
+            # so we keep the schema = None in that case
             if url_prop[SSL_KEY]:
                 schema = "https"
             else:

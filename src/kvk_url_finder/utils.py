@@ -149,7 +149,15 @@ class UrlCompanyRanking(object):
 
         # turn the lists into set such tht we only get the unique values
         self.postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-        self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+        kvk_int_list = list()
+        for kvk in kvk_lijst:
+            try:
+                kvk_int = int(re.sub(r"\.", "", kvk))
+            except ValueError:
+                continue
+            else:
+                kvk_int_list.append(kvk_int)
+        self.kvk_set = set(kvk_int_list)
         self.btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
 
         if self.company_postcodes:
