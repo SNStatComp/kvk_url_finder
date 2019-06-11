@@ -5,6 +5,7 @@ import Levenshtein
 import tldextract
 import difflib
 import pandas as pd
+from pathlib import Path
 
 from cbs_utils.misc import (create_logger, merge_loggers, standard_postcode)
 from cbs_utils.web_scraping import UrlSearchStrings
@@ -112,7 +113,7 @@ class UrlCompanyRanking(object):
                     df[url] = 0
                 df.loc[key, url] += 1
 
-        # clip the count per item to 0 or 1 (no or at least one occurance)
+        # clip the count per item to 0 or 1 (no or at least one occurrence)
         contact_hits_per_url = df.astype(bool).sum()
 
         # create a data frame for all urls per match in which we have the match and number of url
@@ -127,7 +128,9 @@ class UrlCompanyRanking(object):
 
             # overwrite the match list of the current column postcode, kvk, btw such that the
             # values with many other items is on top
-            self.url_analyse.matches[key] = list(match_df["match"].values)
+            match_list = list(match_df["match"].values)
+            if len(match_list) == len(self.url_analyse.matches[key]):
+                self.url_analyse.matches[key] = match_list
 
         self.logger.debug("got sorted url {}".format(self.url_analyse))
 
@@ -146,7 +149,15 @@ class UrlCompanyRanking(object):
 
         # turn the lists into set such tht we only get the unique values
         self.postcode_set = set([standard_postcode(pc) for pc in postcode_lijst])
-        self.kvk_set = set([int(re.sub(r"\.", "", kvk)) for kvk in kvk_lijst])
+        kvk_int_list = list()
+        for kvk in kvk_lijst:
+            try:
+                kvk_int = int(re.sub(r"\.", "", kvk))
+            except ValueError:
+                continue
+            else:
+                kvk_int_list.append(kvk_int)
+        self.kvk_set = set(kvk_int_list)
         self.btw_set = set([re.sub(r"\.", "", btw) for btw in btw_lijst])
 
         if self.company_postcodes:
@@ -241,9 +252,11 @@ class Range(object):
         if range_dict is not None:
             self.start = range_dict["start"]
             self.stop = range_dict["stop"]
+            self.selection = range_dict["selection"]
         else:
             self.start = None
             self.stop = None
+            self.selection = None
 
 
 def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=10000000):
@@ -251,7 +264,10 @@ def paste_strings(string_list: list, separator=",", max_length=256, max_cnt=1000
 
     # note that we reverse the list, we can can peel off from the back
     try:
-        result = separator.join(string_list)
+        try:
+            result = separator.join(string_list)
+        except TypeError:
+            result = separator.join([str(_) for _ in string_list])
     except TypeError:
         result = None
     else:
@@ -402,9 +418,13 @@ def read_sql_table(table_name, connection, sql_command=None,
     if variable is not None:
         # column  name is given. See if we need to filter on a range of this column
         if selection is not None:
-            # if  a selection is given over ride the lower/upper range
-            sql_command += " " + "where {} in ({})".format(variable,
-                                                           ",".join([str(_) for _ in selection]))
+            sql_command += " " + "where {} in ".format(variable)
+            if isinstance(selection[0], str):
+                # for string, add '' to the list
+                sql_command += "({})".format(",".join(["'{}'".format(_) for _ in selection]))
+            else:
+                # if  a selection is given over ride the lower/upper range
+                sql_command += "({})".format(",".join([str(_) for _ in selection]))
         elif lower is not None or upper is not None:
             if lower is not None and upper is not None:
                 sql_command += " " + f"where {variable} between {lower} and {upper}"
@@ -447,7 +467,7 @@ def read_sql_table(table_name, connection, sql_command=None,
         df.to_pickle(cache_file)
         logger.info("Done")
 
-    return df
+    return df, sql_command
 
 
 def get_string_name_from_df(column_name, row, index, dataframe):
@@ -477,3 +497,84 @@ def get_string_name_from_df(column_name, row, index, dataframe):
         col_str = dataframe.loc[index, column_name]
 
     return col_str
+
+
+def merge_external_database(CompanyTbl, kvk_selection_input_file_name,
+                            kvk_selection_kvk_key, kvk_selection_kvk_sub_key
+                            ):
+    """
+    Merge an external database with the sql table and export
+
+    Parameters
+    ----------
+    CompanyTbl: object
+        Object with the company sql table
+    kvk_selection_input_file_name: str
+        Name of the exel file to merge with the table
+    kvk_selection_kvk_key: str
+        key in the excel file referring to the kvk key
+    kvk_selection_kvk_sub_key: str
+        key in the excel file referring to the kvk sub key
+
+    """
+    logger.debug("Start merging..")
+
+    infile = Path(kvk_selection_input_file_name)
+    outfile_ext = infile.suffix
+    outfile_base = infile.resolve().stem
+
+    outfile = Path(outfile_base + "_merged" + outfile_ext)
+
+    query = CompanyTbl.select()
+    df_sql = pd.DataFrame(list(query.dicts()))
+    df_sql.set_index(KVK_KEY, inplace=True)
+
+    df = pd.read_excel(kvk_selection_input_file_name)
+
+    df.rename(columns={kvk_selection_kvk_key: KVK_KEY}, inplace=True)
+
+    df[KVK_KEY] = df[KVK_KEY].fillna(0).astype(int)
+
+    df.set_index([KVK_KEY, kvk_selection_kvk_sub_key], inplace=True)
+
+    result = df.merge(df_sql, left_on=KVK_KEY, right_on=KVK_KEY)
+
+    result.reset_index(inplace=True)
+    result.rename(columns={KVK_KEY: kvk_selection_kvk_key}, inplace=True)
+
+    logger.info("Writing merged data base to {}".format(outfile.name))
+    result.to_excel(outfile.name)
+
+    logger.debug("Merged them")
+
+
+def read_database_selection(kvk_selection_input_file_name, kvk_selection_kvk_key):
+    """
+    Read the external data base that contains a selection of kvk number we want to process
+
+    Parameters
+    ----------
+    kvk_selection_input_file_name: str
+        Name of the kvk selection excel file
+    kvk_selection_kvk_key: str
+        Name of the column containing the kvk numbers
+
+    Returns
+    -------
+    list:
+        List with kvk number to select
+
+    """
+    logger.info(f"Reading selection data base from {kvk_selection_input_file_name}")
+    df = pd.read_excel(kvk_selection_input_file_name)
+
+    logger.debug(f"Dropping duplicates")
+    df.drop_duplicates([kvk_selection_kvk_key], inplace=True)
+
+    logger.debug(f"Converting to series")
+    kvk_selection = df[kvk_selection_kvk_key].dropna().astype(int)
+
+    logger.debug(f"Converting to list")
+    kvk_selection_list = list(kvk_selection.values)
+
+    return kvk_selection_list

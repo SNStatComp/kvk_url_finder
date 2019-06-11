@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 from cbs_utils.misc import (create_logger, is_postcode, print_banner)
 from cbs_utils.web_scraping import (UrlSearchStrings, BTW_REGEXP, ZIP_REGEXP, KVK_REGEXP,
-                                    get_clean_url)
+                                    get_clean_url, RequestUrl)
 from kvk_url_finder import LOGGER_BASE_NAME, CACHE_DIRECTORY
 from kvk_url_finder.model_variables import COUNTRY_EXTENSIONS, SORT_ORDER_HREFS
 from kvk_url_finder.models import *
@@ -129,6 +129,7 @@ class KvKUrlParser(mp.Process):
                  database_type=None,
                  store_html_to_cache=False,
                  internet_scraping=True,
+                 force_ssl_check=False,
                  search_urls=False,
                  max_cache_dir_size=None,
                  user=None,
@@ -136,9 +137,7 @@ class KvKUrlParser(mp.Process):
                  hostname=None,
                  address_input_file_name=None,
                  url_input_file_name=None,
-                 kvk_selection_input_file_name=None,
-                 kvk_selection_kvk_key=None,
-                 kvk_selection_kvk_sub_key=None,
+                 kvk_selection=None,
                  address_keys=None,
                  kvk_url_keys=None,
                  reset_database=False,
@@ -212,6 +211,7 @@ class KvKUrlParser(mp.Process):
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
         self.internet_scraping = internet_scraping
+        self.force_ssl_check = force_ssl_check
         self.search_urls = search_urls
 
         self.address_keys = address_keys
@@ -224,10 +224,7 @@ class KvKUrlParser(mp.Process):
         self.filter_kvks = filter_kvks
         self.current_time = datetime.datetime.now(pytz.timezone(self.timezone))
 
-        self.kvk_selection_input_file_name = kvk_selection_input_file_name
-        self.kvk_selection_kvk_key = kvk_selection_kvk_key
-        self.kvk_selection_kvk_sub_key = kvk_selection_kvk_sub_key
-        self.kvk_selection = None
+        self.kvk_selection = kvk_selection
 
         self.impose_url_for_kvk = impose_url_for_kvk
 
@@ -290,8 +287,6 @@ class KvKUrlParser(mp.Process):
         self.find_best_matching_url()
 
     def generate_sql_tables(self):
-        if self.kvk_selection_input_file_name:
-            self.read_database_selection()
         self.read_database_addresses()
         self.read_database_urls()
         self.merge_data_base_kvks()
@@ -301,7 +296,7 @@ class KvKUrlParser(mp.Process):
         self.urls_per_kvk_to_sql()
         self.addresses_per_kvk_to_sql()
 
-    def populate_dataframes(self, only_the_company_df=False):
+    def populate_dataframes(self, only_the_company_df=False, only_found_urls=False):
         """
         Read the sql tables into pandas dataframes
 
@@ -320,24 +315,31 @@ class KvKUrlParser(mp.Process):
         """
         start = self.kvk_range_process.start
         stop = self.kvk_range_process.stop
+        if self.kvk_range_process.selection is not None:
+            kvk_selection = self.kvk_range_process.selection
+        elif self.kvk_selection is not None:
+            kvk_selection = self.kvk_selection
+        else:
+            kvk_selection = None
 
         if self.rescan_missing_urls:
             sql_command = f"select {COMPANY_ID_KEY}, count(*)-count({BESTAAT_KEY}) as missing "
             sql_command += "from web_site"
-            sel = read_sql_table(table_name="web_site", connection=self.database,
-                                 variable=COMPANY_ID_KEY, lower=start, upper=stop,
-                                 sql_command=sql_command, group_by=COMPANY_ID_KEY)
+            sel, sql = read_sql_table(table_name="web_site", connection=self.database,
+                                      variable=COMPANY_ID_KEY, lower=start, upper=stop,
+                                      sql_command=sql_command, group_by=COMPANY_ID_KEY)
             missing = sel[sel["missing"] > 0]
             selection = list(missing[COMPANY_ID_KEY].values)
         else:
-            selection = None
+            selection = kvk_selection
 
-        sql_table = read_sql_table(table_name="company", connection=self.database,
-                                   variable=KVK_KEY, datetime_key=DATETIME_KEY, lower=start,
-                                   upper=stop, max_query=self.maximum_entries,
-                                   force_process=self.force_process,
-                                   older_time=self.older_time,
-                                   selection=selection)
+        sql_table, sql_command = read_sql_table(table_name="company", connection=self.database,
+                                                variable=KVK_KEY, datetime_key=DATETIME_KEY,
+                                                lower=start,
+                                                upper=stop, max_query=self.maximum_entries,
+                                                force_process=self.force_process,
+                                                older_time=self.older_time,
+                                                selection=selection)
         self.company_df = sql_table
         self.company_df.set_index(KVK_KEY, inplace=True, drop=True)
         self.company_df.sort_index(inplace=True)
@@ -351,7 +353,40 @@ class KvKUrlParser(mp.Process):
             logger.debug("Could not convert the date times in the company table. Probably empty")
 
         if not only_the_company_df:
-            self.url_df = read_sql_table(table_name="url_nl", connection=self.database)
+            sql = None
+            var = None
+            sel = None
+            if selection is None:
+                sql = re.sub("from company", "from address", sql_command)
+                logger.debug(f"External sql command: {sql}")
+            else:
+                var = KVK_KEY
+                sel = list(self.company_df.index.values)
+
+            self.address_df, sc = read_sql_table(table_name="address", connection=self.database,
+                                                 sql_command=sql, variable=var, selection=sel)
+            if selection is None:
+                sql = re.sub("from company", "from web_site", sql_command)
+                sql = re.sub(f"where {KVK_KEY}", f"where {COMPANY_ID_KEY}", sql)
+                sql = re.sub(f"order by {KVK_KEY}", f"order by {COMPANY_ID_KEY}", sql)
+                logger.debug(f"External sql command: {sql}")
+            else:
+                var = COMPANY_ID_KEY
+            self.website_df, sc = read_sql_table(table_name="web_site", connection=self.database,
+                                                 sql_command=sql, variable=var,
+                                                 lower=start, upper=stop, selection=sel)
+            self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
+                                   inplace=True)
+
+            self.website_df.loc[:, DISTANCE_STRING_MATCH_KEY] = None
+
+            if only_found_urls:
+                url_selection = list(self.website_df[URL_KEY].values)
+            else:
+                url_selection = None
+
+            self.url_df, sc = read_sql_table(table_name="url_nl", connection=self.database,
+                                             variable=URL_KEY, selection=url_selection)
 
             self.url_df.set_index(URL_KEY, inplace=True, drop=True)
             self.url_df.sort_index(inplace=True)
@@ -359,18 +394,6 @@ class KvKUrlParser(mp.Process):
                 self.url_df[DATETIME_KEY] = self.url_df[DATETIME_KEY].dt.tz_convert(self.timezone)
             except AttributeError:
                 logger.debug("Could not convert the date times in the url table. Probably empty")
-
-            self.address_df = read_sql_table(table_name="address", connection=self.database,
-                                             variable=KVK_KEY,
-                                             selection=list(self.company_df.index))
-            self.website_df = read_sql_table(table_name="web_site", connection=self.database,
-                                             variable=COMPANY_ID_KEY,
-                                             lower=start, upper=stop,
-                                             selection=list(self.company_df.index))
-            self.website_df.rename(columns={COMPANY_ID_KEY: KVK_KEY, URL_ID_KEY: URL_KEY},
-                                   inplace=True)
-
-            self.website_df.loc[:, DISTANCE_STRING_MATCH_KEY] = None
 
     def get_kvk_list_per_process(self):
         """
@@ -417,60 +440,44 @@ class KvKUrlParser(mp.Process):
                 kvk_proc = self.company_df.index.values[
                            i_proc * n_per_proc:(i_proc + 1) * n_per_proc]
 
+            if self.kvk_selection is not None:
+                # we have passed a selection file. So explicitly add this selection
+                kvk_selection = kvk_proc
+            else:
+                kvk_selection = None
+
             if kvk_proc.size > 0:
                 logger.info("Getting range")
                 kvk_first = kvk_proc[0]
                 kvk_last = kvk_proc[-1]
-                self.kvk_ranges.append(dict(start=kvk_first, stop=kvk_last))
+                self.kvk_ranges.append(
+                    dict(start=kvk_first, stop=kvk_last, selection=kvk_selection))
 
-    def merge_external_database(self):
-        """
-        Merge the external database
-
-        Returns
-        -------
-
-        """
-        self.logger.debug("Start merging..")
-
-        infile = Path(self.kvk_selection_input_file_name)
-        outfile_ext = infile.suffix
-        outfile_base = infile.resolve().stem
-
-        outfile = Path(outfile_base + "_merged" + outfile_ext)
-
-        query = self.CompanyTbl.select()
-        df_sql = pd.DataFrame(list(query.dicts()))
-        df_sql.set_index(KVK_KEY, inplace=True)
-
-        df = pd.read_excel(self.kvk_selection_input_file_name)
-
-        df.rename(columns={self.kvk_selection_kvk_key: KVK_KEY}, inplace=True)
-
-        df[KVK_KEY] = df[KVK_KEY].fillna(0).astype(int)
-
-        df.set_index([KVK_KEY, self.kvk_selection_kvk_sub_key], inplace=True)
-
-        result = df.merge(df_sql, left_on=KVK_KEY, right_on=KVK_KEY)
-
-        result.reset_index(inplace=True)
-        result.rename(columns={KVK_KEY: self.kvk_selection_kvk_key}, inplace=True)
-
-        self.logger.info("Writing merged data base to {}".format(outfile.name))
-        result.to_excel(outfile.name)
-
-        self.logger.debug("Merge them")
-
-    def read_database_selection(self):
-        """
-        Read the external data base that contains a selection of kvk number we want to process
-        """
-        self.logger.info("Reading selection data base")
-        df = pd.read_excel(self.kvk_selection_input_file_name)
-
-        df.drop_duplicates([self.kvk_selection_kvk_key], inplace=True)
-
-        self.kvk_selection = df[self.kvk_selection_kvk_key].dropna().astype(int)
+    def export_df(self, file_name):
+        export_file = Path(file_name)
+        if export_file.suffix in (".xls", ".xlsx"):
+            self.logger.info(f"Export dataframes to {export_file}")
+            with pd.ExcelWriter(file_name) as writer:
+                for cnt, (naam, df) in enumerate(zip(
+                        ["company_df", "address_df", "website_df", "url_df"],
+                        [self.company_df, self.address_df, self.website_df, self.url_df])):
+                    if df is not None:
+                        self.logger.info(f"Appending sheet {naam}")
+                        try:
+                            df[DATETIME_KEY] = df[DATETIME_KEY].astype(str)
+                        except KeyError:
+                            pass
+                        df.to_excel(writer, sheet_name=naam)
+        elif export_file.suffix == ".csv":
+            for cnt, (naam, df) in enumerate(zip(
+                    ["company_df", "address_df", "website_df", "url_df"],
+                    [self.company_df, self.address_df, self.website_df, self.url_df])):
+                this_name = export_file.stem + "_" + naam + ".csv"
+                self.logger.info(f"Writing to {naam}")
+                if df is not None:
+                    df.to_csv(this_name)
+        else:
+            self.logger.warning(f"Extension {export_file.suffix} not recognised")
 
     def export_db(self, file_name):
 
@@ -487,9 +494,9 @@ class KvKUrlParser(mp.Process):
                     sheetname = table.__name__
                     self.logger.info(f"Appending sheet {sheetname}")
                     df.to_excel(writer, sheet_name=sheetname)
-        elif export_file.suffix in (".csv"):
+        elif export_file.suffix in (".csv", ".pkl"):
             for cnt, table in enumerate([self.CompanyTbl, self.AddressTbl, self.WebsiteTbl]):
-                this_name = export_file.stem + "_" + table.__name__.lower() + ".csv"
+                this_name = export_file.stem + "_" + table.__name__.lower() + export_file.suffix
                 query = table.select()
                 df = pd.DataFrame(list(query.dicts()))
                 try:
@@ -497,7 +504,12 @@ class KvKUrlParser(mp.Process):
                 except KeyError:
                     pass
                 self.logger.info(f"Writing to {this_name}")
-                df.to_csv(this_name)
+                if export_file == ".csv":
+                    df.to_csv(this_name)
+                elif export_file == ".pkl":
+                    df.to_pickle(this_name)
+                else:
+                    raise AssertionError
 
     def merge_data_base_kvks(self):
         """
@@ -621,6 +633,7 @@ class KvKUrlParser(mp.Process):
                                     store_html_to_cache=self.store_html_to_cache,
                                     max_cache_dir_size=self.max_cache_dir_size,
                                     internet_scraping=self.internet_scraping,
+                                    force_ssl_check=self.force_ssl_check,
                                     older_time=self.older_time,
                                     timezone=self.timezone,
                                     exclude_extension=self.exclude_extension,
@@ -686,7 +699,7 @@ class KvKUrlParser(mp.Process):
                 nl_company=False,
                 best_match=False,
                 datetime=datetime
-            ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+            ).where((self.WebsiteTbl.company_id == kvk_nummer) & (self.WebsiteTbl.url_id == url))
             query.execute()
 
             query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
@@ -720,10 +733,10 @@ class KvKUrlParser(mp.Process):
         """
         # url = url_info.url
 
-        logger.debug(f"No match info found  {kvk_nummer} for {url}")
-
         url_analyse = url_info.url_analyse
         match = url_info.match
+
+        logger.debug(f"Updating for url info with match  {kvk_nummer} for {url}")
 
         try:
             ranking_int = int(round(match.ranking))
@@ -745,6 +758,7 @@ class KvKUrlParser(mp.Process):
             url=url,
             getest=True,
             bestaat=url_analyse.exists,
+            nl_company=match.nl_company,
             levenshtein=match.distance,
             string_match=match.string_match,
             url_match=match.url_match,
@@ -755,7 +769,7 @@ class KvKUrlParser(mp.Process):
             has_btw_nr=match.has_btw_nummer,
             ranking=match.ranking,
             datetime=url_analyse.process_time
-        ).where(self.WebsiteTbl.company_id == kvk_nummer and self.WebsiteTbl.url_id == url)
+        ).where((self.WebsiteTbl.company_id == kvk_nummer) & (self.WebsiteTbl.url_id == url))
         query.execute()
 
         try:
@@ -778,12 +792,24 @@ class KvKUrlParser(mp.Process):
         query = self.UrlNLTbl.select().where(self.UrlNLTbl.url == url)
         if query.exists():
             logger.debug(f"Updating UrlNl {url}")
+            if match.matched_postcode:
+                query = self.UrlNLTbl.update(
+                    post_code=match.matched_postcode
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
+            if match.matched_kvk_nummer:
+                query = self.UrlNLTbl.update(
+                    kvk_nummer=match.matched_kvk_nummer,
+                ).where(self.UrlNLTbl.url == url)
+                query.execute()
+            # if match.matched_btw_nummer:
+            #    query = self.UrlNLTbl.update(
+            #        btw_nummer=match.btw_nummer,
+            #    ).where(self.UrlNLTbl.url == url)
+            #    query.execute()
             query = self.UrlNLTbl.update(
                 bestaat=url_analyse.exists,
                 nl_company=match.nl_company,
-                post_code=match.matched_postcode,
-                kvk_nummer=match.matched_kvk_nummer,
-                btw_nummer=match.btw_nummer,
                 datetime=url_analyse.process_time,
                 ssl=ssl,
                 ssl_valid=ssl_valid,
@@ -1420,6 +1446,7 @@ class CompanyUrlMatch(object):
                  store_html_to_cache: bool = False,
                  max_cache_dir_size: int = None,
                  internet_scraping: bool = True,
+                 force_ssl_check=False,
                  older_time: datetime.timedelta = None,
                  timezone=None,
                  exclude_extension=None,
@@ -1472,6 +1499,7 @@ class CompanyUrlMatch(object):
                                         store_html_to_cache=store_html_to_cache,
                                         max_cache_dir_size=max_cache_dir_size,
                                         internet_scraping=internet_scraping,
+                                        force_ssl_check=force_ssl_check,
                                         older_time=self.older_time, timezone=self.timezone,
                                         exclude_extensions=exclude_extension,
                                         filter_urls=self.filter_urls,
@@ -1539,6 +1567,7 @@ class UrlCollection(object):
                  store_html_to_cache=False,
                  max_cache_dir_size=None,
                  internet_scraping: bool = True,
+                 force_ssl_check: bool = True,
                  older_time: datetime.timedelta = None,
                  timezone: pytz.timezone = None,
                  exclude_extensions: pd.DataFrame = None,
@@ -1566,6 +1595,7 @@ class UrlCollection(object):
         self.store_html_to_cache = store_html_to_cache
         self.max_cache_dir_size = max_cache_dir_size
         self.internet_scraping = internet_scraping
+        self.force_ssl_check = force_ssl_check
 
         self.kvk_nr = kvk_nr
         self.company_record = company_record
@@ -1654,6 +1684,30 @@ class UrlCollection(object):
 
         self.logger.debug("Start Url Search : {}".format(url))
 
+        scrape_url = url_info.needs_update and self.internet_scraping
+
+        schema = None
+        ssl_valid = None
+        url_prop = self.urls_df.loc[url, :]
+        if url_prop[BESTAAT_KEY] is not None and not url_prop[BESTAAT_KEY]:
+            logger.warning(f"Url {url} does not exist based on the previous run. Don't scrape")
+            scrape_url = False
+            schema = "https"
+
+        if not self.force_ssl_check and url_prop[SSL_KEY] is not None:
+            # in case we already have a ssl key of the previous run stored in the database, use
+            # this value. However, if force_ssl_check was set, we must retrieve the ssl key again,
+            # so we keep the schema = None in that case
+            if url_prop[SSL_KEY]:
+                schema = "https"
+            else:
+                schema = "http"
+            ssl_valid = url_prop[SSL_VALID_KEY]
+            req = RequestUrl(url, schema=schema, ssl_valid=ssl_valid)
+            if req.status_code != 200:
+                logger.warning(f"The status code of {url} was not 200. Do not scrape")
+                scrape_url = False
+
         url_analyse = UrlSearchStrings(url,
                                        search_strings={
                                            POSTAL_CODE_KEY: ZIP_REGEXP,
@@ -1664,31 +1718,33 @@ class UrlCollection(object):
                                        stop_search_on_found_keys=[BTW_KEY],
                                        store_page_to_cache=self.store_html_to_cache,
                                        max_cache_dir_size=self.max_cache_dir_size,
-                                       scrape_url=url_info.needs_update
+                                       scrape_url=scrape_url,
+                                       schema=schema,
+                                       ssl_valid=ssl_valid
                                        )
 
         # TODO: transfer this outside
         self.logger.debug("Done with URl Search: {}".format(url_analyse.matches))
 
-        if not url_info.needs_update:
+        if not scrape_url:
             logger.debug("We skipped the scraping so get the previous data ")
-            url_analyse.exists = True
+            url_analyse.exists = url_prop[BESTAAT_KEY]
             # we have not scraped the url, but we want to set the info anyways
-            postcodes = self.urls_df.loc[url, ALL_PSC_KEY]
+            postcodes = url_prop[ALL_PSC_KEY]
             if postcodes is not None and postcodes != "":
                 url_analyse.matches[POSTAL_CODE_KEY] = postcodes.split(",")
-            btw_nummers = self.urls_df.loc[url, ALL_BTW_KEY]
+            btw_nummers = url_prop[ALL_BTW_KEY]
             if btw_nummers is not None and btw_nummers != "":
                 url_analyse.matches[BTW_KEY] = btw_nummers.split(",")
-            kvk_nummers = self.urls_df.loc[url, ALL_KVK_KEY]
+            kvk_nummers = url_prop[ALL_KVK_KEY]
             if kvk_nummers is not None and kvk_nummers != "":
                 url_analyse.matches[KVK_KEY] = kvk_nummers.split(",")
 
-            e_commerce = self.urls_df.loc[url, ECOMMERCE_KEY]
+            e_commerce = url_prop[ECOMMERCE_KEY]
             if e_commerce is not None and e_commerce != "":
                 url_info.ecommerce = e_commerce.split(",")
 
-            social_media = self.urls_df.loc[url, SOCIAL_MEDIA_KEY]
+            social_media = url_prop[SOCIAL_MEDIA_KEY]
             if social_media is not None and social_media != "":
                 url_info.social_media = social_media.split(",")
         else:
@@ -1714,7 +1770,7 @@ class UrlCollection(object):
                 self.urls_df.loc[url, SOCIAL_MEDIA_KEY] = \
                     paste_strings(sm_list, max_length=MAX_CHARFIELD_LENGTH)
 
-            if url_analyse.exists:
+            if url_analyse.exists is not None and url_analyse.exists:
                 self.urls_df.loc[url, BESTAAT_KEY] = True
                 self.urls_df.loc[url, SSL_KEY] = url_analyse.req.ssl
                 self.urls_df.loc[url, SSL_VALID_KEY] = url_analyse.req.ssl_valid
@@ -1773,11 +1829,7 @@ class UrlCollection(object):
             else:
                 url_info.processing_time = processing_time
 
-            # connect to the url and analyse the contents of a static page
-            if self.internet_scraping:
-                url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
-            else:
-                url_analyse = None
+            url_analyse = self.scrape_url_and_store_in_dataframes(url, url_info)
 
             url_info.url_analyse = url_analyse
 
