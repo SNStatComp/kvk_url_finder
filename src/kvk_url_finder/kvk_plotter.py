@@ -204,10 +204,10 @@ class KvkPlotter(object):
         count_all.columns = [f"All (N={tot_all})",
                              f"Sel (N={tot_sel}"]
 
-        fig, axis = plt.subplots(figsize=(7.5, 5))
-        plt.subplots_adjust(left=0.1, right=0.75)
+        fig, axis = plt.subplots(figsize=(6.5, 5))
+        plt.subplots_adjust(left=0.1, right=0.9, top=0.85)
         axis.set_xlabel("Ranking [-]")
-        axis.set_ylim([0, 50])
+        axis.set_ylim([0, 40])
         axis.set_ylabel("% kvks")
 
         count_all.plot(kind="bar", ax=axis, label="# kvks", rot=0)
@@ -229,10 +229,15 @@ class KvkPlotter(object):
         ax2.set_xlim([-1, 10])
         #
         ax2.tick_params(axis="y", labelcolor="black")
-        axis.legend(bbox_to_anchor=(1.39, 1.05), title="KVK")
-        ax2.legend(bbox_to_anchor=(1.39, 0.85), title="Cumulative")
+        axis.legend(bbox_to_anchor=(0.65, 1.22), title="% KVK")
+        ax2.legend(bbox_to_anchor=(1.05, 1.22), title="Cumulative %")
 
-        plt.savefig("url_score_DH.jpg")
+        logger.info("plot fig")
+        plt.savefig("url_score_NL.jpg")
+        logger.info("save to csv sel")
+        cum_sum_sel.to_csv("url_score_DH.csv")
+        logger.info("save to csv all")
+        cum_sum_all.to_csv("url_score_NL.csv")
 
     #
     # self.make_plot(data_df, axis)
