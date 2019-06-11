@@ -494,9 +494,9 @@ class KvKUrlParser(mp.Process):
                     sheetname = table.__name__
                     self.logger.info(f"Appending sheet {sheetname}")
                     df.to_excel(writer, sheet_name=sheetname)
-        elif export_file.suffix in (".csv"):
+        elif export_file.suffix in (".csv", ".pkl"):
             for cnt, table in enumerate([self.CompanyTbl, self.AddressTbl, self.WebsiteTbl]):
-                this_name = export_file.stem + "_" + table.__name__.lower() + ".csv"
+                this_name = export_file.stem + "_" + table.__name__.lower() + export_file.suffix
                 query = table.select()
                 df = pd.DataFrame(list(query.dicts()))
                 try:
@@ -504,7 +504,12 @@ class KvKUrlParser(mp.Process):
                 except KeyError:
                     pass
                 self.logger.info(f"Writing to {this_name}")
-                df.to_csv(this_name)
+                if export_file == ".csv":
+                    df.to_csv(this_name)
+                elif export_file == ".pkl":
+                    df.to_pickle(this_name)
+                else:
+                    raise AssertionError
 
     def merge_data_base_kvks(self):
         """
