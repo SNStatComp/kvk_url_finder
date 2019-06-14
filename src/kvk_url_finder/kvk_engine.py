@@ -26,19 +26,20 @@ try:
 except ModuleNotFoundError:
     __version__ = "unknown"
 
-try:
-    # if profile exist, it means we are running kernprof to time all the lines of the functions
-    # decorated with #@profile
-    # noinspection PyUnboundLocalVariable
-    isinstance(profile, object)
-except NameError:
-    # in case this fails, we add the profile decorator to the builtins such that it does
-    # not raise an error.
-    import line_profiler
-    import builtins
-
-    profile = line_profiler.LineProfiler()
-    builtins.__dict__["profile"] = profile
+# remove comment if you want to add the line profiler
+#try:
+#    # if profile exist, it means we are running kernprof to time all the lines of the functions
+#    # decorated with #@profile
+#    # noinspection PyUnboundLocalVariable
+#    isinstance(profile, object)
+#except NameError:
+#    # in case this fails, we add the profile decorator to the builtins such that it does
+#    # not raise an error.
+#    import line_profiler
+#    import builtins
+#
+##    profile = line_profiler.LineProfiler()
+#    builtins.__dict__["profile"] = profile
 
 __author__ = "Eelco van Vliet"
 __copyright__ = "Eelco van Vliet"
