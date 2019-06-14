@@ -12,13 +12,10 @@ pandas
 numpy
 scrapy
 peewee
-line_profiler
 yamlloader
 python-levenshtein
-beautifulsoup4
 tldextract
 tqdm
 progressbar2
 pint
 yamlloader
-line_profiler
