@@ -15,6 +15,7 @@ peewee
 yamlloader
 python-levenshtein
 tldextract
+matplotlib
 tqdm
 progressbar2
 pint
